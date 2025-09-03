@@ -1,11 +1,14 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { ImageFile } from '../types';
 
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set.");
+// 환경변수에서 API 키 가져오기
+const apiKey = process.env.GEMINI_API_KEY;
+
+if (!apiKey) {
+    throw new Error("GEMINI_API_KEY environment variable is not set.");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey });
 
 export const changeFaceInImage = async (
     originalImage: ImageFile, 
