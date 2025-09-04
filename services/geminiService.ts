@@ -1,12 +1,38 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { ImageFile } from '../types';
 
-// 환경변수에서 API 키 가져오기
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-    throw new Error("GEMINI_API_KEY environment variable is not set.");
+// 환경변수 접근 방식 변경
+declare global {
+  const __GEMINI_API_KEY__: string;
 }
+
+// 여러 방식으로 API 키 획득 시도
+const getApiKey = (): string => {
+  // 1. 전역 변수에서
+  if (typeof __GEMINI_API_KEY__ !== 'undefined' && __GEMINI_API_KEY__) {
+    console.log('✅ API key found from global variable');
+    return __GEMINI_API_KEY__;
+  }
+  
+  // 2. process.env에서 (있다면)
+  if (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) {
+    console.log('✅ API key found from process.env');
+    return process.env.GEMINI_API_KEY;
+  }
+  
+  // 3. window 객체에서 (fallback)
+  const windowEnv = (window as any).__GEMINI_API_KEY__;
+  if (windowEnv) {
+    console.log('✅ API key found from window');
+    return windowEnv;
+  }
+  
+  console.error('❌ API key not found in any location');
+  throw new Error("GEMINI_API_KEY environment variable is not set.");
+};
+
+const apiKey = getApiKey();
+console.log('🔑 Final API key length:', apiKey.length);
 
 const ai = new GoogleGenAI({ apiKey });
 
@@ -57,31 +83,19 @@ Execute the image modification based on these exact instructions.
         
         for (const part of response.candidates[0].content.parts) {
             if (part.inlineData) {
-                const originalBase64 = part.inlineData.data;
-                const originalMimeType = part.inlineData.mimeType;
-                
-                // 🧹 메타데이터 제거 처리
-                try {
-                    const cleanedImage = await ImageProcessor.cleanBase64Image(
-                        originalBase64, 
-                        originalMimeType
-                    );
-                    return cleanedImage;
-                } catch (cleanError) {
-                    console.warn('Failed to clean metadata, returning original:', cleanError);
-                    // 메타데이터 제거 실패 시 원본 반환
-                    return {
-                        base64: originalBase64,
-                        mimeType: originalMimeType,
-                        url: `data:${originalMimeType};base64,${originalBase64}`
-                    };
-                }
+                const newBase64 = part.inlineData.data;
+                const newMimeType = part.inlineData.mimeType;
+                return {
+                    base64: newBase64,
+                    mimeType: newMimeType,
+                    url: `data:${newMimeType};base64,${newBase64}`
+                };
             }
         }
         return null;
 
     } catch (error) {
-        console.error("Error calling Gemini API for image application:", error);
+        console.error("Error calling Gemini API:", error);
         throw new Error("Failed to change face using Gemini API.");
     }
 };
