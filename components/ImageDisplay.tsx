@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { ImageIcon } from './icons/ImageIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
-import { ImageProcessor } from '../utils/imageProcessor';
-import { DownloadGuide } from './DownloadGuide';
 
 interface ImageDisplayProps {
   originalImage: string | undefined | null;
@@ -10,49 +8,27 @@ interface ImageDisplayProps {
 }
 
 export const ImageDisplay: React.FC<ImageDisplayProps> = ({ originalImage, generatedImage }) => {
-    const [showDownloadGuide, setShowDownloadGuide] = useState(false);
+    const [showTip, setShowTip] = useState(false);
     
-    const handleDownload = async () => {
+    const handleDownload = () => {
         if (!generatedImage) return;
         
-        // 다운로드 가이드를 보여줄지 확인
-        const hideGuide = localStorage.getItem('hideDownloadGuide');
-        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        // 기존 다운로드 로직 (변경 없음)
+        const link = document.createElement('a');
+        link.href = generatedImage;
+
+        const mimeType = generatedImage.substring(5, generatedImage.indexOf(';'));
+        const extension = mimeType.split('/')[1] ?? 'png';
+        link.download = `faceswap-result.${extension}`;
         
-        // 모바일이고 가이드를 숨기지 않았다면 가이드 표시
-        if (isMobile && !hideGuide) {
-            setShowDownloadGuide(true);
-        }
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
         
-        try {
-            // 메타데이터가 이미 제거된 상태지만, 다운로드 시 한번 더 확실히 처리
-            const cleanImageUrl = await ImageProcessor.removeMetadataFromUrl(generatedImage);
-            
-            // 다운로드 실행
-            const link = document.createElement('a');
-            link.href = cleanImageUrl;
-            
-            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-            link.download = `face-swap-${timestamp}.jpg`;
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-        } catch (error) {
-            console.error('Clean download failed, using fallback:', error);
-            // 에러 시 기본 다운로드
-            const link = document.createElement('a');
-            link.href = generatedImage;
-            
-            const mimeType = generatedImage.substring(5, generatedImage.indexOf(';'));
-            const extension = mimeType.split('/')[1] ?? 'png';
-            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-            link.download = `face-swap-${timestamp}.${extension}`;
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+        // iOS 사용자에게만 팁 표시
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        if (isIOS && !localStorage.getItem('hideIOSTip')) {
+            setShowTip(true);
         }
     };
 
@@ -110,11 +86,26 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({ originalImage, gener
           </div>
       </div>
       
-      {/* 다운로드 가이드 모달 */}
-      <DownloadGuide 
-        isVisible={showDownloadGuide}
-        onClose={() => setShowDownloadGuide(false)}
-      />
+      {/* iOS 다운로드 팁 - 간단한 버전 */}
+      {showTip && (
+        <div className="fixed bottom-4 left-4 right-4 bg-blue-600 text-white p-4 rounded-lg shadow-lg z-50 mx-auto max-w-sm">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-semibold text-sm">📱 iOS 다운로드 안내</p>
+              <p className="text-xs mt-1">파일 앱 → 다운로드에서 확인하거나, 공유 버튼으로 사진 앱에 저장하세요!</p>
+            </div>
+            <button
+              onClick={() => {
+                setShowTip(false);
+                localStorage.setItem('hideIOSTip', 'true');
+              }}
+              className="text-white ml-2 text-lg leading-none"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 };
