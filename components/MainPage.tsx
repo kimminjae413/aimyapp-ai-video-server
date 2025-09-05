@@ -60,7 +60,7 @@ export const MainPage: React.FC<MainPageProps> = ({ onFaceSwapClick, onVideoSwap
               <h2 className="text-2xl font-bold text-gray-800">AI영상변환</h2>
               <p className="text-gray-700 text-sm px-4">
                 헤어시진을 더욱 생생한<br />
-                영상으로 전달!
+                리뷰 영상으로 전달!
               </p>
             </div>
             <button
