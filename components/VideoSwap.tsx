@@ -6,12 +6,15 @@ import { generateVideoWithKling, motionTemplates } from '../services/klingServic
 import type { ImageFile } from '../types';
 
 export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+  // States
   const [originalImage, setOriginalImage] = useState<ImageFile | null>(null);
   const [prompt, setPrompt] = useState<string>('');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [videoDuration, setVideoDuration] = useState<number>(5);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string>('');
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -47,12 +50,15 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setIsLoading(true);
     setError(null);
     setGeneratedVideoUrl(null);
+    setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
     try {
-      const videoUrl = await generateVideoWithKling(originalImage, finalPrompt);
+      const videoUrl = await generateVideoWithKling(originalImage, finalPrompt, videoDuration);
       setGeneratedVideoUrl(videoUrl);
+      setProgress('');
     } catch (err) {
       setError(`영상 생성 중 오류가 발생했습니다: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setProgress('');
     } finally {
       setIsLoading(false);
     }
@@ -78,10 +84,10 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </svg>
         </button>
         <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-          AI 영상 변환
+          AI 헤어 영상 변환
         </h1>
         <p className="mt-2 text-lg text-gray-400">
-          사진을 업로드하고 원하는 동작을 입력하면 AI가 영상으로 변환해드립니다.
+          헤어 시술 후 사진을 자연스러운 리뷰 영상으로 변환해드립니다.
         </p>
       </header>
 
@@ -89,63 +95,97 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         {/* Left Panel */}
         <div className="lg:w-1/3 flex flex-col gap-6">
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
-            <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">1. 이미지 업로드</h2>
+            <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">1. 헤어 시술 후 사진 업로드</h2>
             <ImageUploader 
-              title="원본 이미지" 
+              title="고객 사진" 
               onImageUpload={handleImageUpload} 
               imageUrl={originalImage?.url} 
             />
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              * 정면 또는 측면 사진 권장<br/>
+              * 헤어스타일이 잘 보이는 사진 사용
+            </p>
           </div>
 
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
-            <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">2. 영상 설명</h2>
+            <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">2. 영상 설정</h2>
             
             {/* Duration Selection */}
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-300">영상 길이</label>
               <select
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
+                value={videoDuration}
+                onChange={(e) => setVideoDuration(Number(e.target.value))}
                 className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500 transition"
               >
-                <option value={5}>5초</option>
-                <option value={10}>10초</option>
+                <option value={5}>5초 (SNS 숏폼용)</option>
+                <option value={10}>10초 (상세 리뷰용)</option>
               </select>
             </div>
 
             {/* Motion Templates */}
             <div className="mb-4">
-              <label className="block mb-2 text-sm font-medium text-gray-300">모션 템플릿</label>
+              <label className="block mb-2 text-sm font-medium text-gray-300">헤어 영상 템플릿</label>
               <select
                 value={selectedTemplate}
                 onChange={handleTemplateChange}
-                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500 transition"
+                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500 transition text-sm"
               >
-                <option value="">직접 입력</option>
-                <option value="smile">자연스러운 미소</option>
-                <option value="wink">윙크</option>
-                <option value="headTurn">고개 돌리기</option>
-                <option value="hairFlow">바람에 날리는 머리</option>
-                <option value="laugh">웃는 표정</option>
-                <option value="talk">말하는 모습</option>
-                <option value="nod">고개 끄덕이기</option>
-                <option value="blink">자연스러운 눈 깜빡임</option>
-                <option value="wave">손 흔들기</option>
-                <option value="lookAround">주변 둘러보기</option>
+                <option value="">✍️ 직접 입력 (한국어/영어 가능)</option>
+                <optgroup label="💇‍♀️ 헤어 모델 포즈">
+                  <option value="hairModelPose1">머리 좌우로 돌리며 스타일 보여주기</option>
+                  <option value="hairModelPose2">손으로 머리 쓸어올리기</option>
+                  <option value="hairModelPose3">다이나믹하게 머리 흔들기</option>
+                </optgroup>
+                <optgroup label="😊 헤어 리뷰 모션">
+                  <option value="hairReview1">만족하며 거울보듯 확인하기</option>
+                  <option value="hairReview2">행복하게 머리 만지며 감탄</option>
+                  <option value="hairReview3">앞머리 정리하며 수줍은 미소</option>
+                </optgroup>
+                <optgroup label="🙈 자연스러운 일반인 포즈">
+                  <option value="naturalPose1">수줍다가 자신감 있게 웃기</option>
+                  <option value="naturalPose2">부끄러워하다가 활짝 웃기</option>
+                  <option value="naturalPose3">머리 넘기며 수줍게 웃기</option>
+                </optgroup>
+                <optgroup label="✨ 헤어 디테일 보여주기">
+                  <option value="showDetail1">180도 회전하며 뒷머리 보여주기</option>
+                  <option value="showDetail2">레이어드컷/펌 움직임 보여주기</option>
+                  <option value="showDetail3">머리 질감과 결 보여주기</option>
+                </optgroup>
+                <optgroup label="🎉 변화 리액션">
+                  <option value="transformation1">변화에 놀란 표정</option>
+                  <option value="transformation2">새 스타일에 감탄하기</option>
+                </optgroup>
+                <optgroup label="💕 살롱 분위기">
+                  <option value="salonVibe1">시술 후 만족스럽게 일어나기</option>
+                  <option value="salonVibe2">즐거운 분위기 표현</option>
+                </optgroup>
               </select>
             </div>
 
             {/* Custom Prompt */}
-            <textarea
-              value={prompt}
-              onChange={(e) => {
-                setPrompt(e.target.value);
-                setSelectedTemplate('');
-              }}
-              placeholder="예: 머리를 좌우로 흔들며 웃는 모습, 윙크하는 모습, 바람에 머리카락이 날리는 모습"
-              className="w-full h-32 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition resize-none"
-              disabled={!!selectedTemplate}
-            />
+            <div className="mb-4">
+              <label className="block mb-2 text-sm font-medium text-gray-300">
+                {selectedTemplate ? '선택된 템플릿 사용 중' : '커스텀 프롬프트 (한국어/영어 입력 가능)'}
+              </label>
+              <textarea
+                value={prompt}
+                onChange={(e) => {
+                  setPrompt(e.target.value);
+                  setSelectedTemplate('');
+                }}
+                placeholder={selectedTemplate ? 
+                  '템플릿이 선택되었습니다. 직접 입력하려면 위에서 "직접 입력"을 선택하세요.' :
+                  '예시:\n한국어: 새로운 헤어스타일을 확인하며 수줍게 웃고, 머리를 천천히 좌우로 돌려 다양한 각도에서 헤어스타일을 보여주는 모습\n\n영어: The person checks their new hairstyle with a shy smile, slowly turning their head left and right to show the hairstyle from various angles'}
+                className="w-full h-32 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition resize-none text-sm"
+                disabled={!!selectedTemplate}
+              />
+              {!selectedTemplate && (
+                <p className="text-xs text-gray-500 mt-1">
+                  💡 최대 2500자까지 입력 가능 | 한국어와 영어 모두 지원됩니다
+                </p>
+              )}
+            </div>
             
             {progress && (
               <div className="mt-3 text-sm text-cyan-400">
