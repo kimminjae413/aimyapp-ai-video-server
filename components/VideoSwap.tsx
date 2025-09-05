@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VideoIcon } from './icons/VideoIcon';
 import { ImageUploader } from './ImageUploader';
 import { Loader } from './Loader';
@@ -15,6 +15,89 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string>('');
+  const [showExitWarning, setShowExitWarning] = useState<boolean>(false);
+  const [videoSaved, setVideoSaved] = useState<boolean>(false);
+
+  // Pull-to-refresh 방지
+  useEffect(() => {
+    let touchStartY = 0;
+    let touchEndY = 0;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartY = e.touches[0].clientY;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      touchEndY = e.touches[0].clientY;
+      
+      // 스크롤이 맨 위이고 아래로 당기는 경우 방지
+      if (window.scrollY === 0 && touchEndY > touchStartY && touchEndY - touchStartY > 10) {
+        e.preventDefault();
+      }
+    };
+
+    // 전체 문서에 overscroll 방지 적용
+    document.documentElement.style.overscrollBehavior = 'none';
+    document.body.style.overscrollBehavior = 'none';
+    
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.documentElement.style.overscrollBehavior = 'auto';
+      document.body.style.overscrollBehavior = 'auto';
+    };
+  }, []);
+
+  // 페이지 나가기 방지 (새로고침, 탭 닫기)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (generatedVideoUrl && !videoSaved) {
+        e.preventDefault();
+        e.returnValue = '⚠️ 생성된 영상을 저장하지 않았습니다. 페이지를 나가면 영상을 다시 볼 수 없습니다.';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [generatedVideoUrl, videoSaved]);
+
+  // 브라우저 뒤로가기 방지
+  useEffect(() => {
+    if (generatedVideoUrl && !videoSaved) {
+      // 가상의 히스토리 추가
+      window.history.pushState(null, '', window.location.href);
+      
+      const handlePopState = () => {
+        if (generatedVideoUrl && !videoSaved) {
+          setShowExitWarning(true);
+          // 다시 가상 히스토리 추가하여 뒤로가기 방지
+          window.history.pushState(null, '', window.location.href);
+        }
+      };
+
+      window.addEventListener('popstate', handlePopState);
+      
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+      };
+    }
+  }, [generatedVideoUrl, videoSaved]);
+
+  // 안전한 뒤로가기
+  const handleSafeBack = () => {
+    if (generatedVideoUrl && !videoSaved) {
+      setShowExitWarning(true);
+    } else {
+      onBack();
+    }
+  };
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -26,6 +109,7 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       };
       setOriginalImage(newImageFile);
       setGeneratedVideoUrl(null);
+      setVideoSaved(false);
       setError(null);
     };
     reader.onerror = () => {
@@ -50,6 +134,7 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setIsLoading(true);
     setError(null);
     setGeneratedVideoUrl(null);
+    setVideoSaved(false);
     setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
     try {
@@ -78,10 +163,12 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     if (isIOS) {
       // iOS는 새 탭에서 열기
       window.open(generatedVideoUrl, '_blank');
+      // iOS에서는 새 탭에서 저장하는 것으로 간주
+      setTimeout(() => setVideoSaved(true), 1000);
     } else {
       // 기타 기기는 직접 다운로드
       try {
-        const response = await fetch(generatedVideoUrl);
+        const response = await fetch(generatedVideoUrl!);
         const blob = await response.blob();
         const blobUrl = URL.createObjectURL(blob);
         
@@ -93,6 +180,7 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         document.body.removeChild(a);
         
         setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+        setVideoSaved(true);
       } catch (error) {
         console.error('Download failed:', error);
         window.open(generatedVideoUrl, '_blank');
@@ -100,15 +188,68 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
   };
 
+  // 경고 모달 컴포넌트
+  const ExitWarningModal = () => (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full">
+        <div className="flex items-center justify-center mb-4">
+          <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center">
+            <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+        </div>
+        
+        <h3 className="text-xl font-bold text-white text-center mb-2">
+          영상을 저장하셨나요?
+        </h3>
+        
+        <p className="text-gray-300 text-sm text-center mb-4">
+          아직 영상을 저장하지 않으셨다면, 페이지를 나가면 <span className="text-red-400 font-bold">생성된 영상을 다시 볼 수 없습니다.</span>
+        </p>
+        
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-6">
+          <p className="text-yellow-200 text-xs text-center">
+            💡 iOS: 다운로드 버튼 → 새 탭 → 길게 누르기 → 비디오 저장<br/>
+            💡 Android/PC: 다운로드 버튼 클릭
+          </p>
+        </div>
+        
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              setShowExitWarning(false);
+              setVideoSaved(true);
+              onBack();
+            }}
+            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+          >
+            저장했어요, 나가기
+          </button>
+          <button
+            onClick={() => setShowExitWarning(false)}
+            className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
+          >
+            취소 (계속 보기)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col items-center p-4 sm:p-6 lg:p-8">
+      {/* 경고 모달 */}
+      {showExitWarning && <ExitWarningModal />}
+      
       {/* Header */}
       <header className="text-center w-full mb-6">
         <button
-          onClick={onBack}
-          className="absolute left-4 top-4 p-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+          onClick={handleSafeBack}
+          className="absolute left-4 top-4 p-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors group"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
@@ -268,42 +409,71 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <div className="w-full h-full bg-gray-800/50 border border-gray-700 rounded-xl p-6">
               <h3 className="text-lg font-semibold text-gray-300 mb-4 text-center">결과 영상</h3>
               {generatedVideoUrl ? (
-                <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden">
-                  <video 
-                    controls 
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    webkit-playsinline="true"
-                    className="w-full h-full"
-                    src={generatedVideoUrl}
-                    onError={(e) => {
-                      console.error('Video playback error:', e);
-                      setError('비디오 재생 오류: 형식이 지원되지 않을 수 있습니다.');
-                    }}
-                  >
-                    브라우저가 비디오 재생을 지원하지 않습니다.
-                  </video>
-                  
-                  {/* 다운로드 버튼 */}
-                  <button
-                    onClick={handleDownload}
-                    className="absolute bottom-4 right-4 p-2 bg-gray-900/70 backdrop-blur-sm rounded-full text-white hover:bg-blue-600 transition-colors group"
-                    title="영상 다운로드"
-                  >
-                    <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                  </button>
-                  
-                  {/* iOS용 추가 안내 */}
-                  {/iPad|iPhone|iPod/.test(navigator.userAgent) && (
-                    <div className="absolute top-4 left-4 right-4 bg-black/70 text-white text-xs p-2 rounded-lg">
-                      💡 iOS: 다운로드 버튼 → 새 탭에서 열기 → 공유 → 비디오 저장
+                <>
+                  {/* 저장 안내 배너 */}
+                  {!videoSaved && (
+                    <div className="mb-4 bg-yellow-500/10 border border-yellow-500/50 rounded-lg p-3 flex items-center gap-3">
+                      <svg className="w-5 h-5 text-yellow-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <p className="text-yellow-200 text-sm">
+                        ⚠️ 영상을 저장하지 않으면 페이지를 나갈 때 사라집니다!
+                      </p>
                     </div>
                   )}
-                </div>
+                  
+                  <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden">
+                    <video 
+                      controls 
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      webkit-playsinline="true"
+                      className="w-full h-full"
+                      src={generatedVideoUrl}
+                      onError={(e) => {
+                        console.error('Video playback error:', e);
+                        setError('비디오 재생 오류: 형식이 지원되지 않을 수 있습니다.');
+                      }}
+                    >
+                      브라우저가 비디오 재생을 지원하지 않습니다.
+                    </video>
+                    
+                    {/* 다운로드 버튼 */}
+                    <button
+                      onClick={handleDownload}
+                      className={`absolute bottom-4 right-4 p-3 backdrop-blur-sm rounded-full text-white transition-all group ${
+                        videoSaved 
+                          ? 'bg-green-600/70 hover:bg-green-700' 
+                          : 'bg-red-600/70 hover:bg-red-700 animate-pulse'
+                      }`}
+                      title={videoSaved ? '저장 완료' : '영상 다운로드 (필수!)'}
+                    >
+                      {videoSaved ? (
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      )}
+                    </button>
+                    
+                    {/* iOS용 추가 안내 */}
+                    {/iPad|iPhone|iPod/.test(navigator.userAgent) && !videoSaved && (
+                      <div className="absolute top-4 left-4 right-14 bg-black/80 text-white text-xs p-3 rounded-lg">
+                        <p className="font-bold mb-1">📱 iOS 저장 방법:</p>
+                        <p>1. 다운로드 버튼 터치</p>
+                        <p>2. 새 탭에서 영상 열림</p>
+                        <p>3. 화면 길게 누르기</p>
+                        <p>4. "비디오 저장" 선택</p>
+                      </div>
+                    )}
+                  </div>
+                </>
               ) : (
                 <div className="w-full aspect-video bg-gray-800 rounded-xl flex flex-col items-center justify-center text-gray-500">
                   <VideoIcon className="w-16 h-16 mb-4" />
