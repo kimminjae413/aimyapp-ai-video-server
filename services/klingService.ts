@@ -105,7 +105,7 @@ const pollVideoStatus = async (taskId: string, maxAttempts: number = 60): Promis
       const response = await fetch(`${KLING_API_BASE_URL}/${taskId}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${KLING_API_KEY}`,
+          'Authorization': getAuthToken(),
           'Content-Type': 'application/json',
         },
       });
