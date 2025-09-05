@@ -7,7 +7,8 @@ export default defineConfig(({ mode }) => {
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.KLING_API_KEY': JSON.stringify(env.KLING_API_KEY)
+        'process.env.KLING_ACCESS_KEY': JSON.stringify(env.KLING_ACCESS_KEY),
+        'process.env.KLING_SECRET_KEY': JSON.stringify(env.KLING_SECRET_KEY)
       },
       resolve: {
         alias: {
