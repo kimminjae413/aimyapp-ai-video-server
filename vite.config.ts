@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
     console.log('🔧 Build Configuration:');
     console.log('- Mode:', mode);
     console.log('- GEMINI_API_KEY found:', !!GEMINI_API_KEY);
+    console.log('- KLING_ACCESS_KEY found:', !!KLING_ACCESS_KEY);  // 추가
     console.log('- Source:', process.env.GEMINI_API_KEY ? 'Netlify' : 'Local .env');
     
     return {
