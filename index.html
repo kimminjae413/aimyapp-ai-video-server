@@ -3,20 +3,59 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- 핀치 줌 완전 비활성화 + 네이티브 앱 느낌 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    
+    <!-- iOS 홈 화면 추가 시 네이티브 앱처럼 작동 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- 주소창 색상 (안드로이드) -->
+    <meta name="theme-color" content="#111827">
+    
     <title>AI Face Swap</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
+      /* 기존 스타일 유지 + 추가 */
       body {
         font-family: 'Noto Sans KR', sans-serif;
         overscroll-behavior-y: contain;
         touch-action: manipulation;
+        /* 추가: 텍스트 선택 방지 (네이티브 앱처럼) */
+        -webkit-user-select: none;
+        user-select: none;
+        /* 추가: 탭 하이라이트 제거 */
+        -webkit-tap-highlight-color: transparent;
+        /* 추가: 스크롤바 숨기기 */
+        -webkit-overflow-scrolling: touch;
       }
+      
+      /* 입력 필드는 선택 가능하게 */
+      input, textarea {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      
+      /* 버튼 클릭 시 네이티브 느낌 */
+      button {
+        -webkit-tap-highlight-color: transparent;
+        outline: none;
+      }
+      
       .pink-bold-title {
         color: #f472b6 !important;
         font-weight: bold !important;
+      }
+      
+      /* iOS 안전 영역 대응 */
+      .safe-top {
+        padding-top: env(safe-area-inset-top);
+      }
+      .safe-bottom {
+        padding-bottom: env(safe-area-inset-bottom);
       }
     </style>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -35,5 +74,44 @@
   <body class="bg-gray-900 text-white">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
+    
+    <!-- 추가: 더블탭 줌 방지 스크립트 -->
+    <script>
+      // 모든 터치 이벤트에서 핀치 줌 방지
+      document.addEventListener('touchstart', function(e) {
+        if (e.touches.length > 1) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+      
+      document.addEventListener('touchmove', function(e) {
+        if (e.touches.length > 1) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+      
+      // 더블탭 줌 방지
+      let lastTouchEnd = 0;
+      document.addEventListener('touchend', function(e) {
+        const now = Date.now();
+        if (now - lastTouchEnd <= 300) {
+          e.preventDefault();
+        }
+        lastTouchEnd = now;
+      }, false);
+      
+      // iOS 제스처 방지
+      document.addEventListener('gesturestart', function(e) {
+        e.preventDefault();
+      });
+      
+      document.addEventListener('gesturechange', function(e) {
+        e.preventDefault();
+      });
+      
+      document.addEventListener('gestureend', function(e) {
+        e.preventDefault();
+      });
+    </script>
   </body>
 </html>
