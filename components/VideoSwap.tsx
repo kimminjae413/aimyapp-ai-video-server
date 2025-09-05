@@ -71,6 +71,35 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
   };
 
+  // iOS 다운로드 처리
+  const handleDownload = async () => {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    
+    if (isIOS) {
+      // iOS는 새 탭에서 열기
+      window.open(generatedVideoUrl, '_blank');
+    } else {
+      // 기타 기기는 직접 다운로드
+      try {
+        const response = await fetch(generatedVideoUrl);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `hairgator-${Date.now()}.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+      } catch (error) {
+        console.error('Download failed:', error);
+        window.open(generatedVideoUrl, '_blank');
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col items-center p-4 sm:p-6 lg:p-8">
       {/* Header */}
@@ -188,7 +217,7 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </div>
             
             {progress && (
-              <div className="mt-3 text-sm text-cyan-400">
+              <div className="mt-3 text-sm text-cyan-400 animate-pulse">
                 {progress}
               </div>
             )}
@@ -225,6 +254,12 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <p>서버 측 프록시 구현이 필요합니다.</p>
                   </div>
                 )}
+                {error.includes('balance') && (
+                  <div className="mt-3 text-xs text-gray-400">
+                    <p>API 크레딧이 부족합니다.</p>
+                    <p>Kling API 리소스 패키지를 구매해주세요.</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -238,25 +273,36 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     controls 
                     autoPlay
                     loop
+                    muted
+                    playsInline
+                    webkit-playsinline="true"
                     className="w-full h-full"
                     src={generatedVideoUrl}
+                    onError={(e) => {
+                      console.error('Video playback error:', e);
+                      setError('비디오 재생 오류: 형식이 지원되지 않을 수 있습니다.');
+                    }}
                   >
                     브라우저가 비디오 재생을 지원하지 않습니다.
                   </video>
+                  
+                  {/* 다운로드 버튼 */}
                   <button
-                    onClick={() => {
-                      const a = document.createElement('a');
-                      a.href = generatedVideoUrl;
-                      a.download = `hair-review-${Date.now()}.mp4`;
-                      a.click();
-                    }}
-                    className="absolute bottom-4 right-4 p-2 bg-gray-900/70 backdrop-blur-sm rounded-full text-white hover:bg-blue-600 transition-colors"
+                    onClick={handleDownload}
+                    className="absolute bottom-4 right-4 p-2 bg-gray-900/70 backdrop-blur-sm rounded-full text-white hover:bg-blue-600 transition-colors group"
                     title="영상 다운로드"
                   >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                   </button>
+                  
+                  {/* iOS용 추가 안내 */}
+                  {/iPad|iPhone|iPod/.test(navigator.userAgent) && (
+                    <div className="absolute top-4 left-4 right-4 bg-black/70 text-white text-xs p-2 rounded-lg">
+                      💡 iOS: 다운로드 버튼 → 새 탭에서 열기 → 공유 → 비디오 저장
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="w-full aspect-video bg-gray-800 rounded-xl flex flex-col items-center justify-center text-gray-500">
