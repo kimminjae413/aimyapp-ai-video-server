@@ -1,7 +1,7 @@
 import type { ImageFile } from '../types';
 
 // Kling API configuration
-const KLING_API_KEY = process.env.KLING_API_KEY || '';
+const KLING_API_KEY = process.env.KLING_ACCESS_KEY || ''; // 환경변수명 통일
 const KLING_API_BASE_URL = 'https://api-singapore.klingai.com/v1/videos/image2video';
 
 interface KlingCreateTaskResponse {
@@ -48,10 +48,29 @@ export const generateVideoWithKling = async (
   duration: number = 5 // 기본 5초 영상
 ): Promise<string> => {
   if (!KLING_API_KEY) {
-    throw new Error('KLING_API_KEY 환경 변수가 설정되지 않았습니다.');
+    throw new Error('KLING_ACCESS_KEY 환경 변수가 설정되지 않았습니다.');
   }
 
   try {
+    // Base64 문자열에서 data: 접두사 제거 (API 요구사항)
+    let cleanBase64 = image.base64;
+    // 이미 data: 접두사가 포함된 경우 제거
+    if (cleanBase64.includes(',')) {
+      cleanBase64 = cleanBase64.split(',')[1];
+    }
+    // data:image/jpeg;base64, 형식이 아닌 경우도 처리
+    if (cleanBase64.startsWith('data:')) {
+      const commaIndex = cleanBase64.indexOf(',');
+      if (commaIndex !== -1) {
+        cleanBase64 = cleanBase64.substring(commaIndex + 1);
+      }
+    }
+
+    console.log('🎬 Kling 비디오 생성 시작');
+    console.log('- Prompt:', prompt);
+    console.log('- Duration:', duration, '초');
+    console.log('- Image base64 length:', cleanBase64.length);
+
     // Step 1: Create Image to Video Task
     const createTaskResponse = await fetch(KLING_API_BASE_URL, {
       method: 'POST',
@@ -60,36 +79,46 @@ export const generateVideoWithKling = async (
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model_name: 'kling-v1', // 또는 'kling-v1-5', 'kling-v1-6' 등
-        mode: 'std', // 'std' for standard, 'pro' for professional
+        model_name: 'kling-v1', // 기본 모델
+        mode: 'std', // standard 모드 (비용 효율적)
         duration: duration.toString(),
-        image: `data:${image.mimeType};base64,${image.base64}`, // Base64 이미지
-        prompt: prompt,
+        image: cleanBase64, // 접두사 없는 순수 Base64
+        prompt: prompt || 'Create a natural and smooth video movement', // 프롬프트 기본값
         cfg_scale: 0.5, // 프롬프트 준수 강도 (0-1)
-        negative_prompt: '', // 필요시 부정 프롬프트 추가
-        callback_url: '', // 콜백 URL (선택사항)
+        negative_prompt: '', // 부정 프롬프트 (선택)
+        callback_url: '', // 콜백 URL (선택)
         external_task_id: `task_${Date.now()}` // 커스텀 태스크 ID
       }),
     });
 
-    if (!createTaskResponse.ok) {
-      const errorData = await createTaskResponse.json();
-      throw new Error(`Kling API 요청 실패: ${errorData.message || createTaskResponse.statusText}`);
+    const responseText = await createTaskResponse.text();
+    let createData: KlingCreateTaskResponse;
+    
+    try {
+      createData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('응답 파싱 실패:', responseText);
+      throw new Error('Kling API 응답을 파싱할 수 없습니다.');
     }
 
-    const createData: KlingCreateTaskResponse = await createTaskResponse.json();
+    if (!createTaskResponse.ok) {
+      throw new Error(`Kling API 요청 실패: ${createData.message || createTaskResponse.statusText}`);
+    }
     
     if (createData.code !== 0) {
-      throw new Error(`Kling API 에러: ${createData.message}`);
+      throw new Error(`Kling API 에러 (code: ${createData.code}): ${createData.message}`);
     }
 
     const taskId = createData.data.task_id;
-    console.log('Kling 비디오 생성 작업 시작됨. Task ID:', taskId);
+    console.log('✅ Kling 비디오 작업 생성 완료. Task ID:', taskId);
 
     // Step 2: Poll for task completion
     return await pollVideoStatus(taskId);
   } catch (error) {
-    console.error('Kling API 호출 중 오류:', error);
+    console.error('❌ Kling API 호출 중 오류:', error);
+    if (error instanceof Error) {
+      throw new Error(`비디오 생성 실패: ${error.message}`);
+    }
     throw new Error('Kling API를 사용한 비디오 생성에 실패했습니다.');
   }
 };
@@ -105,36 +134,46 @@ const pollVideoStatus = async (taskId: string, maxAttempts: number = 60): Promis
       const response = await fetch(`${KLING_API_BASE_URL}/${taskId}`, {
         method: 'GET',
         headers: {
-          'Authorization': getAuthToken(),
+          'Authorization': `Bearer ${KLING_API_KEY}`, // Bearer 토큰 사용
           'Content-Type': 'application/json',
         },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`상태 확인 실패: ${errorData.message || response.statusText}`);
+      const responseText = await response.text();
+      let data: KlingQueryTaskResponse;
+      
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('상태 응답 파싱 실패:', responseText);
+        throw new Error('상태 확인 응답을 파싱할 수 없습니다.');
       }
 
-      const data: KlingQueryTaskResponse = await response.json();
+      if (!response.ok) {
+        throw new Error(`상태 확인 실패: ${data.message || response.statusText}`);
+      }
       
       if (data.code !== 0) {
-        throw new Error(`Kling API 에러: ${data.message}`);
+        throw new Error(`Kling API 에러 (code: ${data.code}): ${data.message}`);
       }
 
       const status = data.data.task_status;
-      console.log(`비디오 생성 상태: ${status} (시도 ${attempts + 1}/${maxAttempts})`);
+      console.log(`🔄 비디오 생성 상태: ${status} (${attempts + 1}/${maxAttempts})`);
 
       if (status === 'succeed') {
         // 비디오 생성 완료
         if (data.data.task_result && data.data.task_result.videos.length > 0) {
-          return data.data.task_result.videos[0].url;
+          const videoUrl = data.data.task_result.videos[0].url;
+          console.log('✅ 비디오 생성 완료!');
+          console.log('📹 비디오 URL:', videoUrl);
+          return videoUrl;
         } else {
           throw new Error('비디오 URL을 찾을 수 없습니다.');
         }
       }
 
       if (status === 'failed') {
-        const errorMsg = data.data.task_status_msg || '비디오 생성 실패';
+        const errorMsg = data.data.task_status_msg || '알 수 없는 오류';
         throw new Error(`비디오 생성 실패: ${errorMsg}`);
       }
 
@@ -142,12 +181,12 @@ const pollVideoStatus = async (taskId: string, maxAttempts: number = 60): Promis
       await new Promise(resolve => setTimeout(resolve, pollInterval));
       attempts++;
     } catch (error) {
-      console.error('비디오 상태 확인 중 오류:', error);
+      console.error('❌ 비디오 상태 확인 중 오류:', error);
       throw error;
     }
   }
 
-  throw new Error('비디오 생성 시간 초과 - 처리 시간이 너무 오래 걸렸습니다.');
+  throw new Error('비디오 생성 시간 초과 - 5분 이상 소요되고 있습니다. 나중에 다시 시도해주세요.');
 };
 
 // 헤어살롱 전문 모션 템플릿
@@ -188,11 +227,4 @@ export const cameraMovements = {
   forward_up: '카메라 앞으로 이동하며 위로 (Zoom in and pan up)',
   right_turn_forward: '오른쪽으로 회전하며 앞으로 (Rotate right and advance)',
   left_turn_forward: '왼쪽으로 회전하며 앞으로 (Rotate left and advance)'
-};
-
-// 이미지를 URL로 업로드하는 헬퍼 함수 (선택사항)
-export const uploadImageToKling = async (image: ImageFile): Promise<string> => {
-  // Kling API가 직접 이미지 업로드를 지원한다면 여기에 구현
-  // 현재는 Base64를 직접 사용
-  return `data:${image.mimeType};base64,${image.base64}`;
 };
