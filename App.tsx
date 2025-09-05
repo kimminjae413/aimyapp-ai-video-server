@@ -1,4 +1,6 @@
 import React, { useState, useCallback } from 'react';
+import { MainPage } from './components/MainPage';
+import { VideoSwap } from './components/VideoSwap';
 import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
 import { Loader } from './components/Loader';
@@ -7,7 +9,10 @@ import { ControlPanel } from './components/ControlPanel';
 import { changeFaceInImage } from './services/geminiService';
 import type { ImageFile } from './types';
 
-const App: React.FC = () => {
+type PageType = 'main' | 'faceSwap' | 'videoSwap';
+
+// 기존 FaceSwap 기능을 별도 컴포넌트로 분리
+const FaceSwapPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [originalImage, setOriginalImage] = useState<ImageFile | null>(null);
   const [generatedImage, setGeneratedImage] = useState<ImageFile | null>(null);
   const [facePrompt, setFacePrompt] = useState<string>('');
@@ -63,6 +68,16 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col items-center p-4 sm:p-6 lg:p-8">
+      {/* 뒤로가기 버튼 */}
+      <button
+        onClick={onBack}
+        className="absolute left-4 top-4 p-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+      
       <Header />
       <main className="w-full max-w-7xl flex flex-col lg:flex-row gap-8 mt-4">
         <div className="lg:w-1/3 flex flex-col gap-6">
@@ -100,6 +115,40 @@ const App: React.FC = () => {
       </main>
     </div>
   );
+};
+
+// 메인 App 컴포넌트 - 라우팅 담당
+const App: React.FC = () => {
+  const [currentPage, setCurrentPage] = useState<PageType>('main');
+
+  const handleFaceSwapClick = () => {
+    setCurrentPage('faceSwap');
+  };
+
+  const handleVideoSwapClick = () => {
+    setCurrentPage('videoSwap');
+  };
+
+  const handleBackToMain = () => {
+    setCurrentPage('main');
+  };
+
+  // 페이지별 렌더링
+  switch (currentPage) {
+    case 'main':
+      return (
+        <MainPage 
+          onFaceSwapClick={handleFaceSwapClick} 
+          onVideoSwapClick={handleVideoSwapClick} 
+        />
+      );
+    case 'faceSwap':
+      return <FaceSwapPage onBack={handleBackToMain} />;
+    case 'videoSwap':
+      return <VideoSwap onBack={handleBackToMain} />;
+    default:
+      return null;
+  }
 };
 
 export default App;
