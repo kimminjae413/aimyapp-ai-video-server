@@ -76,7 +76,7 @@ export const generateVideoWithKling = async (
           method: 'POST',
           endpoint: '',
           body: {
-            model_name: 'kling-v2-1-master',  // 최신 마스터 버전 사용
+            model_name: 'kling-v2-1-',  // 일반 버전 사용
             mode: 'std',
             duration: duration.toString(),
             image: cleanBase64,
