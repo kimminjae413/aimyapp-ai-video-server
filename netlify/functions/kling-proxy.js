@@ -63,7 +63,14 @@ exports.handler = async (event, context) => {
     console.log('JWT token generated successfully');
     
     const { method, endpoint, body } = JSON.parse(event.body);
-    const url = `https://api-singapore.klingai.com/v1/videos/image2video${endpoint || ''}`;
+    
+    // endpoint가 account로 시작하면 account API 사용
+    let url;
+    if (endpoint && endpoint.includes('account')) {
+      url = `https://api-singapore.klingai.com/v1${endpoint}`;
+    } else {
+      url = `https://api-singapore.klingai.com/v1/videos/image2video${endpoint || ''}`;
+    }
     
     console.log(`Proxying ${method} request to:`, url);
     
