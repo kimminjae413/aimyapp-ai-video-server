@@ -1,12 +1,8 @@
 import type { ImageFile } from '../types';
 
-// Kling API configuration
-const KLING_API_KEY = process.env.KLING_ACCESS_KEY || '';
-const KLING_API_BASE_URL = 'https://api-singapore.klingai.com/v1/videos/image2video';
-
-// CORS 프록시 (필요시 사용)
-const CORS_PROXY = 'https://corsproxy.io/?';
-const USE_CORS_PROXY = false; // 서버사이드 또는 Netlify Functions 사용시 false
+// Netlify Function 프록시 사용
+const USE_NETLIFY_PROXY = true; // Netlify Functions 사용
+const PROXY_URL = '/.netlify/functions/kling-proxy';
 
 interface KlingCreateTaskResponse {
   code: number;
@@ -51,12 +47,8 @@ export const generateVideoWithKling = async (
   prompt: string,
   duration: number = 5
 ): Promise<string> => {
-  if (!KLING_API_KEY) {
-    throw new Error('KLING_ACCESS_KEY 환경 변수가 설정되지 않았습니다.');
-  }
-
   try {
-    // Base64 문자열에서 data: 접두사 제거 (API 요구사항)
+    // Base64 문자열에서 data: 접두사 제거
     let cleanBase64 = image.base64;
     if (cleanBase64.includes(',')) {
       cleanBase64 = cleanBase64.split(',')[1];
@@ -68,65 +60,62 @@ export const generateVideoWithKling = async (
       }
     }
 
-    console.log('🎬 Kling 비디오 생성 시작');
+    console.log('🎬 Kling 비디오 생성 시작 (Netlify Proxy)');
     console.log('- Prompt:', prompt);
     console.log('- Duration:', duration, '초');
     console.log('- Image base64 length:', cleanBase64.length);
 
-    // API URL 설정 (CORS 프록시 사용 여부에 따라)
-    const apiUrl = USE_CORS_PROXY 
-      ? CORS_PROXY + encodeURIComponent(KLING_API_BASE_URL)
-      : KLING_API_BASE_URL;
+    if (USE_NETLIFY_PROXY) {
+      // Netlify Function을 통해 요청
+      const createTaskResponse = await fetch(PROXY_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          method: 'POST',
+          endpoint: '',
+          body: {
+            model_name: 'kling-v1',
+            mode: 'std',
+            duration: duration.toString(),
+            image: cleanBase64,
+            prompt: prompt || 'Create a natural and smooth video movement',
+            cfg_scale: 0.5,
+            negative_prompt: '',
+            callback_url: '',
+            external_task_id: `task_${Date.now()}`
+          }
+        }),
+      });
 
-    // Step 1: Create Image to Video Task
-    const createTaskResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${KLING_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model_name: 'kling-v1',
-        mode: 'std', // standard 모드
-        duration: duration.toString(),
-        image: cleanBase64, // 접두사 없는 순수 Base64
-        prompt: prompt || 'Create a natural and smooth video movement',
-        cfg_scale: 0.5,
-        negative_prompt: '',
-        callback_url: '',
-        external_task_id: `task_${Date.now()}`
-      }),
-    });
+      const responseText = await createTaskResponse.text();
+      let createData: KlingCreateTaskResponse;
+      
+      try {
+        createData = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('응답 파싱 실패:', responseText);
+        throw new Error('API 응답을 파싱할 수 없습니다.');
+      }
 
-    const responseText = await createTaskResponse.text();
-    let createData: KlingCreateTaskResponse;
-    
-    try {
-      createData = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('응답 파싱 실패:', responseText);
-      throw new Error('Kling API 응답을 파싱할 수 없습니다.');
+      if (!createTaskResponse.ok || createData.code !== 0) {
+        throw new Error(`비디오 생성 요청 실패: ${createData.message || 'Unknown error'}`);
+      }
+
+      const taskId = createData.data.task_id;
+      console.log('✅ 비디오 작업 생성 완료. Task ID:', taskId);
+
+      return await pollVideoStatus(taskId);
+    } else {
+      // 직접 API 호출 (CORS 에러 발생 가능)
+      throw new Error('직접 API 호출은 CORS 정책으로 차단됩니다. USE_NETLIFY_PROXY를 true로 설정하세요.');
     }
-
-    if (!createTaskResponse.ok) {
-      throw new Error(`Kling API 요청 실패: ${createData.message || createTaskResponse.statusText}`);
-    }
-    
-    if (createData.code !== 0) {
-      throw new Error(`Kling API 에러 (code: ${createData.code}): ${createData.message}`);
-    }
-
-    const taskId = createData.data.task_id;
-    console.log('✅ Kling 비디오 작업 생성 완료. Task ID:', taskId);
-
-    // Step 2: Poll for task completion
-    return await pollVideoStatus(taskId);
   } catch (error) {
     console.error('❌ Kling API 호출 중 오류:', error);
     
-    // CORS 에러인 경우
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
-      throw new Error('CORS 정책으로 인해 직접 API 호출이 차단되었습니다. 서버 측 프록시 구현이 필요합니다.');
+      throw new Error('네트워크 오류가 발생했습니다. Netlify Function이 배포되었는지 확인하세요.');
     }
     
     if (error instanceof Error) {
@@ -143,53 +132,53 @@ const pollVideoStatus = async (taskId: string, maxAttempts: number = 60): Promis
 
   while (attempts < maxAttempts) {
     try {
-      const apiUrl = USE_CORS_PROXY 
-        ? CORS_PROXY + encodeURIComponent(`${KLING_API_BASE_URL}/${taskId}`)
-        : `${KLING_API_BASE_URL}/${taskId}`;
+      if (USE_NETLIFY_PROXY) {
+        // Netlify Function을 통해 상태 확인
+        const response = await fetch(PROXY_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            method: 'GET',
+            endpoint: `/${taskId}`
+          }),
+        });
 
-      const response = await fetch(apiUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${KLING_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const responseText = await response.text();
-      let data: KlingQueryTaskResponse;
-      
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('상태 응답 파싱 실패:', responseText);
-        throw new Error('상태 확인 응답을 파싱할 수 없습니다.');
-      }
-
-      if (!response.ok) {
-        throw new Error(`상태 확인 실패: ${data.message || response.statusText}`);
-      }
-      
-      if (data.code !== 0) {
-        throw new Error(`Kling API 에러 (code: ${data.code}): ${data.message}`);
-      }
-
-      const status = data.data.task_status;
-      console.log(`🔄 비디오 생성 상태: ${status} (${attempts + 1}/${maxAttempts})`);
-
-      if (status === 'succeed') {
-        if (data.data.task_result && data.data.task_result.videos.length > 0) {
-          const videoUrl = data.data.task_result.videos[0].url;
-          console.log('✅ 비디오 생성 완료!');
-          console.log('📹 비디오 URL:', videoUrl);
-          return videoUrl;
-        } else {
-          throw new Error('비디오 URL을 찾을 수 없습니다.');
+        const responseText = await response.text();
+        let data: KlingQueryTaskResponse;
+        
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('상태 응답 파싱 실패:', responseText);
+          throw new Error('상태 확인 응답을 파싱할 수 없습니다.');
         }
-      }
 
-      if (status === 'failed') {
-        const errorMsg = data.data.task_status_msg || '알 수 없는 오류';
-        throw new Error(`비디오 생성 실패: ${errorMsg}`);
+        if (!response.ok || data.code !== 0) {
+          throw new Error(`상태 확인 실패: ${data.message || 'Unknown error'}`);
+        }
+
+        const status = data.data.task_status;
+        console.log(`🔄 비디오 생성 상태: ${status} (${attempts + 1}/${maxAttempts})`);
+
+        if (status === 'succeed') {
+          if (data.data.task_result && data.data.task_result.videos.length > 0) {
+            const videoUrl = data.data.task_result.videos[0].url;
+            console.log('✅ 비디오 생성 완료!');
+            console.log('📹 비디오 URL:', videoUrl);
+            return videoUrl;
+          } else {
+            throw new Error('비디오 URL을 찾을 수 없습니다.');
+          }
+        }
+
+        if (status === 'failed') {
+          const errorMsg = data.data.task_status_msg || '알 수 없는 오류';
+          throw new Error(`비디오 생성 실패: ${errorMsg}`);
+        }
+      } else {
+        throw new Error('직접 API 호출은 지원되지 않습니다.');
       }
 
       await new Promise(resolve => setTimeout(resolve, pollInterval));
