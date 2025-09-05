@@ -131,7 +131,7 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 onChange={handleTemplateChange}
                 className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500 transition text-sm"
               >
-                <option value="">✍️ 직접 입력 (한국어/영어 가능)</option>
+                <option value="">✍️ 직접 입력 (영어 권장)</option>
                 <optgroup label="💇‍♀️ 헤어 모델 포즈">
                   <option value="hairModelPose1">머리 좌우로 돌리며 스타일 보여주기</option>
                   <option value="hairModelPose2">손으로 머리 쓸어올리기</option>
@@ -166,7 +166,7 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             {/* Custom Prompt */}
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-300">
-                {selectedTemplate ? '선택된 템플릿 사용 중' : '커스텀 프롬프트 (한국어/영어 입력 가능)'}
+                {selectedTemplate ? '선택된 템플릿 사용 중' : '커스텀 프롬프트 (영어 권장)'}
               </label>
               <textarea
                 value={prompt}
@@ -176,13 +176,13 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 }}
                 placeholder={selectedTemplate ? 
                   '템플릿이 선택되었습니다. 직접 입력하려면 위에서 "직접 입력"을 선택하세요.' :
-                  '예시:\n한국어: 새로운 헤어스타일을 확인하며 수줍게 웃고, 머리를 천천히 좌우로 돌려 다양한 각도에서 헤어스타일을 보여주는 모습\n\n영어: The person checks their new hairstyle with a shy smile, slowly turning their head left and right to show the hairstyle from various angles'}
+                  '예시:\n영어(권장): Person checking their new hairstyle with shy smile, slowly turning head to show all angles\n\n한국어도 가능하지만 영어가 더 정확하게 반영됩니다.'}
                 className="w-full h-32 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition resize-none text-sm"
                 disabled={!!selectedTemplate}
               />
               {!selectedTemplate && (
                 <p className="text-xs text-gray-500 mt-1">
-                  💡 최대 2500자까지 입력 가능 | 한국어와 영어 모두 지원됩니다
+                  💡 영어 프롬프트가 더 정확하게 반영됩니다 | 최대 2500자
                 </p>
               )}
             </div>
@@ -218,7 +218,13 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <div className="w-full h-full flex items-center justify-center bg-gray-800/50 border border-gray-700 rounded-xl">
               <div className="text-center text-red-300 p-4">
                 <h3 className="text-lg font-bold">오류 발생</h3>
-                <p>{error}</p>
+                <p className="text-sm">{error}</p>
+                {error.includes('CORS') && (
+                  <div className="mt-3 text-xs text-gray-400">
+                    <p>브라우저 보안 정책으로 인한 문제입니다.</p>
+                    <p>서버 측 프록시 구현이 필요합니다.</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -230,20 +236,38 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden">
                   <video 
                     controls 
+                    autoPlay
+                    loop
                     className="w-full h-full"
                     src={generatedVideoUrl}
                   >
-                    Your browser does not support the video tag.
+                    브라우저가 비디오 재생을 지원하지 않습니다.
                   </video>
+                  <button
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = generatedVideoUrl;
+                      a.download = `hair-review-${Date.now()}.mp4`;
+                      a.click();
+                    }}
+                    className="absolute bottom-4 right-4 p-2 bg-gray-900/70 backdrop-blur-sm rounded-full text-white hover:bg-blue-600 transition-colors"
+                    title="영상 다운로드"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </button>
                 </div>
               ) : (
                 <div className="w-full aspect-video bg-gray-800 rounded-xl flex flex-col items-center justify-center text-gray-500">
                   <VideoIcon className="w-16 h-16 mb-4" />
-                  <p>헤어 리뷰 영상 대기 중</p>
+                  <p className="text-lg font-medium">헤어 리뷰 영상 대기 중</p>
                   <p className="text-sm mt-2 text-gray-600">사진을 업로드하고 템플릿을 선택한 후 생성 버튼을 눌러주세요</p>
-                  <div className="mt-4 text-xs text-gray-600 max-w-md text-center">
-                    💡 Tip: 고객이 직접 포즈를 취하기 부담스러워할 때,<br/>
-                    AI 영상으로 자연스러운 리뷰 영상을 만들어보세요!
+                  <div className="mt-6 text-xs text-gray-600 max-w-md text-center">
+                    <p className="font-medium mb-2">💡 활용 팁</p>
+                    <p>• 고객이 직접 포즈를 취하기 부담스러워할 때</p>
+                    <p>• SNS 마케팅용 동영상이 필요할 때</p>
+                    <p>• 시술 전후 비교 영상을 만들고 싶을 때</p>
                   </div>
                 </div>
               )}
