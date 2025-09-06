@@ -1,8 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { MainPage } from './components/MainPage';
 import { VideoSwap } from './components/VideoSwap';
 import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
+import { MobileImageUploader } from './components/MobileImageUploader';
 import { Loader } from './components/Loader';
 import { ImageDisplay } from './components/ImageDisplay';
 import { ControlPanel } from './components/ControlPanel';
@@ -19,6 +21,12 @@ const FaceSwapPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [clothingPrompt, setClothingPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+
+  useEffect(() => {
+    // 모바일 환경 감지
+    setIsMobile(Capacitor.isNativePlatform() || window.innerWidth < 768);
+  }, []);
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -83,7 +91,11 @@ const FaceSwapPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <div className="lg:w-1/3 flex flex-col gap-6">
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col gap-6">
             <h2 className="text-xl text-center pink-bold-title">1. 이미지 업로드</h2>
-            <ImageUploader title="원본 이미지" onImageUpload={handleImageUpload} imageUrl={originalImage?.url} />
+            {isMobile ? (
+              <MobileImageUploader title="원본 이미지" onImageUpload={handleImageUpload} imageUrl={originalImage?.url} />
+            ) : (
+              <ImageUploader title="원본 이미지" onImageUpload={handleImageUpload} imageUrl={originalImage?.url} />
+            )}
           </div>
           <ControlPanel
             facePrompt={facePrompt}
