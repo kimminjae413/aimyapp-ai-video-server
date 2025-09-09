@@ -1,4 +1,6 @@
+// services/geminiService.ts
 import { GoogleGenAI, Modality } from "@google/genai";
+import { ImageProcessor } from '../utils/imageProcessor';
 import type { ImageFile } from '../types';
 
 // 환경변수에서 API 키 가져오기
