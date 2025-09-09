@@ -1,4 +1,5 @@
 // netlify/functions/bullnabi-proxy.js
+const http = require('http');
 
 exports.handler = async (event, context) => {
   // CORS 헤더
@@ -26,15 +27,14 @@ exports.handler = async (event, context) => {
     const requestBody = JSON.parse(event.body);
     const { action, metaCode, collectionName, documentJson } = requestBody;
     
-    // Bullnabi API URL 결정 (http 사용)
-    let apiUrl = 'http://jihwanworld.ohmyapp.io/bnb';
-    
+    // API 엔드포인트 설정
+    let path = '/bnb';
     if (action === 'aggregate') {
-      apiUrl += '/aggregateForTableWithDocTimeline';
+      path += '/aggregateForTableWithDocTimeline';
     } else if (action === 'create') {
-      apiUrl += '/create';
+      path += '/create';
     } else if (action === 'update') {
-      apiUrl += '/update';
+      path += '/update';
     } else {
       return {
         statusCode: 400,
@@ -43,63 +43,96 @@ exports.handler = async (event, context) => {
       };
     }
     
-    console.log(`[Bullnabi Proxy] ${action} request to:`, apiUrl);
-    console.log('[Bullnabi Proxy] Collection:', collectionName);
-    console.log('[Bullnabi Proxy] MetaCode:', metaCode);
-    console.log('[Bullnabi Proxy] DocumentJson:', documentJson);
-    
-    // FormData 형식으로 변환 (application/x-www-form-urlencoded)
+    // FormData 생성
     const formData = new URLSearchParams();
     formData.append('metaCode', metaCode || 'community');
     formData.append('collectionName', collectionName);
     
-    // documentJson 처리 - 이미 문자열이면 그대로, 객체면 stringify
+    // documentJson 처리
     if (typeof documentJson === 'string') {
       formData.append('documentJson', documentJson);
     } else {
       formData.append('documentJson', JSON.stringify(documentJson));
     }
     
-    console.log('[Bullnabi Proxy] FormData being sent:', formData.toString());
+    const postData = formData.toString();
     
-    // Bullnabi API 호출 - FormData 형식으로
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        // 추가 헤더가 필요한 경우
-        // 'User-Agent': 'your-token-here'
-      },
-      body: formData.toString()
-    });
+    console.log('[Bullnabi Proxy] Request details:');
+    console.log('- Path:', path);
+    console.log('- Collection:', collectionName);
+    console.log('- DocumentJson:', documentJson);
+    console.log('- FormData:', postData);
     
-    const responseText = await response.text();
-    console.log('[Bullnabi Proxy] Response status:', response.status);
-    console.log('[Bullnabi Proxy] Response text:', responseText);
+    // HTTP 요청을 Promise로 감싸기
+    const makeRequest = () => {
+      return new Promise((resolve, reject) => {
+        const options = {
+          hostname: 'jihwanworld.ohmyapp.io',
+          port: 80,
+          path: path,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(postData)
+          }
+        };
+        
+        const req = http.request(options, (res) => {
+          let data = '';
+          
+          res.on('data', (chunk) => {
+            data += chunk;
+          });
+          
+          res.on('end', () => {
+            console.log('[Bullnabi Proxy] Response received:');
+            console.log('- Status:', res.statusCode);
+            console.log('- Data:', data);
+            
+            resolve({
+              statusCode: res.statusCode,
+              data: data
+            });
+          });
+        });
+        
+        req.on('error', (error) => {
+          console.error('[Bullnabi Proxy] Request error:', error);
+          reject(error);
+        });
+        
+        // 요청 본문 전송
+        req.write(postData);
+        req.end();
+      });
+    };
+    
+    // 요청 실행
+    const result = await makeRequest();
     
     // JSON 파싱 시도
     let jsonData;
     try {
-      jsonData = JSON.parse(responseText);
-      console.log('[Bullnabi Proxy] Parsed response:', JSON.stringify(jsonData, null, 2));
+      jsonData = JSON.parse(result.data);
+      console.log('[Bullnabi Proxy] Parsed JSON:', jsonData);
     } catch (e) {
-      console.error('[Bullnabi Proxy] Failed to parse response as JSON:', responseText);
-      // 파싱 실패 시 원본 텍스트 반환
+      console.error('[Bullnabi Proxy] JSON parse failed:', e);
+      // 파싱 실패시 원본 반환
       jsonData = { 
         code: "0", 
         message: "Response parsing failed", 
-        rawData: responseText 
+        rawData: result.data 
       };
     }
     
     return {
-      statusCode: response.status,
+      statusCode: result.statusCode || 200,
       headers,
       body: JSON.stringify(jsonData)
     };
     
   } catch (error) {
-    console.error('[Bullnabi Proxy] Error:', error);
+    console.error('[Bullnabi Proxy] Handler error:', error);
     return {
       statusCode: 500,
       headers,
