@@ -23,16 +23,19 @@ export const getUserCredits = async (userId: string): Promise<UserCredits | null
       },
       body: JSON.stringify({
         action: 'aggregate',
-        metaCode: 'community',
+        metaCode: '_users',  // 수정: community → _users
         collectionName: '_users',
         documentJson: {
-          "$match": { "_id": userId },
-          "$project": { 
-            "remainCount": 1,
-            "nickname": 1,
-            "email": 1
-          },
-          "$limit": 1
+          "pipeline": {  // 수정: pipeline 형식 사용
+            "$match": { 
+              "_id": { 
+                "$eq": { 
+                  "$oid": userId  // 수정: ObjectId 형식
+                } 
+              } 
+            },
+            "$limit": 1
+          }
         }
       }),
     });
@@ -43,18 +46,21 @@ export const getUserCredits = async (userId: string): Promise<UserCredits | null
     }
 
     const data: BullnabiResponse = await response.json();
+    console.log('User credits response:', data);
     
-    if (data.code === '1' && data.data && data.data.length > 0) {
+    // 수정: data.data 체크 (data.code 체크 제거 - 없을 수도 있음)
+    if (data.data && data.data.length > 0) {
       const user = data.data[0];
       return {
         userId: userId,
         totalCredits: user.remainCount || 0,
         remainingCredits: user.remainCount || 0,
-        nickname: user.nickname || '',
+        nickname: user.nickname || user.name || '',
         email: user.email || ''
       };
     }
 
+    console.warn('No user data found for ID:', userId);
     return null;
   } catch (error) {
     console.error('Error fetching user credits:', error);
@@ -79,17 +85,17 @@ export const useCredits = async (
     }
 
     // 2. 히스토리 추가
-    const response = await fetch(API_BASE_URL, {
+    const historyResponse = await fetch(API_BASE_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         action: 'create',
-        metaCode: 'community',
+        metaCode: '_users',  // 수정: community → _users
         collectionName: 'aiTicketHistory',
         documentJson: {
-          userJoin: userId,
+          userJoin: { "$oid": userId },  // 수정: ObjectId 형식
           uses: uses,
           count: -Math.abs(count), // 음수로 저장 (차감)
           _createTime: new Date().toISOString()
@@ -97,17 +103,38 @@ export const useCredits = async (
       }),
     });
 
-    if (!response.ok) {
-      console.error('Failed to create history:', response.status);
+    if (!historyResponse.ok) {
+      console.error('Failed to create history:', historyResponse.status);
       return false;
     }
 
-    const data: BullnabiResponse = await response.json();
+    const historyData: BullnabiResponse = await historyResponse.json();
     
-    // 3. remainCount 업데이트 (히스토리 추가 시 자동으로 업데이트되는지 확인 필요)
-    // 만약 자동 업데이트가 안된다면 별도 업데이트 API 호출 필요
+    // 3. remainCount 업데이트
+    const newRemainCount = currentCredits.remainingCredits - Math.abs(count);
+    const updateResponse = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'update',
+        metaCode: '_users',
+        collectionName: '_users',
+        documentJson: {
+          "_id": { "$oid": userId },
+          "remainCount": newRemainCount
+        }
+      }),
+    });
+
+    if (!updateResponse.ok) {
+      console.error('Failed to update remainCount:', updateResponse.status);
+      // 히스토리는 추가되었지만 remainCount 업데이트 실패
+      // 복구 로직 필요할 수 있음
+    }
     
-    return data.code === '1';
+    return true;
   } catch (error) {
     console.error('Error using credits:', error);
     return false;
@@ -123,7 +150,14 @@ export const restoreCredits = async (
   count: number
 ): Promise<boolean> => {
   try {
-    // 복구용 히스토리 추가 (양수로)
+    // 1. 현재 크레딧 조회
+    const currentCredits = await getUserCredits(userId);
+    if (!currentCredits) {
+      console.error('Failed to get current credits for restore');
+      return false;
+    }
+
+    // 2. 복구용 히스토리 추가 (양수로)
     const response = await fetch(API_BASE_URL, {
       method: 'POST',
       headers: {
@@ -131,10 +165,10 @@ export const restoreCredits = async (
       },
       body: JSON.stringify({
         action: 'create',
-        metaCode: 'community',
+        metaCode: '_users',  // 수정
         collectionName: 'aiTicketHistory',
         documentJson: {
-          userJoin: userId,
+          userJoin: { "$oid": userId },  // 수정: ObjectId 형식
           uses: `${uses}_restore`, // 복구 구분을 위해
           count: Math.abs(count), // 양수로 저장 (복구)
           _createTime: new Date().toISOString(),
@@ -148,8 +182,25 @@ export const restoreCredits = async (
       return false;
     }
 
-    const data: BullnabiResponse = await response.json();
-    return data.code === '1';
+    // 3. remainCount 업데이트
+    const newRemainCount = currentCredits.remainingCredits + Math.abs(count);
+    const updateResponse = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'update',
+        metaCode: '_users',
+        collectionName: '_users',
+        documentJson: {
+          "_id": { "$oid": userId },
+          "remainCount": newRemainCount
+        }
+      }),
+    });
+
+    return updateResponse.ok;
   } catch (error) {
     console.error('Error restoring credits:', error);
     return false;
@@ -168,12 +219,16 @@ export const getCreditHistory = async (userId: string, limit: number = 10): Prom
       },
       body: JSON.stringify({
         action: 'aggregate',
-        metaCode: 'community',
+        metaCode: '_users',  // 수정
         collectionName: 'aiTicketHistory',
         documentJson: {
-          "$match": { "userJoin": userId },
-          "$sort": { "_createTime": -1 },
-          "$limit": limit
+          "pipeline": {  // 수정: pipeline 형식
+            "$match": { 
+              "userJoin": { "$oid": userId }  // 수정: ObjectId 형식
+            },
+            "$sort": { "_createTime": -1 },
+            "$limit": limit
+          }
         }
       }),
     });
