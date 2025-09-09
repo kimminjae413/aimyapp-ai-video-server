@@ -1,4 +1,5 @@
 // netlify/functions/bullnabi-proxy.js
+const http = require('http');
 
 exports.handler = async (event, context) => {
   const headers = {
@@ -23,15 +24,14 @@ exports.handler = async (event, context) => {
     const requestBody = JSON.parse(event.body);
     const { action, metaCode, collectionName, documentJson, token } = requestBody;
     
-    // API URL 구성 - drylink.ohmyapp.io 사용
-    let apiUrl = 'http://drylink.ohmyapp.io/bnb';
-    
+    // API 엔드포인트 설정
+    let path = '/bnb';
     if (action === 'aggregate') {
-      apiUrl += '/aggregateForTableWithDocTimeline';
+      path += '/aggregateForTableWithDocTimeline';
     } else if (action === 'create') {
-      apiUrl += '/create';
+      path += '/create';
     } else if (action === 'update') {
-      apiUrl += '/update';
+      path += '/update';
     } else {
       return {
         statusCode: 400,
@@ -39,10 +39,6 @@ exports.handler = async (event, context) => {
         body: JSON.stringify({ error: 'Invalid action' })
       };
     }
-    
-    console.log('[Bullnabi Proxy] Request to:', apiUrl);
-    console.log('[Bullnabi Proxy] Collection:', collectionName);
-    console.log('[Bullnabi Proxy] DocumentJson:', documentJson);
     
     // FormData 생성
     const formData = new URLSearchParams();
@@ -55,41 +51,80 @@ exports.handler = async (event, context) => {
       formData.append('documentJson', JSON.stringify(documentJson));
     }
     
-    // fetch 요청 (Node 18+)
-    const fetchHeaders = {
-      'Content-Type': 'application/x-www-form-urlencoded'
+    const postData = formData.toString();
+    
+    console.log('[Bullnabi Proxy] Request to: http://drylink.ohmyapp.io' + path);
+    console.log('[Bullnabi Proxy] Data:', postData);
+    
+    // HTTP 요청 Promise로 감싸기
+    const makeRequest = () => {
+      return new Promise((resolve, reject) => {
+        const options = {
+          hostname: 'drylink.ohmyapp.io',
+          port: 80,
+          path: path,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(postData)
+          }
+        };
+        
+        // JWT 토큰이 있으면 추가
+        if (token) {
+          options.headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const req = http.request(options, (res) => {
+          let data = '';
+          
+          res.on('data', (chunk) => {
+            data += chunk;
+          });
+          
+          res.on('end', () => {
+            console.log('[Bullnabi Proxy] Response status:', res.statusCode);
+            console.log('[Bullnabi Proxy] Response:', data.substring(0, 500));
+            
+            resolve({
+              statusCode: res.statusCode,
+              data: data
+            });
+          });
+        });
+        
+        req.on('error', (error) => {
+          console.error('[Bullnabi Proxy] Request error:', error);
+          reject(error);
+        });
+        
+        req.setTimeout(10000, () => {
+          req.destroy();
+          reject(new Error('Request timeout'));
+        });
+        
+        req.write(postData);
+        req.end();
+      });
     };
     
-    // JWT 토큰이 있으면 추가
-    if (token) {
-      fetchHeaders['Authorization'] = `Bearer ${token}`;
-    }
-    
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: fetchHeaders,
-      body: formData.toString()
-    });
-    
-    const responseText = await response.text();
-    console.log('[Bullnabi Proxy] Response status:', response.status);
-    console.log('[Bullnabi Proxy] Response:', responseText.substring(0, 500));
+    const result = await makeRequest();
     
     // JSON 파싱 시도
     let jsonData;
     try {
-      jsonData = JSON.parse(responseText);
+      jsonData = JSON.parse(result.data);
     } catch (e) {
       console.error('[Bullnabi Proxy] Parse error:', e);
       jsonData = { 
         code: "0", 
         message: "Response parsing failed", 
-        rawData: responseText 
+        rawData: result.data 
       };
     }
     
     return {
-      statusCode: response.status,
+      statusCode: result.statusCode || 200,
       headers,
       body: JSON.stringify(jsonData)
     };
