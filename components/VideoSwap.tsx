@@ -25,6 +25,7 @@ export const VideoSwap: React.FC<{
   const [progress, setProgress] = useState<string>('');
   const [showExitWarning, setShowExitWarning] = useState<boolean>(false);
   const [videoSaved, setVideoSaved] = useState<boolean>(false);
+  const [showIOSGuide, setShowIOSGuide] = useState<boolean>(false);
 
   // preservedVideoUrl이 있으면 복원
   useEffect(() => {
@@ -199,15 +200,17 @@ export const VideoSwap: React.FC<{
     }
   };
 
-  // iOS 다운로드 처리
+  // iOS 다운로드 처리 (개선)
   const handleDownload = async () => {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     
     if (isIOS) {
-      // iOS는 새 탭에서 열기
+      // iOS: 새 탭에서 영상 URL 직접 열기
       window.open(generatedVideoUrl!, '_blank');
-      // iOS에서는 새 탭에서 저장하는 것으로 간주
-      setTimeout(() => setVideoSaved(true), 1000);
+      // 가이드 모달 표시
+      setTimeout(() => {
+        setShowIOSGuide(true);
+      }, 500);
     } else {
       // 기타 기기는 직접 다운로드
       try {
@@ -230,6 +233,50 @@ export const VideoSwap: React.FC<{
       }
     }
   };
+
+  // iOS 다운로드 가이드 모달
+  const IOSGuideModal = () => (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full">
+        <h3 className="text-lg font-bold text-white mb-4">📱 iOS 영상 저장 방법</h3>
+        
+        <div className="space-y-3 mb-4">
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">1</span>
+            <p className="text-sm text-gray-300">새 탭에서 영상이 열렸습니다</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">2</span>
+            <p className="text-sm text-gray-300">영상을 <strong className="text-white">길게 터치</strong>하세요</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">3</span>
+            <p className="text-sm text-gray-300"><strong className="text-white">"비디오 저장"</strong>을 선택하세요</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-6 h-6 bg-green-600 text-white text-sm rounded-full flex items-center justify-center">✓</span>
+            <p className="text-sm text-gray-300">사진 앱에서 확인 가능!</p>
+          </div>
+        </div>
+        
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-4">
+          <p className="text-xs text-yellow-200">
+            💡 팁: 새 탭이 안 열렸다면 Safari 팝업 차단을 확인하세요
+          </p>
+        </div>
+        
+        <button
+          onClick={() => {
+            setShowIOSGuide(false);
+            setVideoSaved(true);
+          }}
+          className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+        >
+          확인
+        </button>
+      </div>
+    </div>
+  );
 
   // 경고 모달 컴포넌트
   const ExitWarningModal = () => (
@@ -285,8 +332,9 @@ export const VideoSwap: React.FC<{
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col items-center p-4 sm:p-6 lg:p-8">
-      {/* 경고 모달 */}
+      {/* 모달들 */}
       {showExitWarning && <ExitWarningModal />}
+      {showIOSGuide && <IOSGuideModal />}
       
       {/* Header */}
       <header className="text-center w-full mb-6">
@@ -540,17 +588,6 @@ export const VideoSwap: React.FC<{
                         </svg>
                       )}
                     </button>
-                    
-                    {/* iOS용 추가 안내 */}
-                    {/iPad|iPhone|iPod/.test(navigator.userAgent) && !videoSaved && (
-                      <div className="absolute top-4 left-4 right-14 bg-black/80 text-white text-xs p-3 rounded-lg">
-                        <p className="font-bold mb-1">📱 iOS 저장 방법:</p>
-                        <p>1. 다운로드 버튼 터치</p>
-                        <p>2. 새 탭에서 영상 열림</p>
-                        <p>3. 화면 길게 누르기</p>
-                        <p>4. "비디오 저장" 선택</p>
-                      </div>
-                    )}
                   </div>
                 </>
               ) : (
