@@ -1,16 +1,40 @@
+// components/MainPage.tsx
 import React from 'react';
+import type { UserCredits } from '../types';
 
 interface MainPageProps {
   onFaceSwapClick: () => void;
   onVideoSwapClick: () => void;
+  credits: UserCredits | null;
 }
 
-export const MainPage: React.FC<MainPageProps> = ({ onFaceSwapClick, onVideoSwapClick }) => {
+export const MainPage: React.FC<MainPageProps> = ({ onFaceSwapClick, onVideoSwapClick, credits }) => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-pink-50 to-blue-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-4">
-        {/* Face Swap Card - 크기 축소 */}
-        <div className="bg-gradient-to-br from-pink-100 to-pink-200 rounded-2xl p-6 shadow-xl transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
+        {/* 크레딧 표시 카드 */}
+        {credits && (
+          <div className="bg-white/80 backdrop-blur rounded-2xl p-4 shadow-lg mb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">안녕하세요, {credits.nickname || '사용자'}님</p>
+                <p className="text-xs text-gray-500">{credits.email}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-500">남은 횟수</p>
+                <p className="text-2xl font-bold text-blue-600">{credits.remainingCredits}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Face Swap Card */}
+        <div className="bg-gradient-to-br from-pink-100 to-pink-200 rounded-2xl p-6 shadow-xl transform transition-all duration-300 hover:scale-105 hover:shadow-2xl relative">
+          {/* 크레딧 요구사항 배지 */}
+          <div className="absolute top-3 right-3 bg-white/90 px-2 py-1 rounded-full">
+            <span className="text-xs font-semibold text-pink-600">1회 차감</span>
+          </div>
+          
           <div className="flex flex-col items-center text-center space-y-3">
             <div className="relative">
               <div className="absolute inset-0 bg-white rounded-full blur-xl opacity-50"></div>
@@ -31,16 +55,30 @@ export const MainPage: React.FC<MainPageProps> = ({ onFaceSwapClick, onVideoSwap
             </div>
             <button
               onClick={onFaceSwapClick}
-              className="group relative px-6 py-2 bg-gradient-to-r from-pink-500 to-pink-600 text-white font-bold rounded-full shadow-lg transform transition-all duration-300 hover:shadow-xl hover:scale-105 text-sm"
+              disabled={!credits || credits.remainingCredits < 1}
+              className={`group relative px-6 py-2 font-bold rounded-full shadow-lg transform transition-all duration-300 text-sm ${
+                credits && credits.remainingCredits >= 1
+                  ? 'bg-gradient-to-r from-pink-500 to-pink-600 text-white hover:shadow-xl hover:scale-105'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
             >
-              <span className="relative z-10">시작하기 &gt;</span>
-              <div className="absolute inset-0 bg-gradient-to-r from-pink-600 to-pink-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <span className="relative z-10">
+                {credits && credits.remainingCredits >= 1 ? '시작하기 >' : '크레딧 부족'}
+              </span>
+              {credits && credits.remainingCredits >= 1 && (
+                <div className="absolute inset-0 bg-gradient-to-r from-pink-600 to-pink-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              )}
             </button>
           </div>
         </div>
 
-        {/* Video Swap Card - 크기 축소 */}
-        <div className="bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl p-6 shadow-xl transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
+        {/* Video Swap Card */}
+        <div className="bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl p-6 shadow-xl transform transition-all duration-300 hover:scale-105 hover:shadow-2xl relative">
+          {/* 크레딧 요구사항 배지 */}
+          <div className="absolute top-3 right-3 bg-white/90 px-2 py-1 rounded-full">
+            <span className="text-xs font-semibold text-blue-600">2회 차감</span>
+          </div>
+          
           <div className="flex flex-col items-center text-center space-y-3">
             <div className="relative">
               <div className="absolute inset-0 bg-white rounded-2xl blur-xl opacity-50"></div>
@@ -65,13 +103,30 @@ export const MainPage: React.FC<MainPageProps> = ({ onFaceSwapClick, onVideoSwap
             </div>
             <button
               onClick={onVideoSwapClick}
-              className="group relative px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold rounded-full shadow-lg transform transition-all duration-300 hover:shadow-xl hover:scale-105 text-sm"
+              disabled={!credits || credits.remainingCredits < 2}
+              className={`group relative px-6 py-2 font-bold rounded-full shadow-lg transform transition-all duration-300 text-sm ${
+                credits && credits.remainingCredits >= 2
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-xl hover:scale-105'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
             >
-              <span className="relative z-10">시작하기 &gt;</span>
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <span className="relative z-10">
+                {credits && credits.remainingCredits >= 2 ? '시작하기 >' : '크레딧 부족'}
+              </span>
+              {credits && credits.remainingCredits >= 2 && (
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              )}
             </button>
           </div>
         </div>
+
+        {/* 크레딧 부족 안내 */}
+        {credits && credits.remainingCredits === 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+            <p className="text-sm text-red-600 font-medium">크레딧이 모두 소진되었습니다</p>
+            <p className="text-xs text-red-500 mt-1">앱에서 크레딧을 구매해주세요</p>
+          </div>
+        )}
       </div>
     </div>
   );
