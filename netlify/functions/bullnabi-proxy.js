@@ -1,4 +1,5 @@
 // netlify/functions/bullnabi-proxy.js
+const https = require('https');
 const http = require('http');
 
 exports.handler = async (event, context) => {
@@ -53,15 +54,16 @@ exports.handler = async (event, context) => {
     
     const postData = formData.toString();
     
-    console.log('[Bullnabi Proxy] Request to: http://drylink.ohmyapp.io' + path);
+    console.log('[Bullnabi Proxy] Trying HTTPS first: https://drylink.ohmyapp.io' + path);
     console.log('[Bullnabi Proxy] Data:', postData);
     
-    // HTTP 요청 Promise로 감싸기
-    const makeRequest = () => {
+    // HTTPS와 HTTP 둘 다 시도하는 함수
+    const makeRequest = (useHttps = true) => {
       return new Promise((resolve, reject) => {
+        const protocol = useHttps ? https : http;
         const options = {
           hostname: 'drylink.ohmyapp.io',
-          port: 80,
+          port: useHttps ? 443 : 80,
           path: path,
           method: 'POST',
           headers: {
@@ -75,8 +77,19 @@ exports.handler = async (event, context) => {
           options.headers['Authorization'] = `Bearer ${token}`;
         }
         
-        const req = http.request(options, (res) => {
+        const req = protocol.request(options, (res) => {
           let data = '';
+          
+          // 301/302 리다이렉트 처리
+          if (res.statusCode === 301 || res.statusCode === 302) {
+            console.log('[Bullnabi Proxy] Redirect detected:', res.headers.location);
+            if (!useHttps) {
+              // HTTP에서 리다이렉트되면 HTTPS로 재시도
+              console.log('[Bullnabi Proxy] Retrying with HTTPS...');
+              makeRequest(true).then(resolve).catch(reject);
+              return;
+            }
+          }
           
           res.on('data', (chunk) => {
             data += chunk;
@@ -94,8 +107,14 @@ exports.handler = async (event, context) => {
         });
         
         req.on('error', (error) => {
-          console.error('[Bullnabi Proxy] Request error:', error);
-          reject(error);
+          console.error(`[Bullnabi Proxy] ${useHttps ? 'HTTPS' : 'HTTP'} error:`, error.message);
+          if (useHttps) {
+            // HTTPS 실패시 HTTP로 재시도
+            console.log('[Bullnabi Proxy] HTTPS failed, trying HTTP...');
+            makeRequest(false).then(resolve).catch(reject);
+          } else {
+            reject(error);
+          }
         });
         
         req.setTimeout(10000, () => {
@@ -108,23 +127,29 @@ exports.handler = async (event, context) => {
       });
     };
     
-    const result = await makeRequest();
+    // HTTPS부터 시도
+    const result = await makeRequest(true);
     
     // JSON 파싱 시도
     let jsonData;
     try {
-      jsonData = JSON.parse(result.data);
+      if (result.data) {
+        jsonData = JSON.parse(result.data);
+      } else {
+        jsonData = { code: "0", message: "Empty response" };
+      }
     } catch (e) {
       console.error('[Bullnabi Proxy] Parse error:', e);
       jsonData = { 
         code: "0", 
         message: "Response parsing failed", 
-        rawData: result.data 
+        rawData: result.data,
+        statusCode: result.statusCode
       };
     }
     
     return {
-      statusCode: result.statusCode || 200,
+      statusCode: 200,
       headers,
       body: JSON.stringify(jsonData)
     };
