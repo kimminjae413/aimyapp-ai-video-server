@@ -8,27 +8,32 @@ interface ImageDisplayProps {
 }
 
 export const ImageDisplay: React.FC<ImageDisplayProps> = ({ originalImage, generatedImage }) => {
-    const [showTip, setShowTip] = useState(false);
+    const [showIOSGuide, setShowIOSGuide] = useState(false);
     
     const handleDownload = () => {
         if (!generatedImage) return;
         
-        // 기존 다운로드 로직 (변경 없음)
-        const link = document.createElement('a');
-        link.href = generatedImage;
-
-        const mimeType = generatedImage.substring(5, generatedImage.indexOf(';'));
-        const extension = mimeType.split('/')[1] ?? 'png';
-        link.download = `faceswap-result.${extension}`;
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // iOS 사용자에게만 팁 표시
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        if (isIOS && !localStorage.getItem('hideIOSTip')) {
-            setShowTip(true);
+        
+        if (isIOS) {
+            // iOS: 직접 새 탭에서 이미지 URL 열기 (단순하게)
+            window.open(generatedImage, '_blank');
+            
+            // 가이드 표시
+            setTimeout(() => {
+                setShowIOSGuide(true);
+            }, 500);
+        } else {
+            // 기타 기기: 기존 다운로드 방식
+            const link = document.createElement('a');
+            link.href = generatedImage;
+            const mimeType = generatedImage.substring(5, generatedImage.indexOf(';'));
+            const extension = mimeType.split('/')[1] ?? 'png';
+            link.download = `faceswap-result.${extension}`;
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
     };
 
@@ -86,22 +91,42 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({ originalImage, gener
           </div>
       </div>
       
-      {/* iOS 다운로드 팁 - 간단한 버전 */}
-      {showTip && (
-        <div className="fixed bottom-4 left-4 right-4 bg-blue-600 text-white p-4 rounded-lg shadow-lg z-50 mx-auto max-w-sm">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="font-semibold text-sm">📱 iOS 다운로드 안내</p>
-              <p className="text-xs mt-1">파일 앱 → 다운로드에서 확인하거나, 공유 버튼으로 사진 앱에 저장하세요!</p>
+      {/* iOS 다운로드 가이드 모달 */}
+      {showIOSGuide && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-bold text-white mb-4">📱 iOS 저장 방법</h3>
+            
+            <div className="space-y-3 mb-4">
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">1</span>
+                <p className="text-sm text-gray-300">새 탭에서 이미지가 열렸습니다</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">2</span>
+                <p className="text-sm text-gray-300">이미지를 <strong className="text-white">길게 터치</strong>하세요</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">3</span>
+                <p className="text-sm text-gray-300"><strong className="text-white">"이미지 저장"</strong>을 선택하세요</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 w-6 h-6 bg-green-600 text-white text-sm rounded-full flex items-center justify-center">✓</span>
+                <p className="text-sm text-gray-300">사진 앱에서 확인 가능!</p>
+              </div>
             </div>
+            
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-4">
+              <p className="text-xs text-yellow-200">
+                💡 팁: 새 탭이 안 열렸다면 Safari 팝업 차단을 확인하세요
+              </p>
+            </div>
+            
             <button
-              onClick={() => {
-                setShowTip(false);
-                localStorage.setItem('hideIOSTip', 'true');
-              }}
-              className="text-white ml-2 text-lg leading-none"
+              onClick={() => setShowIOSGuide(false)}
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
             >
-              ×
+              확인
             </button>
           </div>
         </div>
