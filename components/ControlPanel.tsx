@@ -1,4 +1,3 @@
-// components/ControlPanel.tsx
 import React, { useState } from 'react';
 import { SparklesIcon } from './icons/SparklesIcon';
 import type { UserCredits } from '../types';
@@ -11,29 +10,67 @@ interface ControlPanelProps {
   onGenerate: () => void;
   isLoading: boolean;
   disabled: boolean;
-  credits?: UserCredits | null;
+  credits: UserCredits | null;
 }
 
+// 강화된 얼굴 변환 옵션 (구체적인 시각적 특징 포함)
 const faceOptions = [
-    { value: 'The youthful face of an East Asian male in his late teens.', label: '남성: 10대' },
-    { value: 'The fresh face of an East Asian male in his early 20s.', label: '남성: 20대' },
-    { value: 'The mature and intellectual face of an East Asian male in his 30s.', label: '남성: 30대' },
-    { value: 'The dignified and charismatic face of an East Asian male in his 40s.', label: '남성: 40대' },
-    { value: 'The innocent face of an East Asian female in her late teens.', label: '여성: 10대' },
-    { value: 'The vibrant and lively face of an East Asian female in her early 20s.', label: '여성: 20대' },
-    { value: 'The elegant and sophisticated face of an East Asian female in her 30s.', label: '여성: 30대' },
-    { value: 'The graceful and gentle face of an East Asian female in her 40s.', label: '여성: 40대' },
+    { 
+        value: 'Completely different East Asian male face, age 17-19, soft round face shape, smooth skin without facial hair, small monolid eyes, low nose bridge, thin lips, youthful innocent appearance, black hair', 
+        label: '남성: 10대' 
+    },
+    { 
+        value: 'Totally new East Asian male face, age 22-25, oval face shape, clear skin with slight stubble, parallel double eyelids, defined nose bridge, medium lips with clear cupid\'s bow, fresh vibrant appearance', 
+        label: '남성: 20대' 
+    },
+    { 
+        value: 'Completely transformed East Asian male face, age 32-36, square jawline, visible nasolabial folds, hooded eyes with crow\'s feet beginning, prominent nose, fuller lower lip, mature masculine features', 
+        label: '남성: 30대' 
+    },
+    { 
+        value: 'Entirely different East Asian male face, age 42-46, rectangular face with strong jaw, forehead wrinkles, deep-set eyes with visible eye bags, wider nose, thinner lips, distinguished gray temples', 
+        label: '남성: 40대' 
+    },
+    { 
+        value: 'Completely different East Asian female face, age 17-19, soft V-line face shape, porcelain smooth skin, large round eyes with aegyo sal, button nose, plump pink lips, innocent youthful glow', 
+        label: '여성: 10대' 
+    },
+    { 
+        value: 'Totally transformed East Asian female face, age 22-25, oval face with high cheekbones, glass skin texture, almond eyes with natural double eyelids, refined nose tip, gradient lips, vibrant fresh beauty', 
+        label: '여성: 20대' 
+    },
+    { 
+        value: 'Entirely new East Asian female face, age 32-36, elegant heart-shaped face, fine lines around eyes, sophisticated eye shape with subtle eyeshadow, contoured nose, defined lip shape, mature graceful features', 
+        label: '여성: 30대' 
+    },
+    { 
+        value: 'Completely different East Asian female face, age 42-46, diamond face shape, smile lines and crow\'s feet, gentle eyes with wisdom, natural nose, softer lip line, dignified mature beauty', 
+        label: '여성: 40대' 
+    },
 ];
 
+// 스타일 옵션 (조각상 제거, 2개만 유지)
 const styleOptions = [
-    { value: 'The face of a movie star with intense charisma and a sharp jawline.', label: '영화 배우' },
-    { value: 'A face like an ancient sculpture with perfect golden ratio proportions.', label: '조각상' },
-    { value: 'A face that looks like a soft, dreamy watercolor painting.', label: '수채화' },
+    { 
+        value: 'Transform into a movie star face with perfect golden ratio proportions, symmetrical features, professional lighting quality skin, charismatic deep eyes, sculpted cheekbones, photogenic angles', 
+        label: '영화 배우' 
+    },
+    { 
+        value: 'Transform into soft watercolor painting style face, dreamy ethereal features, pastel skin tones, artistic brush stroke textures, romantic atmosphere, delicate features', 
+        label: '수채화' 
+    },
 ];
 
+// 표정 옵션 (더 구체적으로)
 const expressionOptions = [
-    { value: 'A face with a big, happy smile.', label: '웃는 얼굴' },
-    { value: 'A face with a charismatic and serious expression.', label: '진지한 얼굴' },
+    { 
+        value: 'Big genuine smile showing teeth, eyes crinkled with joy, raised cheeks, warm happy expression', 
+        label: '웃는 얼굴' 
+    },
+    { 
+        value: 'Serious professional expression, focused eyes, neutral mouth, confident authoritative look', 
+        label: '진지한 얼굴' 
+    },
 ];
 
 const clothingOptions = {
@@ -56,12 +93,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     clothingPrompt, setClothingPrompt, 
     onGenerate, 
     isLoading, disabled,
-    credits
+    credits 
 }) => {
     const [isCustomFace, setIsCustomFace] = useState(false);
-    
-    const hasEnoughCredits = credits ? credits.remainingCredits >= 1 : false;
-    const isDisabled = isLoading || disabled || !hasEnoughCredits;
 
     const handleFaceSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
@@ -74,6 +108,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         }
     };
     
+    const hasEnoughCredits = credits ? credits.remainingCredits >= 1 : false;
+    const isDisabled = isLoading || disabled || !hasEnoughCredits;
+    
   return (
     <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col gap-6">
         <div className="flex flex-col gap-6">
@@ -81,14 +118,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <h2 className="text-xl pink-bold-title">2. 얼굴 변환 설정</h2>
                 {credits && (
                     <div className="flex items-center gap-2 bg-gray-700/50 px-3 py-1 rounded-lg">
-                        <span className="text-xs text-gray-400">남은 횟수:</span>
+                        <span className="text-xs text-gray-400">남은:</span>
                         <span className={`text-sm font-bold ${hasEnoughCredits ? 'text-cyan-400' : 'text-red-400'}`}>
                             {credits.remainingCredits}
                         </span>
                     </div>
                 )}
             </div>
-            
             <div className="space-y-4">
                 <div>
                     <label className="block mb-2 text-sm font-medium text-gray-300">얼굴 스타일</label>
@@ -114,7 +150,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             type="text"
                             value={facePrompt}
                             onChange={(e) => setFacePrompt(e.target.value)}
-                            placeholder="예: 50대 남성의 온화한 얼굴 (인물 이름 불가)"
+                            placeholder="예: 완전히 다른 40대 남성의 각진 얼굴, 짙은 눈썹, 깊은 눈 (인물 이름 불가)"
                             className="w-full mt-2 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition"
                         />
                     )}
