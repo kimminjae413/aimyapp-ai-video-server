@@ -1,5 +1,7 @@
+// components/ControlPanel.tsx
 import React, { useState } from 'react';
 import { SparklesIcon } from './icons/SparklesIcon';
+import type { UserCredits } from '../types';
 
 interface ControlPanelProps {
   facePrompt: string;
@@ -9,6 +11,7 @@ interface ControlPanelProps {
   onGenerate: () => void;
   isLoading: boolean;
   disabled: boolean;
+  credits?: UserCredits | null;
 }
 
 const faceOptions = [
@@ -52,9 +55,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     facePrompt, setFacePrompt, 
     clothingPrompt, setClothingPrompt, 
     onGenerate, 
-    isLoading, disabled 
+    isLoading, disabled,
+    credits
 }) => {
     const [isCustomFace, setIsCustomFace] = useState(false);
+    
+    const hasEnoughCredits = credits ? credits.remainingCredits >= 1 : false;
+    const isDisabled = isLoading || disabled || !hasEnoughCredits;
 
     const handleFaceSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
@@ -70,7 +77,18 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   return (
     <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col gap-6">
         <div className="flex flex-col gap-6">
-            <h2 className="text-xl pink-bold-title">2. 얼굴 변환 설정</h2>
+            <div className="flex items-center justify-between">
+                <h2 className="text-xl pink-bold-title">2. 얼굴 변환 설정</h2>
+                {credits && (
+                    <div className="flex items-center gap-2 bg-gray-700/50 px-3 py-1 rounded-lg">
+                        <span className="text-xs text-gray-400">남은 횟수:</span>
+                        <span className={`text-sm font-bold ${hasEnoughCredits ? 'text-cyan-400' : 'text-red-400'}`}>
+                            {credits.remainingCredits}
+                        </span>
+                    </div>
+                )}
+            </div>
+            
             <div className="space-y-4">
                 <div>
                     <label className="block mb-2 text-sm font-medium text-gray-300">얼굴 스타일</label>
@@ -118,17 +136,33 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     </select>
                 </div>
             </div>
+            
+            {/* 크레딧 부족 경고 */}
+            {credits && !hasEnoughCredits && (
+                <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3">
+                    <p className="text-sm text-red-400">
+                        크레딧이 부족합니다. 얼굴 변환에는 1개의 크레딧이 필요합니다.
+                    </p>
+                </div>
+            )}
+            
             <button
                 onClick={onGenerate}
-                disabled={isLoading || disabled}
-                className="w-full flex items-center justify-center px-6 py-3.5 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-800 disabled:bg-gray-600 disabled:cursor-not-allowed transition-all duration-300"
+                disabled={isDisabled}
+                className={`w-full flex items-center justify-center px-6 py-3.5 text-base font-semibold text-white rounded-lg focus:ring-4 focus:outline-none transition-all duration-300 ${
+                    isDisabled 
+                        ? 'bg-gray-600 cursor-not-allowed' 
+                        : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-800'
+                }`}
             >
                 {isLoading ? (
                     '처리 중...'
+                ) : !hasEnoughCredits ? (
+                    '크레딧 부족 (1개 필요)'
                 ) : (
                     <>
                     <SparklesIcon className="w-5 h-5 mr-2" />
-                    얼굴 변환하기
+                    얼굴 변환하기 (1회 차감)
                     </>
                 )}
             </button>
