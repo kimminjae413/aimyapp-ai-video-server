@@ -1,4 +1,3 @@
-// components/VideoSwap.tsx
 import React, { useState, useEffect } from 'react';
 import { VideoIcon } from './icons/VideoIcon';
 import { ImageUploader } from './ImageUploader';
@@ -12,18 +11,27 @@ export const VideoSwap: React.FC<{
   userId: string | null;
   credits: UserCredits | null;
   onCreditsUsed: () => void;
-}> = ({ onBack, userId, credits, onCreditsUsed }) => {
+  preservedVideoUrl?: string | null;
+  onVideoGenerated?: (url: string | null) => void;
+}> = ({ onBack, userId, credits, onCreditsUsed, preservedVideoUrl, onVideoGenerated }) => {
   // States
   const [originalImage, setOriginalImage] = useState<ImageFile | null>(null);
   const [prompt, setPrompt] = useState<string>('');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [videoDuration, setVideoDuration] = useState<number>(5);
-  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(preservedVideoUrl || null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string>('');
   const [showExitWarning, setShowExitWarning] = useState<boolean>(false);
   const [videoSaved, setVideoSaved] = useState<boolean>(false);
+
+  // preservedVideoUrl이 있으면 복원
+  useEffect(() => {
+    if (preservedVideoUrl) {
+      setGeneratedVideoUrl(preservedVideoUrl);
+    }
+  }, [preservedVideoUrl]);
 
   // Pull-to-refresh 방지
   useEffect(() => {
@@ -118,6 +126,9 @@ export const VideoSwap: React.FC<{
       setGeneratedVideoUrl(null);
       setVideoSaved(false);
       setError(null);
+      if (onVideoGenerated) {
+        onVideoGenerated(null); // 새 이미지 업로드시에만 초기화
+      }
     };
     reader.onerror = () => {
       setError('이미지 파일을 읽는 데 실패했습니다.');
@@ -151,29 +162,31 @@ export const VideoSwap: React.FC<{
 
     setIsLoading(true);
     setError(null);
-    setGeneratedVideoUrl(null);
     setVideoSaved(false);
     setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
-    // 먼저 크레딧 차감
-    const creditUsed = await useCredits(userId, 'video', 2);
-    if (!creditUsed) {
-      setError('크레딧 차감에 실패했습니다.');
-      setIsLoading(false);
-      return;
-    }
-
     try {
+      // 먼저 비디오 생성
       const videoUrl = await generateVideoWithKling(originalImage, finalPrompt, videoDuration);
+      
+      // 성공: 결과 저장 후 크레딧 차감
       setGeneratedVideoUrl(videoUrl);
+      if (onVideoGenerated) {
+        onVideoGenerated(videoUrl); // 상위 컴포넌트에도 저장
+      }
       setProgress('');
-      onCreditsUsed(); // 크레딧 새로고침
+      
+      // 크레딧 차감은 비동기로 처리
+      setTimeout(async () => {
+        const creditUsed = await useCredits(userId, 'video', 2);
+        if (creditUsed) {
+          onCreditsUsed();
+        }
+      }, 100);
+      
     } catch (err) {
       setError(`영상 생성 중 오류가 발생했습니다: ${err instanceof Error ? err.message : 'Unknown error'}`);
       setProgress('');
-      // 실패 시 크레딧 복구
-      await restoreCredits(userId, 'video', 2);
-      onCreditsUsed();
     } finally {
       setIsLoading(false);
     }
