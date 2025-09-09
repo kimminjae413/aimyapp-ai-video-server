@@ -200,14 +200,22 @@ export const VideoSwap: React.FC<{
     }
   };
 
-  // iOS 다운로드 처리 (개선)
+  // iOS 다운로드 처리 (개선 - 실제 URL 다운로드)
   const handleDownload = async () => {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     
     if (isIOS) {
-      // iOS: 새 탭에서 영상 URL 직접 열기
-      window.open(generatedVideoUrl!, '_blank');
-      // 가이드 모달 표시
+      // iOS: 실제 URL이므로 직접 다운로드 링크 생성
+      const a = document.createElement('a');
+      a.href = generatedVideoUrl!;
+      a.download = `hairgator-${Date.now()}.mp4`;
+      a.target = '_blank';
+      
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      // 다운로드 안내 모달
       setTimeout(() => {
         setShowIOSGuide(true);
       }, 500);
@@ -234,34 +242,38 @@ export const VideoSwap: React.FC<{
     }
   };
 
-  // iOS 다운로드 가이드 모달
+  // iOS 다운로드 가이드 모달 (파일 앱 안내)
   const IOSGuideModal = () => (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full">
-        <h3 className="text-lg font-bold text-white mb-4">📱 iOS 영상 저장 방법</h3>
+        <h3 className="text-lg font-bold text-white mb-4">📱 iOS 영상 저장 안내</h3>
         
         <div className="space-y-3 mb-4">
           <div className="flex items-start gap-3">
             <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">1</span>
-            <p className="text-sm text-gray-300">새 탭에서 영상이 열렸습니다</p>
+            <p className="text-sm text-gray-300">다운로드가 시작되었습니다</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">2</span>
-            <p className="text-sm text-gray-300">영상을 <strong className="text-white">길게 터치</strong>하세요</p>
+            <p className="text-sm text-gray-300"><strong className="text-white">파일 앱</strong>을 여세요</p>
           </div>
           <div className="flex items-start gap-3">
             <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">3</span>
-            <p className="text-sm text-gray-300"><strong className="text-white">"비디오 저장"</strong>을 선택하세요</p>
+            <p className="text-sm text-gray-300"><strong className="text-white">다운로드 폴더</strong>에서 영상 확인</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">4</span>
+            <p className="text-sm text-gray-300">영상을 <strong className="text-white">길게 터치</strong> → <strong className="text-white">공유</strong> → <strong className="text-white">비디오 저장</strong></p>
           </div>
           <div className="flex items-start gap-3">
             <span className="flex-shrink-0 w-6 h-6 bg-green-600 text-white text-sm rounded-full flex items-center justify-center">✓</span>
-            <p className="text-sm text-gray-300">사진 앱에서 확인 가능!</p>
+            <p className="text-sm text-gray-300">사진 앱에 저장 완료!</p>
           </div>
         </div>
         
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-4">
-          <p className="text-xs text-yellow-200">
-            💡 팁: 새 탭이 안 열렸다면 Safari 팝업 차단을 확인하세요
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4">
+          <p className="text-xs text-blue-200">
+            💡 Safari 상단의 ↓ 아이콘을 탭하면 다운로드 진행 상황을 볼 수 있어요
           </p>
         </div>
         
@@ -301,7 +313,7 @@ export const VideoSwap: React.FC<{
         
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-6">
           <p className="text-yellow-200 text-xs text-center">
-            💡 iOS: 다운로드 버튼 → 새 탭 → 길게 누르기 → 비디오 저장<br/>
+            💡 iOS: 다운로드 버튼 → 파일 앱 → 다운로드 폴더<br/>
             💡 Android/PC: 다운로드 버튼 클릭
           </p>
         </div>
@@ -509,7 +521,7 @@ export const VideoSwap: React.FC<{
 
         {/* Right Panel - Result */}
         <div className="lg:w-2/3 flex flex-col relative min-h-[500px]">
-          {isLoading && <Loader />}
+          {isLoading && <Loader type="video" />}
           
           {error && (
             <div className="w-full h-full flex items-center justify-center bg-gray-800/50 border border-gray-700 rounded-xl">
