@@ -1,6 +1,4 @@
 // netlify/functions/bullnabi-proxy.js
-const https = require('https');
-const http = require('http');
 
 exports.handler = async (event, context) => {
   const headers = {
@@ -25,14 +23,15 @@ exports.handler = async (event, context) => {
     const requestBody = JSON.parse(event.body);
     const { action, metaCode, collectionName, documentJson, token } = requestBody;
     
-    // API 엔드포인트 설정
-    let path = '/bnb';
+    // API URL 구성
+    let apiUrl = 'https://drylink.ohmyapp.io/bnb';
+    
     if (action === 'aggregate') {
-      path += '/aggregateForTableWithDocTimeline';
+      apiUrl += '/aggregateForTableWithDocTimeline';
     } else if (action === 'create') {
-      path += '/create';
+      apiUrl += '/create';
     } else if (action === 'update') {
-      path += '/update';
+      apiUrl += '/update';
     } else {
       return {
         statusCode: 400,
@@ -41,9 +40,14 @@ exports.handler = async (event, context) => {
       };
     }
     
+    console.log('[Bullnabi Proxy] Request to:', apiUrl);
+    console.log('[Bullnabi Proxy] Collection:', collectionName);
+    console.log('[Bullnabi Proxy] DocumentJson:', documentJson);
+    console.log('[Bullnabi Proxy] Token provided:', !!token);
+    
     // FormData 생성
     const formData = new URLSearchParams();
-    formData.append('metaCode', metaCode || '_users');
+    formData.append('metaCode', metaCode || 'community');
     formData.append('collectionName', collectionName);
     
     if (typeof documentJson === 'string') {
@@ -52,104 +56,45 @@ exports.handler = async (event, context) => {
       formData.append('documentJson', JSON.stringify(documentJson));
     }
     
-    const postData = formData.toString();
-    
-    console.log('[Bullnabi Proxy] Trying HTTPS first: https://drylink.ohmyapp.io' + path);
-    console.log('[Bullnabi Proxy] Data:', postData);
-    
-    // HTTPS와 HTTP 둘 다 시도하는 함수
-    const makeRequest = (useHttps = true) => {
-      return new Promise((resolve, reject) => {
-        const protocol = useHttps ? https : http;
-        const options = {
-          hostname: 'drylink.ohmyapp.io',
-          port: useHttps ? 443 : 80,
-          path: path,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': Buffer.byteLength(postData)
-          }
-        };
-        
-        // JWT 토큰이 있으면 추가
-        if (token) {
-          options.headers['Authorization'] = `Bearer ${token}`;
-        }
-        
-        const req = protocol.request(options, (res) => {
-          let data = '';
-          
-          // 301/302 리다이렉트 처리
-          if (res.statusCode === 301 || res.statusCode === 302) {
-            console.log('[Bullnabi Proxy] Redirect detected:', res.headers.location);
-            if (!useHttps) {
-              // HTTP에서 리다이렉트되면 HTTPS로 재시도
-              console.log('[Bullnabi Proxy] Retrying with HTTPS...');
-              makeRequest(true).then(resolve).catch(reject);
-              return;
-            }
-          }
-          
-          res.on('data', (chunk) => {
-            data += chunk;
-          });
-          
-          res.on('end', () => {
-            console.log('[Bullnabi Proxy] Response status:', res.statusCode);
-            console.log('[Bullnabi Proxy] Response:', data.substring(0, 500));
-            
-            resolve({
-              statusCode: res.statusCode,
-              data: data
-            });
-          });
-        });
-        
-        req.on('error', (error) => {
-          console.error(`[Bullnabi Proxy] ${useHttps ? 'HTTPS' : 'HTTP'} error:`, error.message);
-          if (useHttps) {
-            // HTTPS 실패시 HTTP로 재시도
-            console.log('[Bullnabi Proxy] HTTPS failed, trying HTTP...');
-            makeRequest(false).then(resolve).catch(reject);
-          } else {
-            reject(error);
-          }
-        });
-        
-        req.setTimeout(10000, () => {
-          req.destroy();
-          reject(new Error('Request timeout'));
-        });
-        
-        req.write(postData);
-        req.end();
-      });
+    // 헤더 설정 - User-Agent에 토큰 추가!
+    const fetchHeaders = {
+      'Content-Type': 'application/x-www-form-urlencoded'
     };
     
-    // HTTPS부터 시도
-    const result = await makeRequest(true);
+    // 토큰이 있으면 User-Agent 헤더에 추가 (정지환님 방식)
+    if (token) {
+      fetchHeaders['User-Agent'] = token;
+      console.log('[Bullnabi Proxy] Token added to User-Agent header');
+    }
+    
+    // fetch 요청
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: fetchHeaders,
+      body: formData.toString()
+    });
+    
+    const responseText = await response.text();
+    console.log('[Bullnabi Proxy] Response status:', response.status);
+    console.log('[Bullnabi Proxy] Response length:', responseText.length);
+    console.log('[Bullnabi Proxy] Response preview:', responseText.substring(0, 500));
     
     // JSON 파싱 시도
     let jsonData;
     try {
-      if (result.data) {
-        jsonData = JSON.parse(result.data);
-      } else {
-        jsonData = { code: "0", message: "Empty response" };
-      }
+      jsonData = JSON.parse(responseText);
+      console.log('[Bullnabi Proxy] Successfully parsed JSON');
     } catch (e) {
       console.error('[Bullnabi Proxy] Parse error:', e);
       jsonData = { 
         code: "0", 
         message: "Response parsing failed", 
-        rawData: result.data,
-        statusCode: result.statusCode
+        rawData: responseText 
       };
     }
     
     return {
-      statusCode: 200,
+      statusCode: response.status,
       headers,
       body: JSON.stringify(jsonData)
     };
