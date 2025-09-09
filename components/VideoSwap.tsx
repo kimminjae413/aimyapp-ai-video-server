@@ -1,11 +1,18 @@
+// components/VideoSwap.tsx
 import React, { useState, useEffect } from 'react';
 import { VideoIcon } from './icons/VideoIcon';
 import { ImageUploader } from './ImageUploader';
 import { Loader } from './Loader';
 import { generateVideoWithKling, motionTemplates } from '../services/klingService';
-import type { ImageFile } from '../types';
+import { useCredits, restoreCredits } from '../services/bullnabiService';
+import type { ImageFile, UserCredits } from '../types';
 
-export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+export const VideoSwap: React.FC<{ 
+  onBack: () => void;
+  userId: string | null;
+  credits: UserCredits | null;
+  onCreditsUsed: () => void;
+}> = ({ onBack, userId, credits, onCreditsUsed }) => {
   // States
   const [originalImage, setOriginalImage] = useState<ImageFile | null>(null);
   const [prompt, setPrompt] = useState<string>('');
@@ -131,19 +138,42 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       return;
     }
 
+    // 크레딧 체크
+    if (!userId) {
+      setError('사용자 정보를 찾을 수 없습니다.');
+      return;
+    }
+    
+    if (!credits || credits.remainingCredits < 2) {
+      setError('크레딧이 부족합니다. (필요: 2개, 보유: ' + (credits?.remainingCredits || 0) + '개)');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setGeneratedVideoUrl(null);
     setVideoSaved(false);
     setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
+    // 먼저 크레딧 차감
+    const creditUsed = await useCredits(userId, 'video', 2);
+    if (!creditUsed) {
+      setError('크레딧 차감에 실패했습니다.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const videoUrl = await generateVideoWithKling(originalImage, finalPrompt, videoDuration);
       setGeneratedVideoUrl(videoUrl);
       setProgress('');
+      onCreditsUsed(); // 크레딧 새로고침
     } catch (err) {
       setError(`영상 생성 중 오류가 발생했습니다: ${err instanceof Error ? err.message : 'Unknown error'}`);
       setProgress('');
+      // 실패 시 크레딧 복구
+      await restoreCredits(userId, 'video', 2);
+      onCreditsUsed();
     } finally {
       setIsLoading(false);
     }
@@ -162,7 +192,7 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     
     if (isIOS) {
       // iOS는 새 탭에서 열기
-      window.open(generatedVideoUrl, '_blank');
+      window.open(generatedVideoUrl!, '_blank');
       // iOS에서는 새 탭에서 저장하는 것으로 간주
       setTimeout(() => setVideoSaved(true), 1000);
     } else {
@@ -183,7 +213,7 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setVideoSaved(true);
       } catch (error) {
         console.error('Download failed:', error);
-        window.open(generatedVideoUrl, '_blank');
+        window.open(generatedVideoUrl!, '_blank');
       }
     }
   };
@@ -238,6 +268,8 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     </div>
   );
 
+  const hasEnoughCredits = credits ? credits.remainingCredits >= 2 : false;
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col items-center p-4 sm:p-6 lg:p-8">
       {/* 경고 모달 */}
@@ -253,6 +285,15 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
+        
+        {/* 크레딧 표시 */}
+        {credits && (
+          <div className="absolute right-4 top-4 bg-gray-800 px-4 py-2 rounded-lg">
+            <span className="text-sm text-gray-400">남은 횟수: </span>
+            <span className="text-lg font-bold text-cyan-400">{credits.remainingCredits}</span>
+          </div>
+        )}
+        
         <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
           AI 헤어 영상 변환
         </h1>
@@ -278,7 +319,17 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </div>
 
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
-            <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">2. 영상 설정</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl text-center font-bold text-cyan-400">2. 영상 설정</h2>
+              {credits && (
+                <div className="flex items-center gap-2 bg-gray-700/50 px-3 py-1 rounded-lg">
+                  <span className="text-xs text-gray-400">남은:</span>
+                  <span className={`text-sm font-bold ${hasEnoughCredits ? 'text-cyan-400' : 'text-red-400'}`}>
+                    {credits.remainingCredits}
+                  </span>
+                </div>
+              )}
+            </div>
             
             {/* Duration Selection */}
             <div className="mb-4">
@@ -357,6 +408,15 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               )}
             </div>
             
+            {/* 크레딧 부족 경고 */}
+            {credits && !hasEnoughCredits && (
+              <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4">
+                <p className="text-sm text-red-400">
+                  크레딧이 부족합니다. 영상 변환에는 2개의 크레딧이 필요합니다.
+                </p>
+              </div>
+            )}
+            
             {progress && (
               <div className="mt-3 text-sm text-cyan-400 animate-pulse">
                 {progress}
@@ -365,15 +425,21 @@ export const VideoSwap: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             
             <button
               onClick={handleGenerateVideo}
-              disabled={isLoading || !originalImage || (!prompt && !selectedTemplate)}
-              className="w-full mt-4 flex items-center justify-center px-6 py-3.5 text-base font-semibold text-white bg-gradient-to-r from-blue-600 to-cyan-600 rounded-lg hover:from-blue-700 hover:to-cyan-700 focus:ring-4 focus:outline-none focus:ring-blue-800 disabled:bg-gray-600 disabled:cursor-not-allowed transition-all duration-300"
+              disabled={isLoading || !originalImage || (!prompt && !selectedTemplate) || !hasEnoughCredits}
+              className={`w-full mt-4 flex items-center justify-center px-6 py-3.5 text-base font-semibold text-white rounded-lg focus:ring-4 focus:outline-none transition-all duration-300 ${
+                isLoading || !originalImage || (!prompt && !selectedTemplate) || !hasEnoughCredits
+                  ? 'bg-gray-600 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 focus:ring-blue-800'
+              }`}
             >
               {isLoading ? (
                 '처리 중... (최대 5분 소요)'
+              ) : !hasEnoughCredits ? (
+                '크레딧 부족 (2개 필요)'
               ) : (
                 <>
                   <VideoIcon className="w-5 h-5 mr-2" />
-                  영상 생성하기
+                  영상 생성하기 (2회 차감)
                 </>
               )}
             </button>
