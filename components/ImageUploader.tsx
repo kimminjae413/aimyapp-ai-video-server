@@ -1,5 +1,4 @@
-
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { UploadIcon } from './icons/UploadIcon';
 
 interface ImageUploaderProps {
@@ -10,6 +9,7 @@ interface ImageUploaderProps {
 
 export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload, imageUrl, title }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -17,7 +17,12 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload, ima
     }
   };
 
-  const handleDrop = useCallback((e: React.DragEvent<HTMLLabelElement>) => {
+  // 직접 클릭 핸들러 추가
+  const handleClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
@@ -26,18 +31,18 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload, ima
     }
   }, [onImageUpload]);
 
-  const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
   };
 
-  const handleDragEnter = (e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
   };
   
-  const handleDragLeave = (e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
@@ -49,26 +54,36 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload, ima
 
   return (
     <div className="w-full">
-        <h3 className="text-lg font-semibold text-gray-300 mb-3 text-center">{title}</h3>
-        <label
-            htmlFor={`dropzone-file-${title.replace(/\s+/g, '-')}`}
-            className={`${baseClasses} ${isDragging ? activeClasses : inactiveClasses}`}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-        >
+      <h3 className="text-lg font-semibold text-gray-300 mb-3 text-center">{title}</h3>
+      
+      {/* label 대신 div 사용 + onClick 핸들러 */}
+      <div
+        onClick={handleClick}
+        className={`${baseClasses} ${isDragging ? activeClasses : inactiveClasses}`}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+      >
         {imageUrl ? (
-            <img src={imageUrl} alt="Uploaded preview" className="object-cover w-full h-full rounded-xl" />
+          <img src={imageUrl} alt="Uploaded preview" className="object-cover w-full h-full rounded-xl" />
         ) : (
-            <div className="flex flex-col items-center justify-center pt-5 pb-6 text-gray-400">
-                <UploadIcon className="w-10 h-10 mb-3" />
-                <p className="mb-2 text-sm font-semibold">클릭 또는 드래그하여 이미지 업로드</p>
-                <p className="text-xs">PNG, JPG, WEBP</p>
-            </div>
+          <div className="flex flex-col items-center justify-center pt-5 pb-6 text-gray-400">
+            <UploadIcon className="w-10 h-10 mb-3" />
+            <p className="mb-2 text-sm font-semibold">클릭 또는 드래그하여 이미지 업로드</p>
+            <p className="text-xs">PNG, JPG, WEBP</p>
+          </div>
         )}
-        <input id={`dropzone-file-${title.replace(/\s+/g, '-')}`} type="file" className="hidden" onChange={handleFileChange} accept="image/png, image/jpeg, image/webp" />
-        </label>
+      </div>
+      
+      {/* input을 완전히 숨기되 기능은 유지 */}
+      <input 
+        ref={fileInputRef}
+        type="file" 
+        style={{ display: 'none' }}  // hidden 클래스 대신 inline style 사용
+        onChange={handleFileChange} 
+        accept="image/*"
+      />
     </div>
   );
 };
