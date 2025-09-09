@@ -1,5 +1,4 @@
-// netlify/functions/test-proxy.js
-const http = require('http');
+// netlify/functions/bullnabi-proxy.js
 
 exports.handler = async (event, context) => {
   const headers = {
@@ -12,77 +11,97 @@ exports.handler = async (event, context) => {
     return { statusCode: 200, headers, body: '' };
   }
   
-  // 간단한 테스트 요청
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ error: 'Method not allowed' })
+    };
+  }
+  
   try {
-    const testRequest = () => {
-      return new Promise((resolve, reject) => {
-        const options = {
-          hostname: 'jihwanworld.ohmyapp.io',
-          port: 80,
-          path: '/bnb/aggregateForTableWithDocTimeline',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-          }
-        };
-        
-        // 테스트 데이터
-        const formData = new URLSearchParams();
-        formData.append('metaCode', 'community');
-        formData.append('collectionName', '_users');
-        formData.append('documentJson', '{"_id":"670097361f31a7f31bd87a1b"}');
-        const postData = formData.toString();
-        
-        options.headers['Content-Length'] = Buffer.byteLength(postData);
-        
-        const req = http.request(options, (res) => {
-          let data = '';
-          
-          res.on('data', (chunk) => {
-            data += chunk;
-          });
-          
-          res.on('end', () => {
-            resolve({
-              success: true,
-              statusCode: res.statusCode,
-              headers: res.headers,
-              data: data
-            });
-          });
-        });
-        
-        req.on('error', (error) => {
-          resolve({
-            success: false,
-            error: error.message,
-            code: error.code
-          });
-        });
-        
-        req.write(postData);
-        req.end();
-      });
+    const requestBody = JSON.parse(event.body);
+    const { action, metaCode, collectionName, documentJson, token } = requestBody;
+    
+    // API URL 구성 - drylink.ohmyapp.io 사용
+    let apiUrl = 'http://drylink.ohmyapp.io/bnb';
+    
+    if (action === 'aggregate') {
+      apiUrl += '/aggregateForTableWithDocTimeline';
+    } else if (action === 'create') {
+      apiUrl += '/create';
+    } else if (action === 'update') {
+      apiUrl += '/update';
+    } else {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'Invalid action' })
+      };
+    }
+    
+    console.log('[Bullnabi Proxy] Request to:', apiUrl);
+    console.log('[Bullnabi Proxy] Collection:', collectionName);
+    console.log('[Bullnabi Proxy] DocumentJson:', documentJson);
+    
+    // FormData 생성
+    const formData = new URLSearchParams();
+    formData.append('metaCode', metaCode || '_users');
+    formData.append('collectionName', collectionName);
+    
+    if (typeof documentJson === 'string') {
+      formData.append('documentJson', documentJson);
+    } else {
+      formData.append('documentJson', JSON.stringify(documentJson));
+    }
+    
+    // fetch 요청 (Node 18+)
+    const fetchHeaders = {
+      'Content-Type': 'application/x-www-form-urlencoded'
     };
     
-    const result = await testRequest();
+    // JWT 토큰이 있으면 추가
+    if (token) {
+      fetchHeaders['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: fetchHeaders,
+      body: formData.toString()
+    });
+    
+    const responseText = await response.text();
+    console.log('[Bullnabi Proxy] Response status:', response.status);
+    console.log('[Bullnabi Proxy] Response:', responseText.substring(0, 500));
+    
+    // JSON 파싱 시도
+    let jsonData;
+    try {
+      jsonData = JSON.parse(responseText);
+    } catch (e) {
+      console.error('[Bullnabi Proxy] Parse error:', e);
+      jsonData = { 
+        code: "0", 
+        message: "Response parsing failed", 
+        rawData: responseText 
+      };
+    }
     
     return {
-      statusCode: 200,
+      statusCode: response.status,
       headers,
-      body: JSON.stringify({
-        test: 'HTTP module test',
-        result: result
-      })
+      body: JSON.stringify(jsonData)
     };
     
   } catch (error) {
+    console.error('[Bullnabi Proxy] Error:', error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({
-        test: 'failed',
-        error: error.message
+      body: JSON.stringify({ 
+        code: "-1",
+        message: error.message
       })
     };
   }
