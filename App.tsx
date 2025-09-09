@@ -1,4 +1,3 @@
-// App.tsx
 import React, { useState, useCallback, useEffect } from 'react';
 import { MainPage } from './components/MainPage';
 import { VideoSwap } from './components/VideoSwap';
@@ -13,19 +12,34 @@ import type { ImageFile, UserCredits } from './types';
 
 type PageType = 'main' | 'faceSwap' | 'videoSwap';
 
+// 🔥 결과물 저장을 위한 전역 상태 타입
+interface GeneratedResults {
+  faceSwapImage: ImageFile | null;
+  videoUrl: string | null;
+}
+
 // FaceSwap 페이지 컴포넌트
 const FaceSwapPage: React.FC<{ 
   onBack: () => void;
   userId: string | null;
   credits: UserCredits | null;
   onCreditsUsed: () => void;
-}> = ({ onBack, userId, credits, onCreditsUsed }) => {
+  preservedResult: ImageFile | null;
+  onResultGenerated: (result: ImageFile | null) => void;
+}> = ({ onBack, userId, credits, onCreditsUsed, preservedResult, onResultGenerated }) => {
   const [originalImage, setOriginalImage] = useState<ImageFile | null>(null);
-  const [generatedImage, setGeneratedImage] = useState<ImageFile | null>(null);
+  const [generatedImage, setGeneratedImage] = useState<ImageFile | null>(preservedResult);
   const [facePrompt, setFacePrompt] = useState<string>('');
   const [clothingPrompt, setClothingPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // preservedResult가 있으면 복원
+  useEffect(() => {
+    if (preservedResult) {
+      setGeneratedImage(preservedResult);
+    }
+  }, [preservedResult]);
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -37,6 +51,7 @@ const FaceSwapPage: React.FC<{
       };
       setOriginalImage(newImageFile);
       setGeneratedImage(null);
+      onResultGenerated(null); // 새 이미지 업로드시에만 초기화
       setError(null);
     };
     reader.onerror = () => {
@@ -68,36 +83,32 @@ const FaceSwapPage: React.FC<{
     
     setIsLoading(true);
     setError(null);
-    setGeneratedImage(null);
-
-    // 먼저 크레딧 차감
-    const creditUsed = await useCredits(userId, 'image', 1);
-    if (!creditUsed) {
-      setError('크레딧 차감에 실패했습니다.');
-      setIsLoading(false);
-      return;
-    }
 
     try {
+      // 먼저 이미지 생성
       const resultImage = await changeFaceInImage(originalImage, facePrompt, clothingPrompt);
+      
       if (resultImage) {
+        // 성공: 결과 저장 후 크레딧 차감
         setGeneratedImage(resultImage);
-        onCreditsUsed(); // 크레딧 새로고침
+        onResultGenerated(resultImage); // 상위 컴포넌트에도 저장
+        
+        // 크레딧 차감은 비동기로 처리
+        setTimeout(async () => {
+          const creditUsed = await useCredits(userId, 'image', 1);
+          if (creditUsed) {
+            onCreditsUsed();
+          }
+        }, 100);
       } else {
         setError('모델이 이미지를 생성하지 못했습니다. 다른 이미지를 시도해보세요.');
-        // 실패 시 크레딧 복구
-        await restoreCredits(userId, 'image', 1);
-        onCreditsUsed();
       }
     } catch (err) {
       setError(`생성 중 오류가 발생했습니다: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      // 실패 시 크레딧 복구
-      await restoreCredits(userId, 'image', 1);
-      onCreditsUsed();
     } finally {
       setIsLoading(false);
     }
-  }, [originalImage, facePrompt, clothingPrompt, userId, credits, onCreditsUsed]);
+  }, [originalImage, facePrompt, clothingPrompt, userId, credits, onCreditsUsed, onResultGenerated]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col items-center p-4 sm:p-6 lg:p-8">
@@ -165,6 +176,12 @@ const App: React.FC = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [credits, setCredits] = useState<UserCredits | null>(null);
   const [isLoadingCredits, setIsLoadingCredits] = useState<boolean>(true);
+  
+  // 🔥 생성된 결과물 보존
+  const [generatedResults, setGeneratedResults] = useState<GeneratedResults>({
+    faceSwapImage: null,
+    videoUrl: null
+  });
 
   // URL에서 userId 가져오기
   useEffect(() => {
@@ -180,30 +197,33 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // 크레딧 정보 가져오기
+  // 크레딧 정보 가져오기 (결과물 상태를 초기화하지 않음)
   const fetchCredits = useCallback(async () => {
     if (!userId) return;
     
-    setIsLoadingCredits(true);
+    // 🔥 로딩 상태를 변경하지 않음 (재렌더링 최소화)
     try {
       const userCredits = await getUserCredits(userId);
       if (userCredits) {
         setCredits(userCredits);
-        console.log('User credits loaded:', userCredits);
+        console.log('User credits updated:', userCredits);
       } else {
         console.warn('Failed to load user credits');
       }
     } catch (error) {
       console.error('Error loading credits:', error);
-    } finally {
-      setIsLoadingCredits(false);
     }
   }, [userId]);
 
-  // userId 변경 시 크레딧 가져오기
+  // 초기 크레딧 로드
   useEffect(() => {
     if (userId) {
-      fetchCredits();
+      const loadInitialCredits = async () => {
+        setIsLoadingCredits(true);
+        await fetchCredits();
+        setIsLoadingCredits(false);
+      };
+      loadInitialCredits();
     }
   }, [userId, fetchCredits]);
 
@@ -217,11 +237,23 @@ const App: React.FC = () => {
 
   const handleBackToMain = () => {
     setCurrentPage('main');
+    // 메인으로 돌아갈 때 결과물 초기화 (선택사항)
+    // setGeneratedResults({ faceSwapImage: null, videoUrl: null });
   };
 
-  // 크레딧 사용 후 새로고침
+  // 크레딧 사용 후 새로고침 (재렌더링 최소화)
   const handleCreditsUsed = () => {
     fetchCredits();
+  };
+
+  // FaceSwap 결과 저장
+  const handleFaceSwapResult = (result: ImageFile | null) => {
+    setGeneratedResults(prev => ({ ...prev, faceSwapImage: result }));
+  };
+
+  // VideoSwap 결과 저장
+  const handleVideoSwapResult = (result: string | null) => {
+    setGeneratedResults(prev => ({ ...prev, videoUrl: result }));
   };
 
   // 로딩 중일 때
@@ -266,6 +298,8 @@ const App: React.FC = () => {
           userId={userId}
           credits={credits}
           onCreditsUsed={handleCreditsUsed}
+          preservedResult={generatedResults.faceSwapImage}
+          onResultGenerated={handleFaceSwapResult}
         />
       );
     case 'videoSwap':
@@ -275,6 +309,8 @@ const App: React.FC = () => {
           userId={userId}
           credits={credits}
           onCreditsUsed={handleCreditsUsed}
+          preservedVideoUrl={generatedResults.videoUrl}
+          onVideoGenerated={handleVideoSwapResult}
         />
       );
     default:
