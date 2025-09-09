@@ -42,7 +42,6 @@ exports.handler = async (event, context) => {
     
     console.log('[Bullnabi Proxy] Request to:', apiUrl);
     console.log('[Bullnabi Proxy] Collection:', collectionName);
-    console.log('[Bullnabi Proxy] DocumentJson:', documentJson);
     console.log('[Bullnabi Proxy] Token provided:', !!token);
     
     // FormData 생성
@@ -56,16 +55,17 @@ exports.handler = async (event, context) => {
       formData.append('documentJson', JSON.stringify(documentJson));
     }
     
-    // 헤더 설정 - User-Agent에 토큰 추가!
+    // 헤더 설정 - Authorization 헤더 사용!
     const fetchHeaders = {
       'Content-Type': 'application/x-www-form-urlencoded'
     };
     
-    // 토큰이 있으면 User-Agent 헤더에 추가 (정지환님 방식)
-    if (token) {
-      fetchHeaders['User-Agent'] = token;
-      console.log('[Bullnabi Proxy] Token added to User-Agent header');
-    }
+    // 기본 토큰 (임시 - 나중에 환경변수로 이동)
+    const defaultToken = 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJlcmljNzA4QG5hdmVyLmNvbSIsImxvZ2luVXNlckluZm8iOiJ7IFwiX2lkXCIgOiB7IFwiJG9pZFwiIDogXCI2NTgzYTNhYzJjZDFjYWM4YWUyZTgzYzFcIiB9LCBcImlkXCIgOiBcImVyaWM3MDhAbmF2ZXIuY29tXCIsIFwiZW1haWxcIiA6IFwiZXJpYzcwOEBuYXZlci5jb21cIiwgXCJuYW1lXCIgOiBcIuq5gOuvvOyerFwiLCBcIm5pY2tuYW1lXCIgOiBudWxsLCBcInN0YXR1c1wiIDogXCJhZG1pblwiLCBcIl9zZXJ2aWNlTmFtZVwiIDogXCJkcnlsaW5rXCIsIFwiX3NlcnZpY2VBcHBOYW1lXCIgOiBcIuuTnOudvOydtOunge2BrCDrlJTsnpDsnbTrhIjsmqlcIiwgXCJvc1R5cGVcIiA6IFwiaU9TXCIgfSIsImV4cCI6MTc1NzQwODQ3Nn0.uucTbRCyagwcwDQKTgGHghc15ZmDK1nRKIJs6TPUn3A';
+    
+    // Authorization 헤더에 토큰 추가
+    fetchHeaders['Authorization'] = token || defaultToken;
+    console.log('[Bullnabi Proxy] Using Authorization header');
     
     // fetch 요청
     const response = await fetch(apiUrl, {
