@@ -197,166 +197,104 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
   };
 
   // iOS 다운로드 처리
-  const handleDownload = async () => {
-    if (!generatedVideoUrl || isDownloading) return;
-    
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    
-    setIsDownloading(true);
-    setDownloadStatus('다운로드 준비 중...');
-    
-    if (isIOS) {
+const handleDownload = async () => {
+  if (!generatedVideoUrl || isDownloading) return;
+  
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  
+  setIsDownloading(true);
+  setDownloadStatus('다운로드 준비 중...');
+  
+  if (isIOS) {
+    try {
+      setDownloadStatus('iOS 다운로드 준비 중...');
+      
+      // 방법 1: 직접 링크로 이동 (가장 안정적)
+      const link = document.createElement('a');
+      link.href = generatedVideoUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.download = `hairgator-video-${Date.now()}.mp4`;
+      
+      // 링크를 DOM에 추가하고 클릭
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setDownloadStatus('✅ 새 탭에서 비디오가 열렸습니다');
+      
+      // 즉시 가이드 표시
+      setTimeout(() => {
+        setShowIOSGuide(true);
+        setDownloadStatus(null);
+      }, 1000);
+      
+    } catch (error) {
+      console.error('iOS download failed:', error);
+      
+      // 실패 시 방법 2: window.open 시도
       try {
-        setDownloadStatus('새 창에서 비디오를 여는 중...');
+        setDownloadStatus('대안 방법으로 시도 중...');
+        window.open(generatedVideoUrl, '_blank');
+        setDownloadStatus('✅ 새 탭에서 비디오를 열었습니다');
         
-        // iOS: 새 창에서 비디오 열기
-        const newWindow = window.open('', '_blank');
-        if (!newWindow) {
-          throw new Error('팝업이 차단되었습니다');
-        }
-        
-        newWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Hairgator Video</title>
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <style>
-                body {
-                  margin: 0;
-                  padding: 20px;
-                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                  color: white;
-                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                  text-align: center;
-                  min-height: 100vh;
-                }
-                video {
-                  max-width: 90%;
-                  height: auto;
-                  margin: 20px 0;
-                  border: 3px solid rgba(255,255,255,0.3);
-                  border-radius: 12px;
-                  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-                }
-                .guide {
-                  background: rgba(255,255,255,0.1);
-                  backdrop-filter: blur(10px);
-                  padding: 24px;
-                  border-radius: 16px;
-                  margin-bottom: 20px;
-                  border: 1px solid rgba(255,255,255,0.2);
-                }
-                .step {
-                  margin: 12px 0;
-                  padding: 16px;
-                  background: rgba(255,255,255,0.1);
-                  border-radius: 12px;
-                  border-left: 4px solid #FFE082;
-                }
-                .highlight {
-                  color: #FFE082;
-                  font-weight: bold;
-                  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-                }
-                .warning {
-                  background: rgba(244, 67, 54, 0.8);
-                  color: white;
-                  padding: 16px;
-                  border-radius: 12px;
-                  margin-top: 15px;
-                  font-weight: bold;
-                  animation: pulse 2s infinite;
-                }
-                @keyframes pulse {
-                  0%, 100% { opacity: 1; }
-                  50% { opacity: 0.8; }
-                }
-              </style>
-            </head>
-            <body>
-              <div class="guide">
-                <h1 style="margin: 0 0 20px 0; font-size: 24px;">🎥 iOS 비디오 저장 가이드</h1>
-                <div class="step">
-                  <span style="font-size: 20px;">👆</span>
-                  아래 비디오를 <span class="highlight">길게 터치</span>하세요
-                </div>
-                <div class="step">
-                  <span style="font-size: 20px;">📱</span>
-                  메뉴에서 <span class="highlight">"비디오 저장"</span> 또는 <span class="highlight">"공유"</span> 선택
-                </div>
-                <div class="step">
-                  <span style="font-size: 20px;">📸</span>
-                  사진 앱으로 저장하거나 파일 앱에 저장
-                </div>
-                <div class="step">
-                  <span style="font-size: 20px;">✅</span>
-                  완료! 사진 앱에서 확인 가능
-                </div>
-                <div class="warning">
-                  ⚠️ 이 창을 닫기 전에 반드시 비디오를 저장하세요!
-                </div>
-              </div>
-              <video controls autoplay loop playsinline webkit-playsinline src="${generatedVideoUrl}" 
-                     onloadstart="console.log('Video loading started')"
-                     oncanplay="console.log('Video can play')">
-                죄송합니다. 비디오를 재생할 수 없습니다.
-              </video>
-              <p style="margin-top: 20px; opacity: 0.8; font-size: 14px;">
-                위 비디오를 길게 눌러서 저장하세요
-              </p>
-            </body>
-          </html>
-        `);
-        
-        setDownloadStatus('✅ 새 창에서 비디오가 열렸습니다');
-        
-        // 3초 후 가이드 모달 표시
         setTimeout(() => {
           setShowIOSGuide(true);
           setDownloadStatus(null);
-        }, 3000);
+        }, 1000);
+      } catch (secondError) {
+        // 모든 방법 실패 시
+        setDownloadStatus('❌ 팝업이 차단되었습니다');
         
-      } catch (error) {
-        setDownloadStatus(`❌ iOS 다운로드 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-        // 실패 시에도 가이드 표시
+        // 사용자에게 직접 URL 제공
         setTimeout(() => {
+          if (confirm('팝업이 차단되었습니다. 비디오 URL을 클립보드에 복사하시겠습니까?')) {
+            navigator.clipboard.writeText(generatedVideoUrl).then(() => {
+              alert('비디오 URL이 복사되었습니다. Safari 주소창에 붙여넣기하여 접속하세요.');
+            }).catch(() => {
+              // 클립보드 복사도 실패한 경우
+              prompt('아래 URL을 복사하여 새 탭에서 열어주세요:', generatedVideoUrl);
+            });
+          }
           setShowIOSGuide(true);
+          setDownloadStatus(null);
         }, 2000);
       }
-    } else {
-      // Android/PC - 기존 Blob 다운로드 방식 유지
-      try {
-        setDownloadStatus('비디오를 다운로드하는 중...');
-        const response = await fetch(generatedVideoUrl);
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = `hairgator-video-${Date.now()}.mp4`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-        setVideoSaved(true);
-        setDownloadStatus('✅ 비디오 다운로드 완료!');
-      } catch (error) {
-        // 실패 시 새 탭에서 열기
-        window.open(generatedVideoUrl, '_blank');
-        setDownloadStatus('🔗 새 탭에서 비디오를 열었습니다');
-      }
     }
-    
-    setIsDownloading(false);
-    
-    // 상태 메시지 자동 클리어
-    setTimeout(() => {
+  } else {
+    // Android/PC - 기존 방식 유지
+    try {
+      setDownloadStatus('비디오를 다운로드하는 중...');
+      const response = await fetch(generatedVideoUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `hairgator-video-${Date.now()}.mp4`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      setVideoSaved(true);
+      setDownloadStatus('✅ 비디오 다운로드 완료!');
+    } catch (error) {
+      // 실패 시 새 탭에서 열기
+      window.open(generatedVideoUrl, '_blank');
+      setDownloadStatus('🔗 새 탭에서 비디오를 열었습니다');
+    }
+  }
+  
+  setIsDownloading(false);
+  
+  // 상태 메시지 자동 클리어
+  setTimeout(() => {
+    if (downloadStatus && !downloadStatus.includes('❌')) {
       setDownloadStatus(null);
-    }, 8000);
-  };
-
+    }
+  }, 5000);
+};
   // iOS 가이드 모달
   const IOSGuideModal = () => (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
