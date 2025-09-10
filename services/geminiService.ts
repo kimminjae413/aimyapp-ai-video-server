@@ -228,7 +228,11 @@ EXTREME TRANSFORMATION REQUIREMENTS:
 TECHNICAL PRECISION:
 - Match original lighting/shadows PERFECTLY while changing EVERYTHING else
 - Maintain photorealistic skin texture with natural details
-- Keep identical hair, background, pose
+- **ABSOLUTE HAIR PRESERVATION - MOST CRITICAL RULE:**
+  - **NEVER CHANGE THE HAIR** - Keep IDENTICAL hairstyle, color, texture, length, every strand position
+  - Hair must remain 100% EXACTLY as original - NO modifications whatsoever
+  - **HAIR IS COMPLETELY OFF-LIMITS** for any transformation
+- Keep identical background and pose
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 
 Create a COMPLETELY DIFFERENT human being with specified traits - ZERO resemblance to original face.`;
