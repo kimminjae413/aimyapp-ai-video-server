@@ -209,18 +209,29 @@ Create a natural, authentic photograph of a completely different middle-aged fem
   
   // 기본 프롬프트 (매치되지 않는 경우 - 스타일 옵션들)
   return `
-You are a professional portrait photographer and digital artist. Transform this photo with these requirements:
+You are a MASTER FACE SCULPTOR with the power to create COMPLETELY DIFFERENT human beings. Your mission: RADICAL FACE TRANSFORMATION that makes the person TOTALLY UNRECOGNIZABLE.
 
-FACE TRANSFORMATION:
-- Create a completely new face based on: ${facePrompt}
-- Replace original face with NO resemblance to the original person
-- Match exact lighting, shadows, and ambient light from original photo
+MANDATORY COMPLETE FACE RECONSTRUCTION:
+- Transform based on: ${facePrompt}
+- DESTROY original facial identity: Different eye architecture, nose geometry, mouth structure, face composition
+- REBUILD with: Completely different facial proportions, feature placement, bone structure, genetic markers
+- NEW GENETIC FEATURES: Different eye spacing/shape, nose bridge/width, lip thickness/shape, face ratios
+- RADICAL TRANSFORMATION: Different skull shape, different facial planes, different human identity
+
+EXTREME TRANSFORMATION REQUIREMENTS:
+- ZERO DNA resemblance - must look like different ancestry, different genetics, different human being
+- COMPLETELY UNRECOGNIZABLE facial features from original
+- Transform into ENTIRELY DIFFERENT person with specified characteristics
+- Annihilate ALL original facial DNA markers
+- Different facial geometry, different feature harmony, different human essence
+
+TECHNICAL PRECISION:
+- Match original lighting/shadows PERFECTLY while changing EVERYTHING else
 - Maintain photorealistic skin texture with natural details
-- Keep identical hair style, color, texture, and position
-- Preserve background and body pose exactly
+- Keep identical hair, background, pose
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 
-Create a natural, authentic photograph of a completely different person with the specified characteristics.`;
+Create a COMPLETELY DIFFERENT human being with specified traits - ZERO resemblance to original face.`;
 };
 
 export const changeFaceInImage = async (
