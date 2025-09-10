@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { MainPage } from './components/MainPage';
-import { VideoSwap } from './components/VideoSwap';
+import VideoSwap from './components/VideoSwap';
 import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
 import { Loader } from './components/Loader';
