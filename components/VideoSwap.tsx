@@ -38,6 +38,20 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
 
+  // 환경 감지 함수들
+  const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isAndroid = () => /Android/i.test(navigator.userAgent);
+  const isWebView = () => {
+    const ua = navigator.userAgent;
+    return (
+      isIOS() && !ua.includes('Safari/') ||
+      isAndroid() && ua.includes('wv') ||
+      // 기타 웹뷰 패턴들
+      ua.includes('WebView') ||
+      ua.includes('Version/') && !ua.includes('Mobile Safari')
+    );
+  };
+
   // preservedVideoUrl이 있으면 복원
   useEffect(() => {
     if (preservedVideoUrl) {
@@ -45,7 +59,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   }, [preservedVideoUrl]);
 
-  // Pull-to-refresh 방지
+  // Pull-to-refresh 방지 (기존 유지)
   useEffect(() => {
     let touchStartY = 0;
     let touchEndY = 0;
@@ -76,7 +90,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     };
   }, []);
 
-  // 페이지 나가기 방지
+  // 페이지 나가기 방지 (기존 유지)
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (generatedVideoUrl && !videoSaved) {
@@ -90,7 +104,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [generatedVideoUrl, videoSaved]);
 
-  // 브라우저 뒤로가기 방지
+  // 브라우저 뒤로가기 방지 (기존 유지)
   useEffect(() => {
     if (generatedVideoUrl && !videoSaved) {
       window.history.pushState(null, '', window.location.href);
@@ -196,134 +210,141 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
-  // iOS 다운로드 처리
-const handleDownload = async () => {
-  if (!generatedVideoUrl || isDownloading) return;
-  
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  
-  setIsDownloading(true);
-  setDownloadStatus('다운로드 준비 중...');
-  
-  if (isIOS) {
+  // 🔥 개선된 다운로드 핸들러
+  const handleDownload = async () => {
+    if (!generatedVideoUrl || isDownloading) return;
+    
+    setIsDownloading(true);
+    setDownloadStatus('다운로드 준비 중...');
+    
     try {
-      setDownloadStatus('iOS 다운로드 준비 중...');
-      
-      // 방법 1: 직접 링크로 이동 (가장 안정적)
-      const link = document.createElement('a');
-      link.href = generatedVideoUrl;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.download = `hairgator-video-${Date.now()}.mp4`;
-      
-      // 링크를 DOM에 추가하고 클릭
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      setDownloadStatus('✅ 새 탭에서 비디오가 열렸습니다');
-      
-      // 즉시 가이드 표시
-      setTimeout(() => {
-        setShowIOSGuide(true);
-        setDownloadStatus(null);
-      }, 1000);
-      
-    } catch (error) {
-      console.error('iOS download failed:', error);
-      
-      // 실패 시 방법 2: window.open 시도
-      try {
-        setDownloadStatus('대안 방법으로 시도 중...');
-        window.open(generatedVideoUrl, '_blank');
+      if (isWebView()) {
+        // 🚀 웹뷰 환경: window.location.href 사용 (가장 확실한 방법)
+        console.log('WebView detected, using location.href method');
+        setDownloadStatus('웹뷰에서 다운로드 시작...');
+        
+        // 직접 URL로 이동하여 다운로드
+        window.location.href = generatedVideoUrl;
+        
+        setDownloadStatus('✅ 다운로드가 시작되었습니다');
+        setVideoSaved(true); // 웹뷰에서는 바로 저장됨으로 처리
+        
+        // 상태 메시지 자동 클리어
+        setTimeout(() => {
+          setDownloadStatus(null);
+        }, 3000);
+        
+      } else if (isIOS()) {
+        // iOS Safari: 새 탭으로 열기
+        console.log('iOS Safari detected, using new tab method');
+        setDownloadStatus('iOS에서 새 탭 열기...');
+        
+        const link = document.createElement('a');
+        link.href = generatedVideoUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.download = `hairgator-video-${Date.now()}.mp4`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
         setDownloadStatus('✅ 새 탭에서 비디오를 열었습니다');
         
+        // iOS 가이드 표시 (지연)
         setTimeout(() => {
-          setShowIOSGuide(true);
-          setDownloadStatus(null);
-        }, 1000);
-      } catch (secondError) {
-        // 모든 방법 실패 시
-        setDownloadStatus('❌ 팝업이 차단되었습니다');
-        
-        // 사용자에게 직접 URL 제공
-        setTimeout(() => {
-          if (confirm('팝업이 차단되었습니다. 비디오 URL을 클립보드에 복사하시겠습니까?')) {
-            navigator.clipboard.writeText(generatedVideoUrl).then(() => {
-              alert('비디오 URL이 복사되었습니다. Safari 주소창에 붙여넣기하여 접속하세요.');
-            }).catch(() => {
-              // 클립보드 복사도 실패한 경우
-              prompt('아래 URL을 복사하여 새 탭에서 열어주세요:', generatedVideoUrl);
-            });
-          }
           setShowIOSGuide(true);
           setDownloadStatus(null);
         }, 2000);
-      }
-    }
-  } else {
-    // Android/PC - 기존 방식 유지
-    try {
-      setDownloadStatus('비디오를 다운로드하는 중...');
-      const response = await fetch(generatedVideoUrl);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `hairgator-video-${Date.now()}.mp4`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-      setVideoSaved(true);
-      setDownloadStatus('✅ 비디오 다운로드 완료!');
-    } catch (error) {
-      // 실패 시 새 탭에서 열기
-      window.open(generatedVideoUrl, '_blank');
-      setDownloadStatus('🔗 새 탭에서 비디오를 열었습니다');
-    }
-  }
-  
-  setIsDownloading(false);
-  
-  // 상태 메시지 자동 클리어
-  setTimeout(() => {
-    if (downloadStatus && !downloadStatus.includes('❌')) {
-      setDownloadStatus(null);
-    }
-  }, 5000);
-};
-  // iOS 가이드 모달
-  const IOSGuideModal = () => (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full">
-        <h3 className="text-lg font-bold text-white mb-4">📱 iOS 비디오 저장 완료했나요?</h3>
         
-        <div className="space-y-3 mb-4">
-          <div className="flex items-start gap-3">
-            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">1</span>
-            <p className="text-sm text-gray-300">새 창에서 비디오가 재생됩니다</p>
+      } else {
+        // Android/PC: Blob 다운로드
+        console.log('Desktop/Android detected, using blob download');
+        setDownloadStatus('비디오를 다운로드하는 중...');
+        
+        const response = await fetch(generatedVideoUrl);
+        if (!response.ok) throw new Error('다운로드 실패');
+        
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `hairgator-video-${Date.now()}.mp4`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        setVideoSaved(true);
+        setDownloadStatus('✅ 비디오 다운로드 완료!');
+      }
+    } catch (error) {
+      console.error('Download failed:', error);
+      setDownloadStatus('❌ 다운로드 실패');
+      
+      // 실패 시 fallback: 새 탭에서 열기
+      try {
+        window.open(generatedVideoUrl, '_blank');
+        setDownloadStatus('🔗 새 탭에서 비디오를 열었습니다');
+        if (isIOS()) {
+          setTimeout(() => {
+            setShowIOSGuide(true);
+            setDownloadStatus(null);
+          }, 2000);
+        }
+      } catch (fallbackError) {
+        console.error('Fallback failed:', fallbackError);
+        setDownloadStatus('❌ 모든 다운로드 방법이 실패했습니다');
+      }
+    } finally {
+      setIsDownloading(false);
+      
+      // 에러가 아닌 상태 메시지는 5초 후 자동 클리어
+      setTimeout(() => {
+        if (downloadStatus && !downloadStatus.includes('❌')) {
+          setDownloadStatus(null);
+        }
+      }, 5000);
+    }
+  };
+
+  // 개선된 iOS 가이드 모달
+  const IOSGuideModal = () => (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full animate-in fade-in zoom-in duration-300">
+        <div className="text-center mb-4">
+          <div className="text-4xl mb-2">📱</div>
+          <h3 className="text-lg font-bold text-white">iOS 비디오 저장 방법</h3>
+          <p className="text-sm text-gray-400 mt-1">새 창에서 비디오가 열렸나요?</p>
+        </div>
+        
+        <div className="space-y-3 mb-6">
+          <div className="flex items-start gap-3 p-3 bg-gray-700/50 rounded-lg">
+            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center font-bold">1</span>
+            <p className="text-sm text-gray-200">새 창에서 <strong className="text-white">비디오를 재생</strong>하세요</p>
           </div>
-          <div className="flex items-start gap-3">
-            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">2</span>
-            <p className="text-sm text-gray-300">비디오를 <strong className="text-white">길게 터치</strong>하세요</p>
+          <div className="flex items-start gap-3 p-3 bg-gray-700/50 rounded-lg">
+            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center font-bold">2</span>
+            <p className="text-sm text-gray-200">비디오 화면을 <strong className="text-yellow-300">길게 터치</strong> (1-2초)</p>
           </div>
-          <div className="flex items-start gap-3">
-            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center">3</span>
-            <p className="text-sm text-gray-300"><strong className="text-white">"비디오 저장"</strong> 또는 <strong className="text-white">"공유"</strong> 선택</p>
+          <div className="flex items-start gap-3 p-3 bg-gray-700/50 rounded-lg">
+            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center font-bold">3</span>
+            <p className="text-sm text-gray-200"><strong className="text-green-300">"비디오 저장"</strong> 또는 <strong className="text-green-300">"공유"</strong> 선택</p>
           </div>
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3 p-3 bg-green-600/20 border border-green-500/50 rounded-lg">
             <span className="flex-shrink-0 w-6 h-6 bg-green-600 text-white text-sm rounded-full flex items-center justify-center">✓</span>
-            <p className="text-sm text-gray-300">사진 앱에서 확인 가능!</p>
+            <p className="text-sm text-green-200"><strong>완료!</strong> 사진 앱에서 확인 가능해요</p>
           </div>
         </div>
         
-        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4">
-          <p className="text-xs text-blue-200">
-            💡 <strong>참고:</strong> 파일 앱 → 다운로드에서도 비디오를 확인할 수 있어요
-          </p>
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-amber-400">💡</span>
+            <p className="text-xs text-amber-200">
+              <strong>참고:</strong> 길게 터치가 안 되면 "공유" 버튼 → "사진에 저장"을 시도해보세요
+            </p>
+          </div>
         </div>
         
         <div className="flex gap-3">
@@ -332,25 +353,28 @@ const handleDownload = async () => {
               setShowIOSGuide(false);
               setVideoSaved(true);
             }}
-            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+            className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold"
           >
-            저장했어요! ✅
+            저장완료! ✅
           </button>
           <button
             onClick={() => {
               setShowIOSGuide(false);
-              handleDownload(); // 다시 시도
+              // 3초 후 다시 시도할 수 있도록
+              setTimeout(() => {
+                handleDownload();
+              }, 1000);
             }}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
           >
-            다시 시도 🔄
+            다시시도 🔄
           </button>
         </div>
       </div>
     </div>
   );
 
-  // 경고 모달
+  // 경고 모달 (기존 유지)
   const ExitWarningModal = () => (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full">
@@ -436,7 +460,7 @@ const handleDownload = async () => {
       </header>
 
       <main className="w-full max-w-7xl flex flex-col lg:flex-row gap-8">
-        {/* Left Panel */}
+        {/* Left Panel - 설정 (기존 유지) */}
         <div className="lg:w-1/3 flex flex-col gap-6">
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
             <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">1. 헤어 시술 후 사진 업로드</h2>
@@ -553,17 +577,39 @@ const handleDownload = async () => {
               
               {generatedVideoUrl ? (
                 <>
-                  {/* iOS 저장 안내 배너 */}
-                  {/iPad|iPhone|iPod/.test(navigator.userAgent) && !videoSaved && (
-                    <div className="mb-4 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/50 rounded-lg p-4">
+                  {/* 🚨 웹뷰 환경별 맞춤 경고 배너 */}
+                  {!videoSaved && (
+                    <div className={`mb-4 border rounded-lg p-4 ${
+                      isWebView() 
+                        ? 'bg-green-500/20 border-green-500/50'
+                        : isIOS() 
+                          ? 'bg-amber-500/20 border-amber-500/50'
+                          : 'bg-blue-500/20 border-blue-500/50'
+                    }`}>
                       <div className="flex items-center gap-3">
-                        <div className="text-2xl">⚠️</div>
+                        <div className="text-2xl">
+                          {isWebView() ? '🚀' : isIOS() ? '📱' : '💻'}
+                        </div>
                         <div className="flex-1">
-                          <p className="text-yellow-200 text-sm font-medium">
-                            📱 iOS 사용자: 비디오를 저장하지 않으면 페이지를 나갈 때 사라집니다!
+                          <p className={`text-sm font-medium ${
+                            isWebView() ? 'text-green-200' : isIOS() ? 'text-amber-200' : 'text-blue-200'
+                          }`}>
+                            {isWebView() 
+                              ? '📲 앱 내부: 다운로드 버튼 → 자동으로 휴대폰에 저장됩니다!'
+                              : isIOS()
+                                ? '🍎 iOS: 다운로드 → 새 창 → 비디오 길게 터치 → 저장'
+                                : '🤖 다운로드 버튼을 클릭하면 자동 저장됩니다'
+                            }
                           </p>
-                          <p className="text-yellow-300 text-xs mt-1">
-                            다운로드 버튼을 눌러 저장하세요
+                          <p className={`text-xs mt-1 ${
+                            isWebView() ? 'text-green-300' : isIOS() ? 'text-amber-300' : 'text-blue-300'
+                          }`}>
+                            {isWebView() 
+                              ? '웹뷰 환경에서 최적화된 다운로드가 실행됩니다'
+                              : isIOS() 
+                                ? '저장하지 않으면 페이지를 나갈 때 사라져요!'
+                                : '갤러리 또는 다운로드 폴더에서 확인하세요'
+                            }
                           </p>
                         </div>
                       </div>
@@ -588,85 +634,121 @@ const handleDownload = async () => {
                       브라우저가 비디오 재생을 지원하지 않습니다.
                     </video>
                     
-                    {/* 다운로드 버튼 */}
+                    {/* 🎯 환경별 맞춤 다운로드 버튼 */}
                     <button
                       onClick={handleDownload}
                       disabled={isDownloading}
-                      className={`absolute bottom-4 right-4 p-3 backdrop-blur-sm rounded-full text-white transition-all duration-300 group ${
+                      className={`absolute bottom-4 right-4 p-3 backdrop-blur-sm rounded-full text-white transition-all duration-300 group font-bold ${
                         videoSaved 
-                          ? 'bg-green-600/80 hover:bg-green-700' 
+                          ? 'bg-green-600/90 hover:bg-green-700 scale-110' 
                           : isDownloading
-                            ? 'bg-blue-600/80 animate-pulse cursor-wait'
-                            : !videoSaved && /iPad|iPhone|iPod/.test(navigator.userAgent)
-                              ? 'bg-red-600/80 hover:bg-red-700 animate-bounce'
-                              : 'bg-gray-900/70 hover:bg-blue-600 hover:scale-110'
+                            ? 'bg-blue-600/90 animate-pulse cursor-wait'
+                            : isWebView()
+                              ? 'bg-green-600/90 hover:bg-green-700 animate-bounce shadow-lg shadow-green-500/50'
+                              : isIOS()
+                                ? 'bg-amber-600/90 hover:bg-amber-700 animate-bounce shadow-lg shadow-amber-500/50'
+                                : 'bg-blue-600/90 hover:bg-blue-700 hover:scale-110 shadow-lg'
                       }`}
                       title={
                         videoSaved 
-                          ? '저장 완료' 
+                          ? '저장 완료! ✅' 
                           : isDownloading 
                             ? '다운로드 중...' 
-                            : '비디오 다운로드 (필수!)'
+                            : isWebView()
+                              ? '앱에서 자동 저장'
+                              : isIOS()
+                                ? 'iOS 다운로드 (터치 필요)'
+                                : '클릭하여 다운로드'
                       }
                     >
-                      {isDownloading ? (
-                        <svg className="w-6 h-6 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                      ) : videoSaved ? (
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                      )}
+                      <div className="flex flex-col items-center">
+                        {isDownloading ? (
+                          <svg className="w-6 h-6 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        ) : videoSaved ? (
+                          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <>
+                            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            <span className="text-xs">
+                              {isWebView() ? '저장' : isIOS() ? 'iOS' : 'PC'}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </button>
                     
                     {/* 다운로드 상태 오버레이 */}
                     {downloadStatus && (
-                      <div className={`absolute top-4 left-4 right-4 p-3 rounded-lg backdrop-blur-sm border transition-all duration-300 ${
+                      <div className={`absolute top-4 left-4 right-4 p-3 rounded-lg backdrop-blur-sm border transition-all duration-300 animate-in slide-in-from-top ${
                         downloadStatus.includes('✅') 
-                          ? 'bg-green-600/80 border-green-400 text-green-100' 
+                          ? 'bg-green-600/90 border-green-400 text-green-100' 
                           : downloadStatus.includes('❌')
-                            ? 'bg-red-600/80 border-red-400 text-red-100'
-                            : 'bg-blue-600/80 border-blue-400 text-blue-100'
+                            ? 'bg-red-600/90 border-red-400 text-red-100 animate-pulse'
+                            : 'bg-blue-600/90 border-blue-400 text-blue-100'
                       }`}>
-                        <p className="text-sm text-center font-medium">{downloadStatus}</p>
+                        <p className="text-sm text-center font-semibold">{downloadStatus}</p>
                       </div>
                     )}
                   </div>
 
-                  {/* 플랫폼별 저장 가이드 */}
-                  <div className="mt-4 p-4 bg-gray-700/30 border border-gray-600 rounded-lg">
+                  {/* 🎯 환경별 저장 가이드 */}
+                  <div className={`mt-4 p-4 rounded-lg border ${
+                    isWebView() 
+                      ? 'bg-green-700/20 border-green-600/50'
+                      : isIOS() 
+                        ? 'bg-amber-700/20 border-amber-600/50'
+                        : 'bg-blue-700/20 border-blue-600/50'
+                  }`}>
                     <div className="flex items-start gap-3">
                       <div className="text-2xl">
-                        {/iPad|iPhone|iPod/.test(navigator.userAgent) ? '📱' : /Android/i.test(navigator.userAgent) ? '🤖' : '💻'}
+                        {isWebView() ? '📱' : isIOS() ? '🍎' : isAndroid() ? '🤖' : '💻'}
                       </div>
                       <div className="flex-1">
-                        <h4 className="text-sm font-semibold text-gray-300 mb-2">
-                          {/iPad|iPhone|iPod/.test(navigator.userAgent) ? 'iOS 저장 방법' : /Android/i.test(navigator.userAgent) ? 'Android 저장 방법' : 'PC 저장 방법'}
+                        <h4 className="text-sm font-bold text-gray-200 mb-2">
+                          {isWebView() 
+                            ? '🚀 앱 내부 다운로드 (자동 저장)'
+                            : isIOS() 
+                              ? '🍎 iOS 저장 가이드'
+                              : isAndroid()
+                                ? '🤖 안드로이드 저장'
+                                : '💻 PC 저장'
+                          }
                         </h4>
-                        {/iPad|iPhone|iPod/.test(navigator.userAgent) ? (
-                          <div className="space-y-1 text-xs text-gray-400">
-                            <p>• 다운로드 버튼 클릭 → 새 창에서 비디오 재생</p>
-                            <p>• 비디오를 <strong className="text-white">길게 터치</strong> → "비디오 저장" 선택</p>
-                            <p>• 또는 공유 → 사진 앱으로 저장</p>
-                            <p className="text-yellow-300 font-medium">⚠️ 저장 후 새 창을 닫으셔도 됩니다</p>
-                          </div>
-                        ) : /Android/i.test(navigator.userAgent) ? (
-                          <div className="space-y-1 text-xs text-gray-400">
-                            <p>• 다운로드 버튼 클릭 → 자동 다운로드</p>
-                            <p>• 갤러리 또는 다운로드 폴더에서 확인</p>
-                            <p>• Chrome: 하단 알림에서 바로 열기 가능</p>
-                          </div>
-                        ) : (
-                          <div className="space-y-1 text-xs text-gray-400">
-                            <p>• 다운로드 버튼 클릭 → 파일 자동 저장</p>
-                            <p>• 브라우저 다운로드 폴더에서 확인</p>
-                          </div>
-                        )}
+                        <div className="space-y-1 text-xs text-gray-300">
+                          {isWebView() ? (
+                            <>
+                              <p className="text-green-200">• 다운로드 버튼 클릭 → <strong>휴대폰에 바로 저장!</strong></p>
+                              <p>• 갤러리나 다운로드 폴더에서 확인 가능</p>
+                              <p>• 별도 조작 불필요 (앱에서 자동 처리)</p>
+                            </>
+                          ) : isIOS() ? (
+                            <>
+                              <p className="text-amber-200">• <strong>1단계:</strong> 다운로드 버튼 → 새 창에서 비디오 재생</p>
+                              <p className="text-amber-200">• <strong>2단계:</strong> 비디오를 <strong>길게 터치</strong> (1-2초)</p>
+                              <p className="text-amber-200">• <strong>3단계:</strong> "비디오 저장" 또는 "공유" 선택</p>
+                              <p className="text-green-200">• ✅ 사진 앱에서 확인 완료</p>
+                            </>
+                          ) : isAndroid() ? (
+                            <>
+                              <p>• 다운로드 버튼 클릭 → 자동 다운로드</p>
+                              <p>• 갤러리 또는 다운로드 폴더에서 확인</p>
+                              <p>• Chrome: 하단 알림에서 바로 열기 가능</p>
+                            </>
+                          ) : (
+                            <>
+                              <p>• 다운로드 버튼 클릭 → 파일 자동 저장</p>
+                              <p>• 브라우저 다운로드 폴더에서 확인</p>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
