@@ -725,9 +725,9 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                         <div className="space-y-1 text-xs text-gray-300">
                           {isWebView() ? (
                             <>
-                              <p className="text-green-200">• 다운로드 버튼 클릭 → <strong>휴대폰에 바로 저장!</strong></p>
-                              <p>• 갤러리나 다운로드 폴더에서 확인 가능</p>
-                              <p>• 별도 조작 불필요 (앱에서 자동 처리)</p>
+                              <p className="text-blue-200">• 다운로드 버튼 클릭 → <strong>파일 다운로드 시도</strong></p>
+                              <p>• 브라우저 다운로드 또는 파일 앱에서 확인</p>
+                              <p>• 실패시 새 창에서 영상 재생 (길게 터치 필요)</p>
                             </>
                           ) : isIOS() ? (
                             <>
