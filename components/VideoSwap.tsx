@@ -506,6 +506,24 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                   <option value="hairReview2">행복하게 머리 만지며 감탄</option>
                   <option value="hairReview3">앞머리 정리하며 수줍은 미소</option>
                 </optgroup>
+                <optgroup label="자연스러운 일반인 포즈">
+                  <option value="naturalPose1">수줍은 표정에서 환한 미소로</option>
+                  <option value="naturalPose2">손으로 얼굴 가리다 웃음 터뜨리기</option>
+                  <option value="naturalPose3">귀 뒤로 머리카락 넘기며 미소</option>
+                </optgroup>
+                <optgroup label="헤어 디테일 보여주기">
+                  <option value="showDetail1">180도 회전하며 뒷머리 스타일 공개</option>
+                  <option value="showDetail2">고개 숙였다 들며 레이어드 움직임</option>
+                  <option value="showDetail3">바람에 날리듯 자연스러운 헤어 무브먼트</option>
+                </optgroup>
+                <optgroup label="변신 완료 리액션">
+                  <option value="transformation1">놀라며 감탄하는 변신 확인</option>
+                  <option value="transformation2">거울 보듯 새로운 모습에 감탄</option>
+                </optgroup>
+                <optgroup label="살롱 분위기">
+                  <option value="salonVibe1">시술 후 만족스럽게 일어서기</option>
+                  <option value="salonVibe2">디자이너와 하이파이브하듯 기뻐하기</option>
+                </optgroup>
               </select>
             </div>
 
