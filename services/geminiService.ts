@@ -1,11 +1,4 @@
-const prompt = `
-기존 이미지의 얼굴과 자연스러운 웨이브 헤어스타일을 완벽하게 유지한 채, 의상만 ${clothingPrompt}로 변경하고, 나머지는 그대로.
-
-CRITICAL REQUIREMENTS:
-- 얼굴을 완벽하게 유지한 채: 얼굴의 모든 특징을 원본과 동일하게 보존
-- 자연스러운 웨이브 헤어스타일을 완벽하게 유지한 채: 헤어 텍스처, 스타일, 색상 모든 것을 원본과 동일하게
-- 의상만 변경: 옷만 새로운 스타일로 교체
-- 나머지는 그대로: 포즈, 시선 방향, 배경 모// services/geminiService.ts
+// services/geminiService.ts
 import { GoogleGenAI, Modality } from "@google/genai";
 import { ImageProcessor } from '../utils/imageProcessor';
 import type { ImageFile } from '../types';
@@ -369,24 +362,20 @@ const changeClothingOnly = async (
     try {
         console.log('👕 Clothing-only transformation starting...');
         
-        const prompt = `
-Transform only the clothing in this image.
+        const prompt = `Transform only the clothing in this image to: ${clothingPrompt}
 
-PRESERVATION REQUIREMENTS:
-- Keep the person's face EXACTLY as shown
-- Keep the hair EXACTLY as shown  
-- Keep the background EXACTLY as shown
-- Change ONLY the clothing
+CRITICAL PRESERVATION:
+- Keep the person's face EXACTLY as shown - no facial changes
+- Keep the natural wavy hair EXACTLY as shown - no hair modifications
+- Keep the same head angle, pose, and gaze direction
+- Keep the same background and lighting
 
-CLOTHING CHANGE:
-Transform the clothing to: ${clothingPrompt}
+CLOTHING TRANSFORMATION ONLY:
+- Change only the clothing/garments to the new style
+- Ensure natural fit and appearance
+- Maintain same body positioning
 
-TECHNICAL REQUIREMENTS:
-- Natural fit and appearance
-- Same lighting and shadows
-- Photorealistic result
-
-Result: Same person and hair with new clothing only.`;
+Result: Same person with identical face and hair wearing new clothing.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
