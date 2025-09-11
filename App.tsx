@@ -93,17 +93,31 @@ const FaceSwapPage: React.FC<{
         setGeneratedImage(resultImage);
         onResultGenerated(resultImage); // 상위 컴포넌트에도 저장
         
+        // 디버깅을 위한 로그 추가
+        console.log('🔍 Starting to save generation result...');
+        console.log('originalImage:', originalImage);
+        console.log('resultImage:', resultImage);
+        console.log('userId:', userId);
+        
         // 🆕 이미지 생성 결과 저장
-        if (originalImage && resultImage) {
-          await saveGenerationResult({
-            userId,
-            type: 'image',
-            originalImageUrl: originalImage.url,
-            resultUrl: resultImage.url,
-            facePrompt,
-            clothingPrompt,
-            creditsUsed: 1
-          });
+        try {
+          if (originalImage && resultImage) {
+            console.log('🔍 Calling saveGenerationResult...');
+            const saved = await saveGenerationResult({
+              userId,
+              type: 'image',
+              originalImageUrl: originalImage.url,
+              resultUrl: resultImage.url,
+              facePrompt,
+              clothingPrompt,
+              creditsUsed: 1
+            });
+            console.log('🔍 saveGenerationResult result:', saved);
+          } else {
+            console.log('🔍 Missing originalImage or resultImage');
+          }
+        } catch (error) {
+          console.error('🔍 Error saving generation result:', error);
         }
         
         // 크레딧 차감은 비동기로 처리
