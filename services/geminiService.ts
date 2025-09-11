@@ -3,6 +3,10 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import { ImageProcessor } from '../utils/imageProcessor';
 import type { ImageFile } from '../types';
 
+// 강제 캐시 무효화 및 버전 확인
+console.log('GEMINI SERVICE VERSION: 3.0 - USING 1.5-PRO');
+console.log('File timestamp:', new Date().toISOString());
+
 // 환경변수에서 API 키 가져오기
 const apiKey = process.env.GEMINI_API_KEY;
 
