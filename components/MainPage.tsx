@@ -1,5 +1,8 @@
 // components/MainPage.tsx
-import React from 'react';
+import React, { useState } from 'react';
+import { MenuIcon } from './icons/MenuIcon';
+import { HistoryIcon } from './icons/HistoryIcon';
+import { GenerationHistory } from './GenerationHistory';
 import type { UserCredits } from '../types';
 
 interface MainPageProps {
@@ -9,6 +12,14 @@ interface MainPageProps {
 }
 
 export const MainPage: React.FC<MainPageProps> = ({ onFaceSwapClick, onVideoSwapClick, credits }) => {
+  const [showMenu, setShowMenu] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const handleHistoryClick = () => {
+    setShowMenu(false);
+    setShowHistory(true);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-pink-50 to-blue-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-4">
@@ -24,6 +35,48 @@ export const MainPage: React.FC<MainPageProps> = ({ onFaceSwapClick, onVideoSwap
                 <p className="text-xs text-gray-500">남은 횟수</p>
                 <p className="text-2xl font-bold text-blue-600">{credits.remainingCredits}</p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 메뉴 버튼 - 크레딧 카드 아래 */}
+        {credits && (
+          <div className="flex justify-end mb-2">
+            <div className="relative">
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="p-2 bg-white/80 backdrop-blur rounded-lg shadow-md hover:shadow-lg transition-all duration-200 border border-gray-200"
+              >
+                <MenuIcon className="w-5 h-5 text-gray-600" />
+              </button>
+              
+              {/* 드롭다운 메뉴 */}
+              {showMenu && (
+                <div className="absolute right-0 top-12 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-10 min-w-[160px]">
+                  <button
+                    onClick={handleHistoryClick}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
+                  >
+                    <HistoryIcon className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm text-gray-700">내 작품 보기</span>
+                  </button>
+                  
+                  {/* 추후 다른 메뉴 항목 추가 가능 */}
+                  <div className="border-t border-gray-100">
+                    <div className="px-4 py-2">
+                      <p className="text-xs text-gray-400">최근 3일간의 작품만 표시됩니다</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* 메뉴 외부 클릭 시 닫기 */}
+              {showMenu && (
+                <div 
+                  className="fixed inset-0 z-0" 
+                  onClick={() => setShowMenu(false)}
+                />
+              )}
             </div>
           </div>
         )}
@@ -74,9 +127,9 @@ export const MainPage: React.FC<MainPageProps> = ({ onFaceSwapClick, onVideoSwap
 
         {/* Video Swap Card */}
         <div className="bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl p-6 shadow-xl transform transition-all duration-300 hover:scale-105 hover:shadow-2xl relative">
-          {/* 크레딧 요구사항 배지 */}
+          {/* 크레딧 요구사항 배지 - 동적으로 변경됨 */}
           <div className="absolute top-3 right-3 bg-white/90 px-2 py-1 rounded-full">
-            <span className="text-xs font-semibold text-blue-600">2회 차감</span>
+            <span className="text-xs font-semibold text-blue-600">2-3회 차감</span>
           </div>
           
           <div className="flex flex-col items-center text-center space-y-3">
@@ -128,6 +181,15 @@ export const MainPage: React.FC<MainPageProps> = ({ onFaceSwapClick, onVideoSwap
           </div>
         )}
       </div>
+
+      {/* 생성 내역 모달 */}
+      {showHistory && credits && (
+        <GenerationHistory 
+          isOpen={showHistory}
+          onClose={() => setShowHistory(false)}
+          userId={credits.userId}
+        />
+      )}
     </div>
   );
 };
