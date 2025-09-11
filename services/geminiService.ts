@@ -19,38 +19,27 @@ console.log('Gemini Service Configuration:', {
     twoStep: ENABLE_TWO_STEP
 });
 
-// 심플한 프롬프트 (테스트용)
+// 심플한 프롬프트 (개선된 버전)
 const getSimplePrompt = (facePrompt: string, clothingPrompt: string): string => {
   
   // 20대 남성
   if (facePrompt.includes('early 20s') && facePrompt.includes('male')) {
     return `
-Change this person's face to look like a different 20s East Asian male.
-Keep the hair exactly the same - same style, texture, and color.
-Keep the same pose and background.
-${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : 'Keep original clothing.'}
-
-IMPORTANT: Do not change the hairstyle.`;
+Modify the face of the person in this image to resemble a different East Asian male in his 20s. Crucially, **do not alter the hair whatsoever.** Maintain the exact same hairstyle, hair texture, hair color, and all other aspects of the hair. The pose and background should also remain precisely as they are in the original image.
+${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
   }
   
   // 20대 여성
   if (facePrompt.includes('early 20s') && facePrompt.includes('female')) {
     return `
-Change this person's face to look like a different 20s East Asian female.
-Keep the hair exactly the same - same style, texture, and color.
-Keep the same pose and background.
-${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : 'Keep original clothing.'}
-
-IMPORTANT: Do not change the hairstyle.`;
+Modify the face of the person in this image to resemble a different East Asian female in her 20s. Crucially, **do not alter the hair whatsoever.** Maintain the exact same hairstyle, hair texture, hair color, and all other aspects of the hair. The pose and background should also remain precisely as they are in the original image.
+${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
   }
   
   // 기본값
   return `
-Change only the face based on: ${facePrompt}
-Keep hair, pose, and background identical.
-${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : 'Keep original clothing.'}
-
-IMPORTANT: Do not change the hairstyle.`;
+Modify the face of the person in this image based on: ${facePrompt}. Crucially, **do not alter the hair whatsoever.** Maintain the exact same hairstyle, hair texture, hair color, and all other aspects of the hair. The pose and background should also remain precisely as they are in the original image.
+${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
 };
 
 // 2단계 방식: 얼굴만 변환 (심플)
@@ -255,7 +244,7 @@ const changeFaceInImageOriginal = async (
     }
 };
 
-// 메인 함수
+// 메인 함수 - 수동 2단계 방식
 export const changeFaceInImage = async (
     originalImage: ImageFile, 
     facePrompt: string,
@@ -263,50 +252,126 @@ export const changeFaceInImage = async (
 ): Promise<ImageFile | null> => {
     try {
         console.log('Starting transformation...');
-        console.log('Two-step enabled:', ENABLE_TWO_STEP);
         
-        // 2단계 방식
-        if (ENABLE_TWO_STEP) {
-            console.log('Using 2-step process');
-            
-            try {
-                // 1단계: 얼굴 변환
-                const faceResult = await changeFaceOnly(originalImage, facePrompt);
-                
-                if (!faceResult) {
-                    throw new Error('Face transformation failed');
-                }
-                
-                // 옷 변경 없으면 1단계만
-                if (!clothingPrompt || clothingPrompt.trim() === '') {
-                    console.log('Face-only transformation complete');
-                    return faceResult;
-                }
-                
-                // 2단계: 옷 변환
-                try {
-                    const finalResult = await changeClothingOnly(faceResult, clothingPrompt);
-                    if (finalResult) {
-                        console.log('2-step transformation complete');
-                        return finalResult;
-                    } else {
-                        console.log('Step 2 failed, returning step 1 result');
-                        return faceResult;
-                    }
-                } catch (step2Error) {
-                    console.warn('Step 2 error, returning step 1:', step2Error);
-                    return faceResult;
-                }
-                
-            } catch (twoStepError) {
-                console.warn('2-step process failed, falling back to original:', twoStepError);
-                return await changeFaceInImageOriginal(originalImage, facePrompt, clothingPrompt);
-            }
-        } else {
-            // 기존 단일 방식
-            console.log('Using original single-step process');
-            return await changeFaceInImageOriginal(originalImage, facePrompt, clothingPrompt);
+        // 1단계: 얼굴만 변환 (기존 방식으로)
+        console.log('Step 1: Face transformation only');
+        const prompt = getSimplePrompt(facePrompt, ''); // 의상 변경 없이 얼굴만
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image-preview',
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            data: originalImage.base64,
+                            mimeType: originalImage.mimeType,
+                        },
+                    },
+                    {
+                        text: prompt,
+                    },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE, Modality.TEXT],
+            },
+        });
+        
+        if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {
+            throw new Error('Invalid API response structure');
         }
+        
+        let faceResult: ImageFile | null = null;
+        
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const originalBase64 = part.inlineData.data;
+                const originalMimeType = part.inlineData.mimeType;
+                
+                try {
+                    faceResult = await ImageProcessor.cleanBase64Image(
+                        originalBase64, 
+                        originalMimeType
+                    );
+                } catch (cleanError) {
+                    console.warn('Failed to clean metadata, returning original:', cleanError);
+                    faceResult = {
+                        base64: originalBase64,
+                        mimeType: originalMimeType,
+                        url: `data:${originalMimeType};base64,${originalBase64}`
+                    };
+                }
+                break;
+            }
+        }
+        
+        if (!faceResult) {
+            throw new Error('No image data in face transformation response');
+        }
+        
+        console.log('Step 1 completed - face transformed');
+        
+        // 의상 변경이 없으면 1단계 결과만 반환
+        if (!clothingPrompt || clothingPrompt.trim() === '') {
+            return faceResult;
+        }
+        
+        // 2단계: 의상만 변경
+        console.log('Step 2: Clothing transformation');
+        const clothingPromptText = `
+Change only the clothing to: ${clothingPrompt}
+Keep the face, hair, pose, and background exactly the same.`;
+
+        const clothingResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image-preview',
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            data: faceResult.base64,
+                            mimeType: faceResult.mimeType,
+                        },
+                    },
+                    {
+                        text: clothingPromptText,
+                    },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE, Modality.TEXT],
+            },
+        });
+        
+        if (!clothingResponse.candidates || !clothingResponse.candidates[0] || !clothingResponse.candidates[0].content) {
+            console.warn('Clothing transformation failed, returning face result');
+            return faceResult;
+        }
+        
+        for (const part of clothingResponse.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const originalBase64 = part.inlineData.data;
+                const originalMimeType = part.inlineData.mimeType;
+                
+                try {
+                    const finalResult = await ImageProcessor.cleanBase64Image(
+                        originalBase64, 
+                        originalMimeType
+                    );
+                    console.log('Step 2 completed - clothing transformed');
+                    return finalResult;
+                } catch (cleanError) {
+                    console.warn('Failed to clean final metadata, returning original:', cleanError);
+                    return {
+                        base64: originalBase64,
+                        mimeType: originalMimeType,
+                        url: `data:${originalMimeType};base64,${originalBase64}`
+                    };
+                }
+            }
+        }
+        
+        console.warn('No clothing transformation result, returning face result');
+        return faceResult;
 
     } catch (error) {
         console.error("Critical transformation error:", error);
