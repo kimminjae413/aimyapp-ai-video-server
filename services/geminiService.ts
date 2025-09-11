@@ -280,20 +280,21 @@ You are a master facial feature transformer with HAIR PRESERVATION technology.
 
 Transform this person's facial features based on: ${facePrompt}
 
-CRITICAL HAIR PRESERVATION:
-- The hair must remain EXACTLY as shown in the original image
-- Do not change hair color, texture, style, length, or positioning
-- Keep the hair's natural appearance without adding curls, volume, or styling changes
+CRITICAL PRESERVATION PROTOCOL:
+- HAIR: Keep exact same hair texture - if naturally wavy, don't make it curly. Preserve original volume level and styling direction
+- POSE: Maintain identical head angle, gaze direction, and body positioning from original image
+- CLOTHING: Keep original clothing/accessories unchanged (salon cape, neck band, etc.)
+- ANGLE: Preserve the same camera angle and perspective - do not change viewing angle
 
-FACIAL TRANSFORMATION:
+FACIAL TRANSFORMATION ONLY:
 - Change only the facial features to match the requested style
-- Keep the same lighting and background
-- Preserve clothing exactly as shown
+- Keep identical lighting, shadows, and background
+- Maintain same head positioning and pose
 
 TECHNICAL REQUIREMENTS:
-- Photorealistic result
-- Natural facial proportions
-- Preserve all non-facial elements
+- Photorealistic result with natural facial proportions
+- Zero changes to non-facial elements
+- Exact preservation of pose and angle
 
 Result: Same person with transformed facial features but identical hair and clothing.`;
 
