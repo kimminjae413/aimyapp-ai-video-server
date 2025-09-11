@@ -19,26 +19,26 @@ console.log('Gemini Service Configuration:', {
     twoStep: ENABLE_TWO_STEP
 });
 
-// 심플한 프롬프트 (개선된 버전)
+// 심플한 프롬프트 (최종 개선된 버전)
 const getSimplePrompt = (facePrompt: string, clothingPrompt: string): string => {
   
   // 20대 남성
   if (facePrompt.includes('early 20s') && facePrompt.includes('male')) {
     return `
-Modify the face of the person in this image to resemble a different East Asian male in his 20s. Crucially, **do not alter the hair whatsoever.** Maintain the exact same hairstyle, hair texture, hair color, and all other aspects of the hair. The pose and background should also remain precisely as they are in the original image.
+Transform **only the facial features** to those of a distinct East Asian male in his 20s. **It is imperative that the hair, including the fringe, length, texture, style, and color, remains perfectly unchanged and identical to the original image.** Absolutely no alterations to the hair. The background and pose must also be preserved.
 ${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
   }
   
   // 20대 여성
   if (facePrompt.includes('early 20s') && facePrompt.includes('female')) {
     return `
-Modify the face of the person in this image to resemble a different East Asian female in her 20s. Crucially, **do not alter the hair whatsoever.** Maintain the exact same hairstyle, hair texture, hair color, and all other aspects of the hair. The pose and background should also remain precisely as they are in the original image.
+Transform **only the facial features** to those of a distinct East Asian female in her 20s. **It is imperative that the hair, including the fringe, length, texture, style, and color, remains perfectly unchanged and identical to the original image.** Absolutely no alterations to the hair. The background and pose must also be preserved.
 ${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
   }
   
   // 기본값
   return `
-Modify the face of the person in this image based on: ${facePrompt}. Crucially, **do not alter the hair whatsoever.** Maintain the exact same hairstyle, hair texture, hair color, and all other aspects of the hair. The pose and background should also remain precisely as they are in the original image.
+Transform **only the facial features** based on: ${facePrompt}. **It is imperative that the hair, including the fringe, length, texture, style, and color, remains perfectly unchanged and identical to the original image.** Absolutely no alterations to the hair. The background and pose must also be preserved.
 ${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
 };
 
