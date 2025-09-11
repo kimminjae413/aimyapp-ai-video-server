@@ -12,26 +12,29 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 
-// 🛡️ 안전 플래그: false로 설정하면 기존 코드와 100% 동일
+// 🛡️ 안전 플래그: 환경변수로 제어
 const ENABLE_TWO_STEP = process.env.ENABLE_TWO_STEP === 'true';
 const ENABLE_ENHANCED_HAIR = process.env.ENABLE_ENHANCED_HAIR === 'true';
 
-console.log('🎛️ Safety flags:', { 
+console.log('🎛️ Gemini Service Configuration:', { 
     twoStep: ENABLE_TWO_STEP, 
     enhancedHair: ENABLE_ENHANCED_HAIR 
 });
 
-// 🔒 헤어 보존 추가 보호 문구 (최소한의 개선)
+// 🔒 헤어 보존 강화 문구
 const getHairBooster = (): string => {
     if (!ENABLE_ENHANCED_HAIR) return '';
     
     return `
 
-🔒 HAIR TEXTURE PROTECTION:
-Keep the hair's natural texture unchanged - do not make it more curly, wavy, or voluminous than shown in the original image.`;
+🔒 ADVANCED HAIR TEXTURE PROTECTION:
+- Keep the hair's natural texture unchanged - do not make it more curly, wavy, or voluminous than shown in original
+- Preserve exact hair styling direction and natural flow
+- Maintain original hair density and thickness
+- Keep identical hair parting and positioning`;
 };
 
-// 📝 기존 프롬프트 함수들 (원본 그대로 복원)
+// 📝 연령별 최적화 프롬프트 (기존 방식)
 const getOptimizedPrompt = (facePrompt: string, clothingPrompt: string): string => {
   const hairBooster = getHairBooster();
   
@@ -48,12 +51,18 @@ DETAILED FACE DESCRIPTION:
 - Expression: Fresh, energetic expression with natural teenage confidence
 - Eyebrows: Naturally thick and well-defined but not overly groomed
 
-TECHNICAL REQUIREMENTS:
+STRICT PRESERVATION REQUIREMENTS:
 - Replace the original face completely with NO resemblance to the original person
 - Match exact lighting, shadows, and ambient light from original photo
 - Maintain photorealistic skin texture with teenage skin characteristics
 - Keep identical hair style, color, texture, and position
 - Preserve background and body pose exactly
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair changes)
+- 헤어스타일 변화, 각도 변화 없이 (no hairstyle changes, angle changes)
+- 배경 변화, 포즈 변화 없이 (no background change, pose change)
+
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
@@ -73,12 +82,18 @@ DETAILED FACE DESCRIPTION:
 - Expression: Fresh, optimistic expression with young adult charisma
 - Eyebrows: Well-defined, naturally masculine shape
 
-TECHNICAL REQUIREMENTS:
+STRICT PRESERVATION REQUIREMENTS:
 - Replace the original face completely with NO resemblance to the original person
 - Match exact lighting, shadows, and ambient light from original photo
 - Maintain photorealistic skin texture with young adult male characteristics
 - Keep identical hair style, color, texture, and position
 - Preserve background and body pose exactly
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair changes)
+- 헤어스타일 변화, 각도 변화 없이 (no hairstyle changes, angle changes)
+- 배경 변화, 포즈 변화 없이 (no background change, pose change)
+
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
@@ -98,12 +113,18 @@ DETAILED FACE DESCRIPTION:
 - Expression: Intellectual, confident expression with mature charisma and wisdom
 - Eyebrows: Well-groomed, masculine eyebrows with possible few gray hairs
 
-TECHNICAL REQUIREMENTS:
+STRICT PRESERVATION REQUIREMENTS:
 - Replace the original face completely with NO resemblance to the original person
 - Match exact lighting, shadows, and ambient light from original photo
 - Maintain photorealistic skin texture with mature male characteristics
 - Keep identical hair style, color, texture, and position
 - Preserve background and body pose exactly
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair changes)
+- 헤어스타일 변화, 각도 변화 없이 (no hairstyle changes, angle changes)
+- 배경 변화, 포즈 변화 없이 (no background change, pose change)
+
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
@@ -123,12 +144,18 @@ DETAILED FACE DESCRIPTION:
 - Expression: Dignified, charismatic expression with authority and life experience
 - Eyebrows: Mature eyebrows, possibly with some gray hairs, well-defined
 
-TECHNICAL REQUIREMENTS:
+STRICT PRESERVATION REQUIREMENTS:
 - Replace the original face completely with NO resemblance to the original person
 - Match exact lighting, shadows, and ambient light from original photo
 - Maintain photorealistic skin texture with middle-aged male characteristics
 - Keep identical hair style, color, texture, and position
 - Preserve background and body pose exactly
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair changes)
+- 헤어스타일 변화, 각도 변화 없이 (no hairstyle changes, angle changes)
+- 배경 변화, 포즈 변화 없이 (no background change, pose change)
+
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
@@ -148,12 +175,18 @@ DETAILED FACE DESCRIPTION:
 - Expression: Sweet, innocent expression with natural teenage charm and shyness
 - Eyebrows: Naturally shaped, soft eyebrows with youthful fullness
 
-TECHNICAL REQUIREMENTS:
+STRICT PRESERVATION REQUIREMENTS:
 - Replace the original face completely with NO resemblance to the original person
 - Match exact lighting, shadows, and ambient light from original photo
 - Maintain photorealistic skin texture with teenage female characteristics
 - Keep identical hair style, color, texture, and position
 - Preserve background and body pose exactly
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair changes)
+- 헤어스타일 변화, 각도 변화 없이 (no hairstyle changes, angle changes)
+- 배경 변화, 포즈 변화 없이 (no background change, pose change)
+
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
@@ -173,12 +206,18 @@ DETAILED FACE DESCRIPTION:
 - Expression: Vibrant, lively expression with young adult confidence and charm
 - Eyebrows: Well-shaped, naturally beautiful eyebrows with youthful fullness
 
-TECHNICAL REQUIREMENTS:
+STRICT PRESERVATION REQUIREMENTS:
 - Replace the original face completely with NO resemblance to the original person
 - Match exact lighting, shadows, and ambient light from original photo
 - Maintain photorealistic skin texture with young adult female characteristics
 - Keep identical hair style, color, texture, and position
 - Preserve background and body pose exactly
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair changes)
+- 헤어스타일 변화, 각도 변화 없이 (no hairstyle changes, angle changes)
+- 배경 변화, 포즈 변화 없이 (no background change, pose change)
+
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
@@ -198,12 +237,18 @@ DETAILED FACE DESCRIPTION:
 - Expression: Elegant, sophisticated expression with mature feminine charm and intelligence
 - Eyebrows: Perfectly groomed, elegant eyebrows with mature sophistication
 
-TECHNICAL REQUIREMENTS:
+STRICT PRESERVATION REQUIREMENTS:
 - Replace the original face completely with NO resemblance to the original person
 - Match exact lighting, shadows, and ambient light from original photo
 - Maintain photorealistic skin texture with mature female characteristics
 - Keep identical hair style, color, texture, and position
 - Preserve background and body pose exactly
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair changes)
+- 헤어스타일 변화, 각도 변화 없이 (no hairstyle changes, angle changes)
+- 배경 변화, 포즈 변화 없이 (no background change, pose change)
+
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
@@ -223,12 +268,18 @@ DETAILED FACE DESCRIPTION:
 - Expression: Graceful, gentle expression with maternal warmth and life wisdom
 - Eyebrows: Mature, well-maintained eyebrows with graceful aging, possibly few gray hairs
 
-TECHNICAL REQUIREMENTS:
+STRICT PRESERVATION REQUIREMENTS:
 - Replace the original face completely with NO resemblance to the original person
 - Match exact lighting, shadows, and ambient light from original photo
 - Maintain photorealistic skin texture with middle-aged female characteristics
 - Keep identical hair style, color, texture, and position
 - Preserve background and body pose exactly
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair changes)
+- 헤어스타일 변화, 각도 변화 없이 (no hairstyle changes, angle changes)
+- 배경 변화, 포즈 변화 없이 (no background change, pose change)
+
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
@@ -261,6 +312,13 @@ TECHNICAL PRECISION:
   - Hair must remain 100% EXACTLY as original - NO modifications whatsoever
   - **HAIR IS COMPLETELY OFF-LIMITS** for any transformation
 - Keep identical background and pose
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair changes)
+- 헤어스타일 변화, 각도 변화 없이 (no hairstyle changes, angle changes)
+- 배경 변화, 포즈 변화 없이 (no background change, pose change)
+- 얼굴 왜곡, 부자연스러운 얼굴 없이 (no facial distortion, unnatural face)
+
 ${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
@@ -290,6 +348,14 @@ FACIAL TRANSFORMATION ONLY:
 - Change only the facial features to match the requested style
 - Keep identical lighting, shadows, and background
 - Maintain same head positioning and pose
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair)
+- 짧은 머리, 긴 머리 없이 (no short hair, long hair)
+- 헤어스타일 변화 없이 (no hairstyle changes)
+- 각도 변화, 포즈 변화 없이 (no angle change, pose change)
+- 배경 변화, 의상 변화 없이 (no background change, clothing change)
+- 얼굴 왜곡, 부자연스러운 얼굴 없이 (no facial distortion, unnatural face)
 
 TECHNICAL REQUIREMENTS:
 - Photorealistic result with natural facial proportions
@@ -374,6 +440,11 @@ CLOTHING TRANSFORMATION ONLY:
 - Change only the clothing/garments to the new style
 - Ensure natural fit and appearance
 - Maintain same body positioning
+
+STRICTLY FORBIDDEN (DO NOT CREATE):
+- 얼굴 변화, 헤어 변화 없이 (no face change, hair change)
+- 각도 변화, 포즈 변화 없이 (no angle change, pose change)
+- 배경 변화 없이 (no background change)
 
 Result: Same person with identical face and hair wearing new clothing.`;
 
@@ -497,7 +568,7 @@ const changeFaceInImageOriginal = async (
     }
 };
 
-// 🚀 메인 함수 (최대한 안전하게)
+// 🚀 메인 함수 (환경변수로 완전 제어)
 export const changeFaceInImage = async (
     originalImage: ImageFile, 
     facePrompt: string,
@@ -505,9 +576,9 @@ export const changeFaceInImage = async (
 ): Promise<ImageFile | null> => {
     try {
         console.log('🚀 Starting transformation...');
-        console.log('🎛️ Two-step enabled:', ENABLE_TWO_STEP);
+        console.log('🎛️ Configuration:', { twoStep: ENABLE_TWO_STEP, enhancedHair: ENABLE_ENHANCED_HAIR });
         
-        // 2단계 방식 (플래그로 제어)
+        // 2단계 방식 (환경변수로 제어)
         if (ENABLE_TWO_STEP) {
             console.log('📍 Using 2-step process');
             
@@ -561,6 +632,7 @@ export const getServiceStatus = () => {
     return {
         twoStepEnabled: ENABLE_TWO_STEP,
         enhancedHairEnabled: ENABLE_ENHANCED_HAIR,
-        environment: process.env.NODE_ENV
+        environment: process.env.NODE_ENV,
+        model: 'gemini-2.5-flash-image-preview'
     };
 };
