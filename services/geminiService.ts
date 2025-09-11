@@ -12,250 +12,290 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 
-// 🎛️ 기능 플래그 (배포 안전성을 위한 점진적 활성화)
-const FEATURE_FLAGS = {
-    // 개발 환경에서만 신기능 활성화, 배포 시 false로 설정
-    ENABLE_IMPROVED_PROMPTS: process.env.NODE_ENV === 'development' || process.env.ENABLE_IMPROVED_FACE === 'true',
-    ENABLE_HAIR_ANALYSIS: process.env.ENABLE_HAIR_ANALYSIS === 'true',
-    ENABLE_STEP_VERIFICATION: process.env.ENABLE_VERIFICATION === 'true',
-    // 사용자 비율 제어 (0-100)
-    IMPROVED_USER_PERCENTAGE: parseInt(process.env.IMPROVED_USER_PERCENTAGE || '0')
-};
+// 🛡️ 안전 플래그: false로 설정하면 기존 코드와 100% 동일
+const ENABLE_TWO_STEP = process.env.ENABLE_TWO_STEP === 'true';
+const ENABLE_ENHANCED_HAIR = process.env.ENABLE_ENHANCED_HAIR === 'true';
 
-console.log('🎛️ Feature flags loaded:', {
-    improved: FEATURE_FLAGS.ENABLE_IMPROVED_PROMPTS,
-    analysis: FEATURE_FLAGS.ENABLE_HAIR_ANALYSIS,
-    verification: FEATURE_FLAGS.ENABLE_STEP_VERIFICATION,
-    userPercentage: FEATURE_FLAGS.IMPROVED_USER_PERCENTAGE
+console.log('🎛️ Safety flags:', { 
+    twoStep: ENABLE_TWO_STEP, 
+    enhancedHair: ENABLE_ENHANCED_HAIR 
 });
 
-// 🔒 헤어 보존 강화 문구 (안전한 추가 보호)
-const getHairProtectionBooster = (): string => {
+// 🔒 헤어 보존 추가 보호 문구 (최소한의 개선)
+const getHairBooster = (): string => {
+    if (!ENABLE_ENHANCED_HAIR) return '';
+    
     return `
 
-🔒 CRITICAL HAIR PRESERVATION PROTOCOL:
-- Maintain the hair's ORIGINAL NATURAL TEXTURE exactly as shown
-- Do NOT add artificial curls, waves, or extra volume that wasn't there originally
-- Keep the hair's natural roughness and organic, unstyled appearance
-- Preserve the exact hair direction, fall pattern, and styling
-- Hair color, length, and cut must remain completely unchanged
-- The hair should look identical to the source image in every aspect`;
+🔒 HAIR TEXTURE PROTECTION:
+Keep the hair's natural texture unchanged - do not make it more curly, wavy, or voluminous than shown in the original image.`;
 };
 
-// 📊 사용자별 기능 활성화 체크 (A/B 테스트용)
-const shouldUseImprovedFeatures = (): boolean => {
-    if (FEATURE_FLAGS.IMPROVED_USER_PERCENTAGE === 0) return false;
-    if (FEATURE_FLAGS.IMPROVED_USER_PERCENTAGE >= 100) return true;
-    
-    // 간단한 해시 기반 사용자 분할 (실제로는 userId 기반으로 할 수 있음)
-    const randomSeed = Math.floor(Math.random() * 100);
-    return randomSeed < FEATURE_FLAGS.IMPROVED_USER_PERCENTAGE;
-};
-
-// 🎯 1단계: 얼굴 변형 전용 프롬프트 (개선 버전)
-const getFaceOnlyPromptImproved = (facePrompt: string): string => {
-  const hairBooster = getHairProtectionBooster();
+// 📝 기존 프롬프트 함수들 (원본 그대로 복원)
+const getOptimizedPrompt = (facePrompt: string, clothingPrompt: string): string => {
+  const hairBooster = getHairBooster();
   
   // 10대 남성
   if (facePrompt.includes('late teens') && facePrompt.includes('male')) {
     return `
-You are a master portrait editor specializing in facial feature adjustment with ABSOLUTE HAIR PRESERVATION technology.
+You are a professional portrait photographer specializing in teenage subjects. Transform this photo to show a teenage East Asian male face with these specific characteristics:
 
-Transform this person to appear as a different 17-19 year old East Asian male while maintaining their core facial identity.
+DETAILED FACE DESCRIPTION:
+- Age: 17-19 years old with clear teenage features
+- Skin: Very smooth, clear complexion with natural teenage glow and minimal facial hair
+- Eyes: Bright, youthful eyes with clear whites and naturally thick eyelashes
+- Facial structure: Softer jawline, slightly rounded cheeks, youthful bone structure
+- Expression: Fresh, energetic expression with natural teenage confidence
+- Eyebrows: Naturally thick and well-defined but not overly groomed
 
+TECHNICAL REQUIREMENTS:
+- Replace the original face completely with NO resemblance to the original person
+- Match exact lighting, shadows, and ambient light from original photo
+- Maintain photorealistic skin texture with teenage skin characteristics
+- Keep identical hair style, color, texture, and position
+- Preserve background and body pose exactly
+${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
-FACIAL TRANSFORMATION APPROACH:
-- MAINTAIN the person's basic bone structure and facial foundation
-- ADJUST facial features to create a teenage male appearance:
-  * Soften jawline and create more youthful proportions
-  * Adjust eye shape and brightness for teenage energy
-  * Smooth skin texture with natural teenage glow
-  * Modify facial expression to show youthful confidence
-  * Adjust eyebrow shape for natural teenage fullness
-- CREATE the impression of a different person through feature adjustments
-- PRESERVE the core facial identity while transforming the appearance
-
-CLOTHING PRESERVATION:
-- Keep original clothing exactly unchanged
-- Preserve all clothing details, colors, and patterns
-
-TECHNICAL PRECISION:
-- Match original lighting and shadows perfectly
-- Maintain photorealistic quality with teenage skin characteristics
-- Preserve background and pose exactly
-
-Result: The same person transformed to appear as a different teenage male through careful feature adjustments.`;
+Create a natural, authentic photograph of a completely different teenage male person.`;
   }
   
   // 20대 남성
   if (facePrompt.includes('early 20s') && facePrompt.includes('male')) {
     return `
-You are an expert facial feature modifier with ADVANCED HAIR PROTECTION SYSTEM.
+You are a professional portrait photographer specializing in young adult subjects. Transform this photo to show a young adult East Asian male face with these specific characteristics:
 
-Transform this person's appearance to look like a different 22-25 year old East Asian male while preserving their fundamental facial structure.
-
-${hairBooster}
-
-FACIAL FEATURE ADJUSTMENT:
-- KEEP the person's basic facial bone structure intact
-- MODIFY features to create a young adult male appearance:
-  * Adjust jawline definition for masculine maturity
-  * Refine eye shape with confident, bright expression
-  * Enhance skin quality with healthy young adult texture
-  * Modify facial proportions for 20s male characteristics
-  * Adjust eyebrow shape for masculine definition
-- TRANSFORM the overall appearance while maintaining core identity
-- CREATE the effect of a different person through strategic adjustments
-
-CLOTHING PRESERVATION:
-- Original clothing must remain exactly as shown
-- Preserve all clothing elements without modification
+DETAILED FACE DESCRIPTION:
+- Age: 22-25 years old with fresh young adult features
+- Skin: Healthy, clear skin with subtle masculine texture and light facial hair or clean-shaven
+- Eyes: Confident, bright eyes with mature but youthful expression
+- Facial structure: More defined jawline than teenage years, developing masculine features
+- Expression: Fresh, optimistic expression with young adult charisma
+- Eyebrows: Well-defined, naturally masculine shape
 
 TECHNICAL REQUIREMENTS:
-- Perfect lighting and shadow matching
-- Photorealistic young adult male skin
-- Preserve background and pose exactly
+- Replace the original face completely with NO resemblance to the original person
+- Match exact lighting, shadows, and ambient light from original photo
+- Maintain photorealistic skin texture with young adult male characteristics
+- Keep identical hair style, color, texture, and position
+- Preserve background and body pose exactly
+${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+${hairBooster}
 
-Result: The same person appearing as a different young adult male through facial adjustments.`;
+Create a natural, authentic photograph of a completely different young adult male person.`;
   }
   
-  // 다른 연령대도 동일한 패턴으로 계속...
-  // (나머지 연령대 프롬프트도 hairBooster 추가)
+  // 30대 남성
+  if (facePrompt.includes('30s') && facePrompt.includes('male')) {
+    return `
+You are a professional portrait photographer specializing in mature adult subjects. Transform this photo to show a mature East Asian male face with these specific characteristics:
+
+DETAILED FACE DESCRIPTION:
+- Age: 30-35 years old with sophisticated mature features
+- Skin: Refined skin with subtle signs of maturity, possible light wrinkles around eyes, well-groomed facial hair or clean-shaven
+- Eyes: Intelligent, mature eyes with depth and life experience, possible slight crow's feet
+- Facial structure: Strong, well-defined masculine jawline, mature bone structure, refined cheekbones
+- Expression: Intellectual, confident expression with mature charisma and wisdom
+- Eyebrows: Well-groomed, masculine eyebrows with possible few gray hairs
+
+TECHNICAL REQUIREMENTS:
+- Replace the original face completely with NO resemblance to the original person
+- Match exact lighting, shadows, and ambient light from original photo
+- Maintain photorealistic skin texture with mature male characteristics
+- Keep identical hair style, color, texture, and position
+- Preserve background and body pose exactly
+${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+${hairBooster}
+
+Create a natural, authentic photograph of a completely different mature male person.`;
+  }
+  
+  // 40대 남성
+  if (facePrompt.includes('40s') && facePrompt.includes('male')) {
+    return `
+You are a professional portrait photographer specializing in distinguished middle-aged subjects. Transform this photo to show a distinguished East Asian male face with these specific characteristics:
+
+DETAILED FACE DESCRIPTION:
+- Age: 40-45 years old with distinguished middle-aged features
+- Skin: Mature skin with natural aging signs, laugh lines, possible forehead lines, distinguished facial hair or clean-shaven
+- Eyes: Wise, experienced eyes with depth, possible bags under eyes, mature expression
+- Facial structure: Strong, fully developed masculine features, defined jawline, mature cheekbones
+- Expression: Dignified, charismatic expression with authority and life experience
+- Eyebrows: Mature eyebrows, possibly with some gray hairs, well-defined
+
+TECHNICAL REQUIREMENTS:
+- Replace the original face completely with NO resemblance to the original person
+- Match exact lighting, shadows, and ambient light from original photo
+- Maintain photorealistic skin texture with middle-aged male characteristics
+- Keep identical hair style, color, texture, and position
+- Preserve background and body pose exactly
+${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+${hairBooster}
+
+Create a natural, authentic photograph of a completely different middle-aged male person.`;
+  }
+  
+  // 10대 여성
+  if (facePrompt.includes('late teens') && facePrompt.includes('female')) {
+    return `
+You are a professional portrait photographer specializing in teenage female subjects. Transform this photo to show a teenage East Asian female face with these specific characteristics:
+
+DETAILED FACE DESCRIPTION:
+- Age: 17-19 years old with innocent teenage female features
+- Skin: Very smooth, porcelain-like clear skin with natural teenage glow and rosy cheeks
+- Eyes: Large, bright innocent eyes with natural long eyelashes and youthful sparkle
+- Facial structure: Soft, rounded facial features, delicate bone structure, small refined nose
+- Expression: Sweet, innocent expression with natural teenage charm and shyness
+- Eyebrows: Naturally shaped, soft eyebrows with youthful fullness
+
+TECHNICAL REQUIREMENTS:
+- Replace the original face completely with NO resemblance to the original person
+- Match exact lighting, shadows, and ambient light from original photo
+- Maintain photorealistic skin texture with teenage female characteristics
+- Keep identical hair style, color, texture, and position
+- Preserve background and body pose exactly
+${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+${hairBooster}
+
+Create a natural, authentic photograph of a completely different teenage female person.`;
+  }
+  
+  // 20대 여성 (현재 잘 작동하는 것)
+  if (facePrompt.includes('early 20s') && facePrompt.includes('female')) {
+    return `
+You are a professional portrait photographer specializing in young adult female subjects. Transform this photo to show a vibrant East Asian female face with these specific characteristics:
+
+DETAILED FACE DESCRIPTION:
+- Age: 22-25 years old with vibrant young adult female features
+- Skin: Smooth, healthy glowing skin with natural radiance and perfect complexion
+- Eyes: Bright, lively eyes with natural beauty, expressive and confident gaze
+- Facial structure: Refined feminine features, elegant bone structure, perfectly proportioned
+- Expression: Vibrant, lively expression with young adult confidence and charm
+- Eyebrows: Well-shaped, naturally beautiful eyebrows with youthful fullness
+
+TECHNICAL REQUIREMENTS:
+- Replace the original face completely with NO resemblance to the original person
+- Match exact lighting, shadows, and ambient light from original photo
+- Maintain photorealistic skin texture with young adult female characteristics
+- Keep identical hair style, color, texture, and position
+- Preserve background and body pose exactly
+${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+${hairBooster}
+
+Create a natural, authentic photograph of a completely different young adult female person.`;
+  }
+  
+  // 30대 여성
+  if (facePrompt.includes('30s') && facePrompt.includes('female')) {
+    return `
+You are a professional portrait photographer specializing in sophisticated adult female subjects. Transform this photo to show an elegant East Asian female face with these specific characteristics:
+
+DETAILED FACE DESCRIPTION:
+- Age: 30-35 years old with sophisticated mature female features
+- Skin: Refined, elegant skin with subtle maturity, natural glow with sophisticated texture
+- Eyes: Sophisticated, intelligent eyes with depth and elegance, mature confidence
+- Facial structure: Refined, elegant feminine features, mature bone structure, sophisticated beauty
+- Expression: Elegant, sophisticated expression with mature feminine charm and intelligence
+- Eyebrows: Perfectly groomed, elegant eyebrows with mature sophistication
+
+TECHNICAL REQUIREMENTS:
+- Replace the original face completely with NO resemblance to the original person
+- Match exact lighting, shadows, and ambient light from original photo
+- Maintain photorealistic skin texture with mature female characteristics
+- Keep identical hair style, color, texture, and position
+- Preserve background and body pose exactly
+${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+${hairBooster}
+
+Create a natural, authentic photograph of a completely different mature female person.`;
+  }
+  
+  // 40대 여성
+  if (facePrompt.includes('40s') && facePrompt.includes('female')) {
+    return `
+You are a professional portrait photographer specializing in graceful middle-aged female subjects. Transform this photo to show a graceful East Asian female face with these specific characteristics:
+
+DETAILED FACE DESCRIPTION:
+- Age: 40-45 years old with graceful middle-aged female features
+- Skin: Mature, graceful skin with natural aging signs, laugh lines around eyes, elegant texture
+- Eyes: Wise, gentle eyes with depth and life experience, graceful mature expression
+- Facial structure: Refined, graceful feminine features, mature elegant bone structure
+- Expression: Graceful, gentle expression with maternal warmth and life wisdom
+- Eyebrows: Mature, well-maintained eyebrows with graceful aging, possibly few gray hairs
+
+TECHNICAL REQUIREMENTS:
+- Replace the original face completely with NO resemblance to the original person
+- Match exact lighting, shadows, and ambient light from original photo
+- Maintain photorealistic skin texture with middle-aged female characteristics
+- Keep identical hair style, color, texture, and position
+- Preserve background and body pose exactly
+${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+${hairBooster}
+
+Create a natural, authentic photograph of a completely different middle-aged female person.`;
+  }
   
   // 기본 프롬프트 (스타일 옵션들)
   return `
-You are a master facial feature transformer with ULTIMATE HAIR PRESERVATION TECHNOLOGY.
+You are a MASTER FACE SCULPTOR with the power to create COMPLETELY DIFFERENT human beings. Your mission: RADICAL FACE TRANSFORMATION that makes the person TOTALLY UNRECOGNIZABLE.
 
-Transform this person's appearance based on the following style while maintaining their core facial identity.
+MANDATORY COMPLETE FACE RECONSTRUCTION:
+- Transform based on: ${facePrompt}
+- DESTROY original facial identity: Different eye architecture, nose geometry, mouth structure, face composition
+- REBUILD with: Completely different facial proportions, feature placement, bone structure, genetic markers
+- NEW GENETIC FEATURES: Different eye spacing/shape, nose bridge/width, lip thickness/shape, face ratios
+- RADICAL TRANSFORMATION: Different skull shape, different facial planes, different human identity
 
+EXTREME TRANSFORMATION REQUIREMENTS:
+- ZERO DNA resemblance - must look like different ancestry, different genetics, different human being
+- COMPLETELY UNRECOGNIZABLE facial features from original
+- Transform into ENTIRELY DIFFERENT person with specified characteristics
+- Annihilate ALL original facial DNA markers
+- Different facial geometry, different feature harmony, different human essence
+
+TECHNICAL PRECISION:
+- Match original lighting/shadows PERFECTLY while changing EVERYTHING else
+- Maintain photorealistic skin texture with natural details
+- **ABSOLUTE HAIR PRESERVATION - MOST CRITICAL RULE:**
+  - **NEVER CHANGE THE HAIR** - Keep IDENTICAL hairstyle, color, texture, length, every strand position
+  - Hair must remain 100% EXACTLY as original - NO modifications whatsoever
+  - **HAIR IS COMPLETELY OFF-LIMITS** for any transformation
+- Keep identical background and pose
+${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
 ${hairBooster}
 
-STYLE TRANSFORMATION:
-Transform based on: ${facePrompt}
-- PRESERVE the person's fundamental facial structure and bone architecture
-- MODIFY features to create the requested style/appearance:
-  * Adjust facial contours and proportions appropriately
-  * Enhance or modify expression and facial characteristics
-  * Refine skin texture and quality for the desired look
-  * Modify facial features while maintaining core identity
-- MAINTAIN the person's basic facial foundation while transforming appearance
-- CREATE the impression of a different person through strategic feature adjustments
-
-CLOTHING PRESERVATION:
-- Original clothing must remain exactly unchanged
-- Preserve all clothing details and styling
-
-TECHNICAL MASTERY:
-- Match original lighting and shadows perfectly
-- Maintain photorealistic quality appropriate for transformation
-- Preserve background and pose exactly
-
-Result: The same person transformed to appear different through strategic facial feature modifications while preserving their core identity.`;
+Create a COMPLETELY DIFFERENT human being with specified traits - ZERO resemblance to original face.`;
 };
 
-// 📝 기존 프롬프트 (안전 버전 - 최소 개선)
-const getFaceOnlyPromptSafe = (facePrompt: string): string => {
-  // 기존 프롬프트에 헤어 보호만 강화
-  const basePrompt = getFaceOnlyPromptOriginal(facePrompt);
-  const minimalHairProtection = `
-
-🔒 ENHANCED HAIR PROTECTION:
-Keep the hair texture natural and unmodified - do not make it more curly, wavy, or voluminous than the original. Maintain the exact natural hair appearance.`;
-  
-  return basePrompt + minimalHairProtection;
-};
-
-// 🔄 기존 프롬프트 (완전 백업)
-const getFaceOnlyPromptOriginal = (facePrompt: string): string => {
-  // 기존 코드 그대로 보존
-  if (facePrompt.includes('late teens') && facePrompt.includes('male')) {
-    return `
-You are a master portrait editor specializing in facial feature adjustment. Transform this person to appear as a different 17-19 year old East Asian male while maintaining their core facial identity.
-
-HAIR PRESERVATION (ABSOLUTE PRIORITY):
-- Study the exact hairstyle: color, texture, length, style, parting, volume, positioning
-- Keep hair 100% IDENTICAL - no changes to any hair characteristics
-- Preserve every strand position and natural flow
-
-FACIAL TRANSFORMATION APPROACH:
-- MAINTAIN the person's basic bone structure and facial foundation
-- ADJUST facial features to create a teenage male appearance:
-  * Soften jawline and create more youthful proportions
-  * Adjust eye shape and brightness for teenage energy
-  * Smooth skin texture with natural teenage glow
-  * Modify facial expression to show youthful confidence
-  * Adjust eyebrow shape for natural teenage fullness
-- CREATE the impression of a different person through feature adjustments
-- PRESERVE the core facial identity while transforming the appearance
-
-CLOTHING PRESERVATION:
-- Keep original clothing exactly unchanged
-- Preserve all clothing details, colors, and patterns
-
-TECHNICAL PRECISION:
-- Match original lighting and shadows perfectly
-- Maintain photorealistic quality with teenage skin characteristics
-- Preserve background and pose exactly
-
-Result: The same person transformed to appear as a different teenage male through careful feature adjustments.`;
-  }
-  
-  // 나머지 기존 프롬프트들...
-  return `기존 프롬프트 내용`;
-};
-
-// 2단계: 의상 변환 전용 프롬프트 (안전하게 유지)
-const getClothingOnlyPrompt = (clothingPrompt: string): string => {
-  return `
-You are a CLOTHING TRANSFORMATION specialist with ABSOLUTE FACE AND HAIR PROTECTION technology.
-
-CRITICAL PRESERVATION REQUIREMENTS:
-- The person's FACE must remain EXACTLY as shown - DO NOT change any facial features
-- The person's HAIR must remain EXACTLY as shown - DO NOT change any hair details
-- Keep identical: facial structure, skin, eyes, nose, mouth, expressions, hair color, hair texture, hair style, hair positioning
-
-🔒 ENHANCED HAIR PROTECTION:
-- Hair texture must remain completely natural and unchanged
-- Do not add any styling, curls, waves, or volume modifications
-- Preserve the exact hair appearance from the input image
-
-CLOTHING TRANSFORMATION ONLY:
-Transform the clothing to: ${clothingPrompt}
-- Change ONLY the clothing, keeping the fit and style appropriate for the person
-- Ensure the new clothing looks natural and well-fitted
-- Maintain the same pose and body position
-
-TECHNICAL PRECISION:
-- Match original lighting and shadows perfectly
-- Keep the same background
-- Preserve all non-clothing elements exactly
-- Maintain photorealistic quality
-
-Result: Same person with identical face and hair, but wearing the new clothing style.`;
-};
-
-// 🎯 1단계: 얼굴만 변환하는 함수 (에러 처리 강화)
+// 🎯 2단계 방식: 얼굴만 변환
 const changeFaceOnly = async (
     originalImage: ImageFile, 
     facePrompt: string
 ): Promise<ImageFile | null> => {
     try {
-        console.log('🎯 Starting face-only transformation...');
+        console.log('🎯 Face-only transformation starting...');
         
-        // 사용자별 기능 선택
-        const useImproved = FEATURE_FLAGS.ENABLE_IMPROVED_PROMPTS && shouldUseImprovedFeatures();
-        console.log(`📊 Using ${useImproved ? 'improved' : 'safe'} prompts for this user`);
-        
-        let prompt: string;
-        
-        if (useImproved) {
-            prompt = getFaceOnlyPromptImproved(facePrompt);
-        } else if (FEATURE_FLAGS.ENABLE_IMPROVED_PROMPTS) {
-            prompt = getFaceOnlyPromptSafe(facePrompt);
-        } else {
-            prompt = getFaceOnlyPromptOriginal(facePrompt);
-        }
+        const prompt = `
+You are a master facial feature transformer with HAIR PRESERVATION technology.
+
+Transform this person's facial features based on: ${facePrompt}
+
+CRITICAL HAIR PRESERVATION:
+- The hair must remain EXACTLY as shown in the original image
+- Do not change hair color, texture, style, length, or positioning
+- Keep the hair's natural appearance without adding curls, volume, or styling changes
+
+FACIAL TRANSFORMATION:
+- Change only the facial features to match the requested style
+- Keep the same lighting and background
+- Preserve clothing exactly as shown
+
+TECHNICAL REQUIREMENTS:
+- Photorealistic result
+- Natural facial proportions
+- Preserve all non-facial elements
+
+Result: Same person with transformed facial features but identical hair and clothing.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
@@ -274,9 +314,13 @@ const changeFaceOnly = async (
             },
             config: {
                 responseModalities: [Modality.IMAGE, Modality.TEXT],
-                temperature: 0.3, // 낮은 온도로 일관성 향상
+                temperature: 0.3,
             },
         });
+        
+        if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {
+            throw new Error('Invalid API response structure');
+        }
         
         for (const part of response.candidates[0].content.parts) {
             if (part.inlineData) {
@@ -288,10 +332,10 @@ const changeFaceOnly = async (
                         originalBase64, 
                         originalMimeType
                     );
-                    console.log('✅ Face transformation completed successfully');
+                    console.log('✅ Face transformation completed');
                     return cleanedImage;
                 } catch (cleanError) {
-                    console.warn('⚠️ Failed to clean metadata, returning original:', cleanError);
+                    console.warn('⚠️ Metadata cleaning failed, using original');
                     return {
                         base64: originalBase64,
                         mimeType: originalMimeType,
@@ -301,72 +345,40 @@ const changeFaceOnly = async (
             }
         }
         
-        console.warn('⚠️ No image data received from Gemini API');
-        return null;
+        throw new Error('No image data in API response');
 
     } catch (error) {
-        console.error("❌ Error in face-only transformation:", error);
-        
-        // 개선된 프롬프트 실패 시 기본 프롬프트로 재시도 (안전장치)
-        console.log('🔄 Retrying with original prompt as fallback...');
-        try {
-            const fallbackPrompt = getFaceOnlyPromptOriginal(facePrompt);
-            const fallbackResponse = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image-preview',
-                contents: {
-                    parts: [
-                        {
-                            inlineData: {
-                                data: originalImage.base64,
-                                mimeType: originalImage.mimeType,
-                            },
-                        },
-                        {
-                            text: fallbackPrompt,
-                        },
-                    ],
-                },
-                config: {
-                    responseModalities: [Modality.IMAGE, Modality.TEXT],
-                    temperature: 0.3,
-                },
-            });
-            
-            for (const part of fallbackResponse.candidates[0].content.parts) {
-                if (part.inlineData) {
-                    console.log('✅ Fallback transformation successful');
-                    try {
-                        const cleanedImage = await ImageProcessor.cleanBase64Image(
-                            part.inlineData.data, 
-                            part.inlineData.mimeType
-                        );
-                        return cleanedImage;
-                    } catch (cleanError) {
-                        return {
-                            base64: part.inlineData.data,
-                            mimeType: part.inlineData.mimeType,
-                            url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-                        };
-                    }
-                }
-            }
-        } catch (fallbackError) {
-            console.error("❌ Fallback also failed:", fallbackError);
-        }
-        
-        throw new Error("Failed to change face using Gemini API.");
+        console.error("❌ Face transformation error:", error);
+        throw error;
     }
 };
 
-// 🎽 2단계: 의상만 변환하는 함수 (안전성 강화)
+// 🎽 2단계 방식: 옷만 변환
 const changeClothingOnly = async (
     faceChangedImage: ImageFile, 
     clothingPrompt: string
 ): Promise<ImageFile | null> => {
     try {
-        console.log('👕 Starting clothing-only transformation...');
+        console.log('👕 Clothing-only transformation starting...');
         
-        const prompt = getClothingOnlyPrompt(clothingPrompt);
+        const prompt = `
+Transform only the clothing in this image.
+
+PRESERVATION REQUIREMENTS:
+- Keep the person's face EXACTLY as shown
+- Keep the hair EXACTLY as shown  
+- Keep the background EXACTLY as shown
+- Change ONLY the clothing
+
+CLOTHING CHANGE:
+Transform the clothing to: ${clothingPrompt}
+
+TECHNICAL REQUIREMENTS:
+- Natural fit and appearance
+- Same lighting and shadows
+- Photorealistic result
+
+Result: Same person and hair with new clothing only.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
@@ -389,6 +401,10 @@ const changeClothingOnly = async (
             },
         });
         
+        if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {
+            throw new Error('Invalid API response structure');
+        }
+        
         for (const part of response.candidates[0].content.parts) {
             if (part.inlineData) {
                 const originalBase64 = part.inlineData.data;
@@ -399,10 +415,10 @@ const changeClothingOnly = async (
                         originalBase64, 
                         originalMimeType
                     );
-                    console.log('✅ Clothing transformation completed successfully');
+                    console.log('✅ Clothing transformation completed');
                     return cleanedImage;
                 } catch (cleanError) {
-                    console.warn('⚠️ Failed to clean metadata, returning original:', cleanError);
+                    console.warn('⚠️ Metadata cleaning failed, using original');
                     return {
                         base64: originalBase64,
                         mimeType: originalMimeType,
@@ -412,103 +428,142 @@ const changeClothingOnly = async (
             }
         }
         
-        console.warn('⚠️ No image data received for clothing transformation');
-        return null;
+        throw new Error('No image data in clothing transformation response');
 
     } catch (error) {
-        console.error("❌ Error in clothing transformation:", error);
-        throw new Error("Failed to change clothing using Gemini API.");
+        console.error("❌ Clothing transformation error:", error);
+        throw error;
     }
 };
 
-// 🛡️ 메인 함수: 안전한 2단계 프로세스
+// 🛡️ 기존 단일 방식 (안전 백업)
+const changeFaceInImageOriginal = async (
+    originalImage: ImageFile, 
+    facePrompt: string,
+    clothingPrompt: string
+): Promise<ImageFile | null> => {
+    try {
+        console.log('🔄 Using original single-step method');
+        
+        const prompt = getOptimizedPrompt(facePrompt, clothingPrompt);
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image-preview',
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            data: originalImage.base64,
+                            mimeType: originalImage.mimeType,
+                        },
+                    },
+                    {
+                        text: prompt,
+                    },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE, Modality.TEXT],
+            },
+        });
+        
+        if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {
+            throw new Error('Invalid API response structure');
+        }
+        
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const originalBase64 = part.inlineData.data;
+                const originalMimeType = part.inlineData.mimeType;
+                
+                try {
+                    const cleanedImage = await ImageProcessor.cleanBase64Image(
+                        originalBase64, 
+                        originalMimeType
+                    );
+                    return cleanedImage;
+                } catch (cleanError) {
+                    console.warn('Failed to clean metadata, returning original:', cleanError);
+                    return {
+                        base64: originalBase64,
+                        mimeType: originalMimeType,
+                        url: `data:${originalMimeType};base64,${originalBase64}`
+                    };
+                }
+            }
+        }
+        return null;
+
+    } catch (error) {
+        console.error("Error calling Gemini API for image transformation:", error);
+        throw new Error("Failed to change face using Gemini API.");
+    }
+};
+
+// 🚀 메인 함수 (최대한 안전하게)
 export const changeFaceInImage = async (
     originalImage: ImageFile, 
     facePrompt: string,
     clothingPrompt: string
 ): Promise<ImageFile | null> => {
     try {
-        console.log('🚀 Starting safe 2-step transformation process...');
-        console.log('🎛️ Feature flags:', FEATURE_FLAGS);
-        console.log('💡 User charged: 1 credit | Backend process: Enhanced quality service');
+        console.log('🚀 Starting transformation...');
+        console.log('🎛️ Two-step enabled:', ENABLE_TWO_STEP);
         
-        // 1단계: 얼굴만 변환 (필수)
-        console.log('📍 Step 1: Face transformation (required)...');
-        const faceChangedImage = await changeFaceOnly(originalImage, facePrompt);
-        
-        if (!faceChangedImage) {
-            throw new Error("Face transformation failed in step 1");
-        }
-        
-        console.log('✅ Step 1 completed successfully');
-        
-        // 의상 변경이 없으면 1단계 결과 반환
-        if (!clothingPrompt || clothingPrompt.trim() === '') {
-            console.log('📋 No clothing change requested - returning step 1 result');
-            console.log('💰 Credit usage: 1 credit (face transformation only)');
-            return faceChangedImage;
-        }
-        
-        // 2단계: 의상 변환 (선택적 - 실패해도 1단계 결과는 보장)
-        console.log('📍 Step 2: Clothing transformation (enhancement service)...');
-        try {
-            const finalImage = await changeClothingOnly(faceChangedImage, clothingPrompt);
+        // 2단계 방식 (플래그로 제어)
+        if (ENABLE_TWO_STEP) {
+            console.log('📍 Using 2-step process');
             
-            if (finalImage) {
-                console.log('✅ Step 2 completed successfully');
-                console.log('💰 Credit usage: 1 credit (both steps successful - premium quality service)');
-                return finalImage;
-            } else {
-                console.log('⚠️ Step 2 returned null - using step 1 result');
-                console.log('💰 Credit usage: 1 credit (step 1 successful, step 2 incomplete)');
-                return faceChangedImage;
+            try {
+                // 1단계: 얼굴 변환
+                const faceResult = await changeFaceOnly(originalImage, facePrompt);
+                
+                if (!faceResult) {
+                    throw new Error('Face transformation failed');
+                }
+                
+                // 옷 변경 없으면 1단계만
+                if (!clothingPrompt || clothingPrompt.trim() === '') {
+                    console.log('✅ Face-only transformation complete');
+                    return faceResult;
+                }
+                
+                // 2단계: 옷 변환
+                try {
+                    const finalResult = await changeClothingOnly(faceResult, clothingPrompt);
+                    if (finalResult) {
+                        console.log('✅ 2-step transformation complete');
+                        return finalResult;
+                    } else {
+                        console.log('⚠️ Step 2 failed, returning step 1 result');
+                        return faceResult;
+                    }
+                } catch (step2Error) {
+                    console.warn('⚠️ Step 2 error, returning step 1:', step2Error);
+                    return faceResult;
+                }
+                
+            } catch (twoStepError) {
+                console.warn('⚠️ 2-step process failed, falling back to original:', twoStepError);
+                return await changeFaceInImageOriginal(originalImage, facePrompt, clothingPrompt);
             }
-            
-        } catch (step2Error) {
-            console.warn('⚠️ Step 2 failed, but step 1 succeeded - returning partial result:', step2Error);
-            console.log('💰 Credit usage: 1 credit (step 1 successful, step 2 failed)');
-            return faceChangedImage; // 2단계 실패해도 1단계 결과는 제공
+        } else {
+            // 기존 단일 방식
+            console.log('📍 Using original single-step process');
+            return await changeFaceInImageOriginal(originalImage, facePrompt, clothingPrompt);
         }
 
     } catch (error) {
-        console.error("❌ Critical error in transformation process:", error);
-        
-        // 최후의 안전장치: 완전 실패 시에도 사용자에게 의미있는 에러 메시지
-        if (error instanceof Error) {
-            throw new Error(`이미지 변환 중 오류가 발생했습니다: ${error.message}`);
-        } else {
-            throw new Error("알 수 없는 오류로 이미지 변환에 실패했습니다. 다시 시도해주세요.");
-        }
+        console.error("❌ Critical transformation error:", error);
+        throw error;
     }
 };
 
-// 🔧 개발자 도구: 기능 플래그 상태 확인
-export const getFeatureStatus = () => {
+// 🔧 디버깅용 상태 확인
+export const getServiceStatus = () => {
     return {
-        flags: FEATURE_FLAGS,
-        environment: process.env.NODE_ENV,
-        userWillUseImproved: shouldUseImprovedFeatures()
+        twoStepEnabled: ENABLE_TWO_STEP,
+        enhancedHairEnabled: ENABLE_ENHANCED_HAIR,
+        environment: process.env.NODE_ENV
     };
-};
-
-// 📊 성능 모니터링용 (선택적)
-export const logTransformationMetrics = (
-    step: string, 
-    success: boolean, 
-    duration: number, 
-    userId?: string
-) => {
-    const metrics = {
-        timestamp: new Date().toISOString(),
-        step,
-        success,
-        duration,
-        userId,
-        flags: FEATURE_FLAGS
-    };
-    
-    console.log('📊 Transformation metrics:', metrics);
-    
-    // 실제 서비스에서는 analytics 서비스로 전송
-    // analytics.track('face_transformation', metrics);
 };
