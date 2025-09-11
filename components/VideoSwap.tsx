@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { VideoIcon } from './icons/VideoIcon';
 import { ImageUploader } from './ImageUploader';
 import { Loader } from './Loader';
-import { generateVideoWithKling, motionTemplates } from '../services/klingService';
-import { useCredits, restoreCredits } from '../services/bullnabiService';
+import { generateVideoWithKling, motionTemplates, getRequiredCredits } from '../services/klingService';
+import { useCredits, restoreCredits, saveGenerationResult } from '../services/bullnabiService';
 import type { ImageFile, UserCredits } from '../types';
 
 interface VideoSwapProps {
@@ -37,6 +37,9 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
   const [showIOSGuide, setShowIOSGuide] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
+
+  // 동적 크레딧 계산
+  const requiredCredits = getRequiredCredits(videoDuration);
 
   // 환경 감지 함수들
   const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -169,8 +172,9 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       return;
     }
     
-    if (!credits || credits.remainingCredits < 2) {
-      setError('크레딧이 부족합니다. (필요: 2개, 보유: ' + (credits?.remainingCredits || 0) + '개)');
+    // 동적 크레딧 체크
+    if (!credits || credits.remainingCredits < requiredCredits) {
+      setError(`크레딧이 부족합니다. (필요: ${requiredCredits}개, 보유: ${credits?.remainingCredits || 0}개)`);
       return;
     }
 
@@ -188,8 +192,22 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       }
       setProgress('');
       
+      // 생성 결과 저장
+      if (originalImage && videoUrl) {
+        await saveGenerationResult({
+          userId,
+          type: 'video',
+          originalImageUrl: originalImage.url,
+          resultUrl: videoUrl,
+          prompt: finalPrompt,
+          videoDuration,
+          creditsUsed: requiredCredits
+        });
+      }
+      
+      // 크레딧 차감
       setTimeout(async () => {
-        const creditUsed = await useCredits(userId, 'video', 2);
+        const creditUsed = await useCredits(userId, 'video', requiredCredits);
         if (creditUsed) {
           onCreditsUsed();
         }
@@ -210,7 +228,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
-  // 🔥 네이티브 앱 웹뷰용 - URL 클립보드 복사 방식 다운로드 핸들러
+  // 🔥 네이티브 앱 웹뷰용 - URL 클립보드 복사 방식 다운로드 핸들러 (기존 유지)
   const handleDownload = async () => {
     if (!generatedVideoUrl || isDownloading) return;
     
@@ -333,7 +351,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
-  // 웹뷰용 맞춤 안내 모달 - URL 복사 방식 설명
+  // 웹뷰용 맞춤 안내 모달 - URL 복사 방식 설명 (기존 유지)
   const IOSGuideModal = () => (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full animate-in fade-in zoom-in duration-300">
@@ -447,7 +465,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     </div>
   );
 
-  const hasEnoughCredits = credits ? credits.remainingCredits >= 2 : false;
+  const hasEnoughCredits = credits ? credits.remainingCredits >= requiredCredits : false;
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col items-center p-4 sm:p-6 lg:p-8">
@@ -483,7 +501,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       </header>
 
       <main className="w-full max-w-7xl flex flex-col lg:flex-row gap-8">
-        {/* Left Panel - 설정 (기존 유지) */}
+        {/* Left Panel - 설정 */}
         <div className="lg:w-1/3 flex flex-col gap-6">
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
             <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">1. 헤어 시술 후 사진 업로드</h2>
@@ -497,7 +515,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
             <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">2. 영상 설정</h2>
             
-            {/* Duration Selection */}
+            {/* Duration Selection - 크레딧 표시 추가 */}
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-300">영상 길이</label>
               <select
@@ -505,12 +523,12 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                 onChange={(e) => setVideoDuration(Number(e.target.value))}
                 className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500 transition"
               >
-                <option value={5}>5초 (SNS 숏폼용)</option>
-                <option value={10}>10초 (상세 리뷰용)</option>
+                <option value={5}>5초 (SNS 숏폼용) - 2회 차감</option>
+                <option value={10}>10초 (상세 리뷰용) - 3회 차감</option>
               </select>
             </div>
 
-            {/* Motion Templates */}
+            {/* Motion Templates (기존 유지) */}
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-300">헤어 영상 템플릿</label>
               <select
@@ -550,7 +568,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               </select>
             </div>
 
-            {/* Custom Prompt */}
+            {/* Custom Prompt (기존 유지) */}
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-300">
                 {selectedTemplate ? '선택된 템플릿 사용 중' : '커스텀 프롬프트'}
@@ -567,11 +585,11 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               />
             </div>
             
-            {/* 크레딧 부족 경고 */}
+            {/* 동적 크레딧 부족 경고 */}
             {credits && !hasEnoughCredits && (
               <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4">
                 <p className="text-sm text-red-400">
-                  크레딧이 부족합니다. 영상 변환에는 2개의 크레딧이 필요합니다.
+                  크레딧이 부족합니다. {videoDuration}초 영상 변환에는 {requiredCredits}개의 크레딧이 필요합니다.
                 </p>
               </div>
             )}
@@ -588,18 +606,18 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               {isLoading ? (
                 '처리 중... (최대 5분 소요)'
               ) : !hasEnoughCredits ? (
-                '크레딧 부족 (2개 필요)'
+                `크레딧 부족 (${requiredCredits}개 필요)`
               ) : (
                 <>
                   <VideoIcon className="w-5 h-5 mr-2" />
-                  영상 생성하기 (2회 차감)
+                  영상 생성하기 ({requiredCredits}회 차감)
                 </>
               )}
             </button>
           </div>
         </div>
 
-        {/* Right Panel - 비디오 결과 */}
+        {/* Right Panel - 비디오 결과 (기존 유지하되 UI 일부 수정) */}
         <div className="lg:w-2/3 flex flex-col relative min-h-[500px]">
           {isLoading && <Loader type="video" />}
           
@@ -618,7 +636,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               
               {generatedVideoUrl ? (
                 <>
-                  {/* 웹뷰 환경별 맞춤 경고 배너 - URL 복사 방식 */}
+                  {/* 웹뷰 환경별 맞춤 경고 배너 */}
                   {!videoSaved && (
                     <div className="mb-4 bg-blue-500/20 border-blue-500/50 border rounded-lg p-4">
                       <div className="flex items-center gap-3">
@@ -635,7 +653,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                     </div>
                   )}
                   
-                  {/* 비디오 플레이어 */}
+                  {/* 비디오 플레이어 (기존 유지) */}
                   <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden">
                     <video 
                       controls 
@@ -653,7 +671,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                       브라우저가 비디오 재생을 지원하지 않습니다.
                     </video>
                     
-                    {/* 환경별 맞춤 다운로드 버튼 */}
+                    {/* 환경별 맞춤 다운로드 버튼 (기존 유지) */}
                     <button
                       onClick={handleDownload}
                       disabled={isDownloading}
@@ -704,7 +722,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                       </div>
                     </button>
                     
-                    {/* 다운로드 상태 오버레이 */}
+                    {/* 다운로드 상태 오버레이 (기존 유지) */}
                     {downloadStatus && (
                       <div className={`absolute top-4 left-4 right-4 p-3 rounded-lg backdrop-blur-sm border transition-all duration-300 animate-in slide-in-from-top ${
                         downloadStatus.includes('✅') 
@@ -718,7 +736,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                     )}
                   </div>
 
-                  {/* 환경별 저장 가이드 - 웹뷰용 수정 */}
+                  {/* 환경별 저장 가이드 (기존 유지) */}
                   <div className={`mt-4 p-4 rounded-lg border ${
                     isWebView() 
                       ? 'bg-blue-700/20 border-blue-600/50'
