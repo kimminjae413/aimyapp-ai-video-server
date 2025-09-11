@@ -12,8 +12,8 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 
-// 연령별 최적화 프롬프트 함수 (Nano Banana 특성 반영)
-const getOptimizedPrompt = (facePrompt: string, clothingPrompt: string): string => {
+// 1단계: 얼굴 변형 전용 프롬프트 (모든 연령대 강화)
+const getFaceOnlyPrompt = (facePrompt: string): string => {
   
   // 10대 남성
   if (facePrompt.includes('late teens') && facePrompt.includes('male')) {
@@ -43,12 +43,15 @@ FACIAL TRANSFORMATION APPROACH:
 - CREATE the impression of a different person through feature adjustments only
 - PRESERVE the core facial identity while transforming the appearance
 
+CLOTHING PRESERVATION:
+- Keep original clothing exactly unchanged
+- Preserve all clothing details, colors, and patterns
+
 TECHNICAL PRECISION:
 - Match original lighting and shadows perfectly
 - Maintain photorealistic quality with teenage skin characteristics
 - Preserve EXACT background, pose, head angle, hair completely
-- Keep identical hair style, color, texture, and position
-${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+- NO changes to anything except facial features and skin
 
 Result: The same person transformed to appear as a different teenage male through facial adjustments only, with absolutely everything else identical.`;
   }
@@ -81,12 +84,15 @@ FACIAL FEATURE ADJUSTMENT:
 - TRANSFORM the overall appearance while maintaining core identity
 - CREATE the effect of a different person through strategic adjustments
 
+CLOTHING PRESERVATION:
+- Original clothing must remain exactly as shown
+- Preserve all clothing elements without modification
+
 TECHNICAL REQUIREMENTS:
 - Perfect lighting and shadow matching
 - Photorealistic young adult male skin
 - Preserve EXACT background, pose, head angle, hair completely
-- Keep identical hair style, color, texture, and position
-${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+- NO changes to anything except facial features and skin
 
 Result: The same person appearing as a different young adult male through facial adjustments only, with absolutely everything else identical.`;
   }
@@ -119,12 +125,15 @@ MATURE MALE TRANSFORMATION:
 - MAINTAIN core facial identity while creating different appearance
 - ACHIEVE the effect of a different person through careful modifications
 
+CLOTHING PRESERVATION:
+- Keep original clothing completely unchanged
+- Preserve all clothing details and styling
+
 TECHNICAL EXECUTION:
 - Match original lighting and ambient conditions
 - Photorealistic mature male skin characteristics
 - Preserve EXACT background, pose, head angle, hair completely
-- Keep identical hair style, color, texture, and position
-${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+- NO changes to anything except facial features and skin
 
 Result: The same person transformed to appear as a different mature male through facial refinements only, with absolutely everything else identical.`;
   }
@@ -157,12 +166,15 @@ DISTINGUISHED MALE TRANSFORMATION:
 - PRESERVE underlying facial structure while transforming look
 - CREATE impression of different person through strategic adjustments
 
+CLOTHING PRESERVATION:
+- Original clothing must remain exactly unchanged
+- Keep all clothing elements identical
+
 TECHNICAL MASTERY:
 - Perfect lighting and shadow preservation
 - Photorealistic middle-aged male skin
 - Preserve EXACT background, pose, head angle, hair completely
-- Keep identical hair style, color, texture, and position
-${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+- NO changes to anything except facial features and skin
 
 Result: The same person appearing as a different distinguished male through facial modifications only, with absolutely everything else identical.`;
   }
@@ -195,12 +207,15 @@ TEENAGE FEMALE TRANSFORMATION:
 - PRESERVE basic facial identity while creating different look
 - ACHIEVE appearance of different person through gentle modifications
 
+CLOTHING PRESERVATION:
+- Keep original clothing exactly as shown
+- Preserve all clothing details without changes
+
 TECHNICAL PRECISION:
 - Match original lighting perfectly
 - Photorealistic teenage female skin characteristics
 - Preserve EXACT background, pose, head angle, hair completely
-- Keep identical hair style, color, texture, and position
-${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+- NO changes to anything except facial features and skin
 
 Result: The same person transformed to appear as a different teenage female through facial adjustments only, with absolutely everything else identical.`;
   }
@@ -233,12 +248,15 @@ FACIAL FEATURE ADJUSTMENT ONLY:
 - MAINTAIN underlying identity while transforming appearance
 - CREATE effect of different person through strategic facial refinements only
 
+CLOTHING PRESERVATION:
+- Original clothing must remain unchanged
+- Preserve all clothing elements perfectly
+
 TECHNICAL EXCELLENCE:
 - Perfect lighting and shadow matching to original environment
 - Photorealistic young adult female skin
 - Preserve EXACT background, pose, head angle, hair completely
-- Keep identical hair style, color, texture, and position
-${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+- NO changes to anything except facial features and skin
 
 Result: The same person appearing as a different young adult female through facial refinements only, with absolutely everything else identical.`;
   }
@@ -271,12 +289,15 @@ SOPHISTICATED FEMALE TRANSFORMATION:
 - MAINTAIN basic facial identity while creating different impression
 - ACHIEVE appearance of different person through elegant modifications
 
+CLOTHING PRESERVATION:
+- Keep original clothing completely unchanged
+- Preserve all clothing details exactly
+
 TECHNICAL MASTERY:
 - Match original lighting and conditions
 - Photorealistic mature female skin characteristics
 - Preserve EXACT background, pose, head angle, hair completely
-- Keep identical hair style, color, texture, and position
-${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+- NO changes to anything except facial features and skin
 
 Result: The same person transformed to appear as a different sophisticated female through facial enhancements only, with absolutely everything else identical.`;
   }
@@ -309,12 +330,15 @@ GRACEFUL FEMALE TRANSFORMATION:
 - PRESERVE core identity while transforming overall look
 - CREATE impression of different person through graceful adjustments
 
+CLOTHING PRESERVATION:
+- Original clothing must remain exactly unchanged
+- Keep all clothing elements identical
+
 TECHNICAL EXCELLENCE:
 - Perfect lighting and shadow preservation
 - Photorealistic middle-aged female skin
 - Preserve EXACT background, pose, head angle, hair completely
-- Keep identical hair style, color, texture, and position
-${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+- NO changes to anything except facial features and skin
 
 Result: The same person appearing as a different graceful middle-aged female through facial adjustments only, with absolutely everything else identical.`;
   }
@@ -346,24 +370,51 @@ Transform based on: ${facePrompt}
 - MAINTAIN the person's basic facial foundation while transforming appearance
 - CREATE the impression of a different person through strategic feature adjustments
 
+CLOTHING PRESERVATION:
+- Original clothing must remain exactly unchanged
+- Preserve all clothing details and styling
+
 TECHNICAL MASTERY:
 - Match original lighting and shadows perfectly
 - Maintain photorealistic quality appropriate for transformation
 - Preserve EXACT background, pose, head angle, hair completely
-- Keep identical hair style, color, texture, and position
-${clothingPrompt ? `- Change clothing to: ${clothingPrompt}` : '- Keep original clothing unchanged'}
+- NO changes to anything except facial features and skin
 
 Result: The same person transformed to appear different through strategic facial feature modifications only, preserving their core identity and absolutely everything else identical.`;
 };
 
-export const changeFaceInImage = async (
+// 2단계: 의상 변환 전용 프롬프트
+const getClothingOnlyPrompt = (clothingPrompt: string): string => {
+  return `
+You are a CLOTHING TRANSFORMATION specialist with ABSOLUTE FACE AND HAIR PROTECTION technology.
+
+CRITICAL PRESERVATION REQUIREMENTS:
+- The person's FACE must remain EXACTLY as shown - DO NOT change any facial features
+- The person's HAIR must remain EXACTLY as shown - DO NOT change any hair details
+- Keep identical: facial structure, skin, eyes, nose, mouth, expressions, hair color, hair texture, hair style, hair positioning
+
+CLOTHING TRANSFORMATION ONLY:
+Transform the clothing to: ${clothingPrompt}
+- Change ONLY the clothing, keeping the fit and style appropriate for the person
+- Ensure the new clothing looks natural and well-fitted
+- Maintain the same pose and body position
+
+TECHNICAL PRECISION:
+- Match original lighting and shadows perfectly
+- Keep the same background
+- Preserve all non-clothing elements exactly
+- Maintain photorealistic quality
+
+Result: Same person with identical face and hair, but wearing the new clothing style.`;
+};
+
+// 1단계: 얼굴만 변환하는 함수
+const changeFaceOnly = async (
     originalImage: ImageFile, 
-    facePrompt: string,
-    clothingPrompt: string
+    facePrompt: string
 ): Promise<ImageFile | null> => {
     try {
-        // 연령별 최적화 프롬프트 사용
-        const prompt = getOptimizedPrompt(facePrompt, clothingPrompt);
+        const prompt = getFaceOnlyPrompt(facePrompt);
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
@@ -390,7 +441,6 @@ export const changeFaceInImage = async (
                 const originalBase64 = part.inlineData.data;
                 const originalMimeType = part.inlineData.mimeType;
                 
-                // 메타데이터 제거 처리
                 try {
                     const cleanedImage = await ImageProcessor.cleanBase64Image(
                         originalBase64, 
@@ -399,7 +449,6 @@ export const changeFaceInImage = async (
                     return cleanedImage;
                 } catch (cleanError) {
                     console.warn('Failed to clean metadata, returning original:', cleanError);
-                    // 메타데이터 제거 실패 시 원본 반환
                     return {
                         base64: originalBase64,
                         mimeType: originalMimeType,
@@ -411,7 +460,109 @@ export const changeFaceInImage = async (
         return null;
 
     } catch (error) {
-        console.error("Error calling Gemini API for image application:", error);
+        console.error("Error calling Gemini API for face transformation:", error);
         throw new Error("Failed to change face using Gemini API.");
+    }
+};
+
+// 2단계: 의상만 변환하는 함수
+const changeClothingOnly = async (
+    faceChangedImage: ImageFile, 
+    clothingPrompt: string
+): Promise<ImageFile | null> => {
+    try {
+        const prompt = getClothingOnlyPrompt(clothingPrompt);
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image-preview',
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            data: faceChangedImage.base64,
+                            mimeType: faceChangedImage.mimeType,
+                        },
+                    },
+                    {
+                        text: prompt,
+                    },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE, Modality.TEXT],
+            },
+        });
+        
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const originalBase64 = part.inlineData.data;
+                const originalMimeType = part.inlineData.mimeType;
+                
+                try {
+                    const cleanedImage = await ImageProcessor.cleanBase64Image(
+                        originalBase64, 
+                        originalMimeType
+                    );
+                    return cleanedImage;
+                } catch (cleanError) {
+                    console.warn('Failed to clean metadata, returning original:', cleanError);
+                    return {
+                        base64: originalBase64,
+                        mimeType: originalMimeType,
+                        url: `data:${originalMimeType};base64,${originalBase64}`
+                    };
+                }
+            }
+        }
+        return null;
+
+    } catch (error) {
+        console.error("Error calling Gemini API for clothing transformation:", error);
+        throw new Error("Failed to change clothing using Gemini API.");
+    }
+};
+
+// 메인 함수: 2단계 프로세스 (사용자는 1크레딧만 차감)
+export const changeFaceInImage = async (
+    originalImage: ImageFile, 
+    facePrompt: string,
+    clothingPrompt: string
+): Promise<ImageFile | null> => {
+    try {
+        console.log('🎯 Starting 2-step transformation process...');
+        console.log('💡 User will be charged for 1 credit, but backend processes 2 steps for better quality');
+        
+        // 1단계: 얼굴만 변환
+        console.log('📍 Step 1: Face transformation only...');
+        const faceChangedImage = await changeFaceOnly(originalImage, facePrompt);
+        
+        if (!faceChangedImage) {
+            throw new Error("Face transformation failed in step 1");
+        }
+        
+        // 의상 변경이 없으면 1단계 결과 반환
+        if (!clothingPrompt) {
+            console.log('✅ Step 1 complete - no clothing change requested');
+            console.log('💰 Credit usage: 1 credit (face transformation only)');
+            return faceChangedImage;
+        }
+        
+        // 2단계: 의상만 변환 (추가 비용 없음 - 품질 향상 서비스)
+        console.log('📍 Step 2: Clothing transformation only (free quality enhancement)...');
+        const finalImage = await changeClothingOnly(faceChangedImage, clothingPrompt);
+        
+        if (!finalImage) {
+            console.warn('⚠️ Step 2 failed, returning step 1 result');
+            console.log('💰 Credit usage: 1 credit (step 1 successful, step 2 failed)');
+            return faceChangedImage; // 2단계 실패 시 1단계 결과라도 반환
+        }
+        
+        console.log('✅ 2-step transformation complete!');
+        console.log('💰 Credit usage: 1 credit (both steps successful - enhanced quality service)');
+        return finalImage;
+
+    } catch (error) {
+        console.error("Error in 2-step transformation process:", error);
+        throw new Error("Failed to transform image using 2-step process.");
     }
 };
