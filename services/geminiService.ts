@@ -12,48 +12,272 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 
-// 1단계: 얼굴 변형 전용 프롬프트 (모든 연령대 강화)
+// 1단계: 얼굴 변형 전용 프롬프트 (Gemini 가이드 반영)
 const getFaceOnlyPrompt = (facePrompt: string): string => {
   
-  // 10대 남성
+  // 문서 권장사항에 따른 3단계 프롬프트 구조
+  const basePrompt = `
+STEP 1 - ANALYZE AND REMEMBER HAIRSTYLE:
+Analyze this image and identify the hair characteristics in detail:
+- Exact color and any highlights or lowlights
+- Texture (straight/wavy/curly/coily, fine/thick)
+- Precise length and cut style (layered/blunt cut/bob/etc.)
+- Parting and flow direction
+- Volume and styling details
+- Positioning and how it frames the face
+
+STEP 2 - FACE-ONLY TRANSFORMATION:
+Transform ONLY the facial features while preserving every hair detail identified in Step 1.
+
+CRITICAL HAIR PRESERVATION (HIGHEST PRIORITY):
+- preserve the exact shoulder-length layered brown hair (use specific description from Step 1)
+- maintain the original wavy texture and side part
+- keep the hair color, style, and positioning unchanged
+- NO hair change, NO different hairstyle, NO altered hair color
+- avoid hair modification, NO hair texture changes
+
+TRANSFORMATION BOUNDARIES:
+- MODIFY: facial skin texture, eye expression, facial expression, skin tone
+- PRESERVE: hair (all characteristics), head angle, background, clothing, pose
+
+STEP 3 - VERIFICATION:
+Check if the hair matches the original exactly. The hairstyle must remain completely unchanged from the analysis in Step 1.`;
+
+  // 연령별 얼굴 변형 지시 (문서의 베스트 프랙티스 적용)
   if (facePrompt.includes('late teens') && facePrompt.includes('male')) {
-    return `
-You are a master portrait editor specializing in facial feature adjustment. Transform this person to appear as a different 17-19 year old East Asian male while maintaining their core facial identity.
+    return basePrompt + `
 
-ABSOLUTE PRESERVATION REQUIREMENTS:
-- HAIR: Keep EXACT same hairstyle, cut, length, texture, color, layers, styling - NO changes whatsoever
-- HEAD ANGLE: Maintain IDENTICAL head position and viewing angle from original
-- BACKGROUND: Keep the EXACT same background environment and lighting
-- POSE: Preserve the EXACT same body position and pose
+FACIAL TRANSFORMATION TARGET: 17-19 year old East Asian male
+Change only the facial expression to show youthful energy.
+Preserve exactly:
+- [Hair characteristics from Step 1 analysis]
+- Natural hair texture and volume  
+- Hair positioning and flow
+Only the facial features should change to appear more youthful.
 
-HAIR PRESERVATION (ABSOLUTE PRIORITY):
-- Study the exact hairstyle: color, texture, length, style, parting, volume, positioning, layering
-- Keep hair 100% IDENTICAL - no changes to any hair characteristics
-- Preserve every strand position and natural flow
-- Maintain exact cut style (layered/straight/etc.)
+Result: Same person with teenage facial features, exact hairstyle preserved.`;
+  }
+  
+  if (facePrompt.includes('early 20s') && facePrompt.includes('male')) {
+    return basePrompt + `
 
-FACIAL TRANSFORMATION APPROACH:
-- MAINTAIN the person's basic bone structure and facial foundation
-- ADJUST facial features to create a teenage male appearance:
-  * Soften jawline and create more youthful proportions (but same bone structure)
-  * Adjust eye shape and brightness for teenage energy
-  * Smooth skin texture with natural teenage glow
-  * Modify facial expression to show youthful confidence
-  * Adjust eyebrow shape for natural teenage fullness
-- CREATE the impression of a different person through feature adjustments only
-- PRESERVE the core facial identity while transforming the appearance
+FACIAL TRANSFORMATION TARGET: 22-25 year old East Asian male
+Change only the facial expression to show confident maturity.
+Preserve exactly:
+- [Hair characteristics from Step 1 analysis]
+- Natural hair texture and volume
+- Hair positioning and flow  
+Only the facial features should change to appear more mature.
 
-CLOTHING PRESERVATION:
-- Keep original clothing exactly unchanged
-- Preserve all clothing details, colors, and patterns
+Result: Same person with young adult facial features, exact hairstyle preserved.`;
+  }
+  
+  if (facePrompt.includes('30s') && facePrompt.includes('male')) {
+    return basePrompt + `
 
-TECHNICAL PRECISION:
-- Match original lighting and shadows perfectly
-- Maintain photorealistic quality with teenage skin characteristics
-- Preserve EXACT background, pose, head angle, hair completely
-- NO changes to anything except facial features and skin
+FACIAL TRANSFORMATION TARGET: 30-35 year old East Asian male
+Change only the facial expression to show sophisticated maturity.
+Preserve exactly:
+- [Hair characteristics from Step 1 analysis]
+- Natural hair texture and volume
+- Hair positioning and flow
+Only the facial features should change to appear more sophisticated.
 
-Result: The same person transformed to appear as a different teenage male through facial adjustments only, with absolutely everything else identical.`;
+Result: Same person with mature facial features, exact hairstyle preserved.`;
+  }
+  
+  if (facePrompt.includes('40s') && facePrompt.includes('male')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 40-45 year old East Asian male  
+Change only the facial expression to show distinguished wisdom.
+Preserve exactly:
+- [Hair characteristics from Step 1 analysis]
+- Natural hair texture and volume
+- Hair positioning and flow
+Only the facial features should change to appear more distinguished.
+
+Result: Same person with distinguished facial features, exact hairstyle preserved.`;
+  }
+  
+  if (facePrompt.includes('late teens') && facePrompt.includes('female')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 17-19 year old East Asian female
+Change only the facial expression to show innocent charm.
+Preserve exactly:
+- [Hair characteristics from Step 1 analysis]  
+- Natural hair texture and volume
+- Hair positioning and flow
+Only the facial features should change to appear more youthful.
+
+Result: Same person with teenage facial features, exact hairstyle preserved.`;
+  }
+  
+  if (facePrompt.includes('early 20s') && facePrompt.includes('female')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 22-25 year old East Asian female
+Change only the facial expression to show vibrant confidence.
+Preserve exactly:
+- [Hair characteristics from Step 1 analysis]
+- Natural hair texture and volume  
+- Hair positioning and flow
+Only the facial features should change to appear more vibrant.
+
+Result: Same person with young adult facial features, exact hairstyle preserved.`;
+  }
+  
+  if (facePrompt.includes('30s') && facePrompt.includes('female')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 30-35 year old East Asian female
+Change only the facial expression to show elegant sophistication.
+Preserve exactly:
+- [Hair characteristics from Step 1 analysis]
+- Natural hair texture and volume
+- Hair positioning and flow  
+Only the facial features should change to appear more sophisticated.
+
+Result: Same person with sophisticated facial features, exact hairstyle preserved.`;
+  }
+  
+  if (facePrompt.includes('40s') && facePrompt.includes('female')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 40-45 year old East Asian female
+Change only the facial expression to show graceful wisdom.
+Preserve exactly:
+- [Hair characteristics from Step 1 analysis]
+- Natural hair texture and volume
+- Hair positioning and flow
+Only the facial features should change to appear more graceful.
+
+Result: Same person with graceful facial features, exact hairstyle preserved.`;
+  }
+  
+  // 기본 프롬프트 (스타일 옵션들)
+  return basePrompt + `
+
+STYLE TRANSFORMATION TARGET: ${facePrompt}
+Apply the requested transformation to facial features only.
+Preserve exactly:
+- [Hair characteristics from Step 1 analysis]
+- Natural hair texture and volume
+- Hair positioning and flow
+Only the facial features should change according to the style request.
+
+Result: Same person with styled facial features, exact hairstyle preserved.`;
+};
+
+  // 연령별 얼굴 변형 지시 추가
+  if (facePrompt.includes('late teens') && facePrompt.includes('male')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 17-19 year old East Asian male appearance
+- Soften facial features for teenage look (but same bone structure)
+- Smooth skin texture with youthful glow
+- Adjust eye expression for teenage energy
+- Modify facial expression for youthful confidence
+
+Result: Same person with teenage male facial features, IDENTICAL hair preserved.`;
+  }
+  
+  if (facePrompt.includes('early 20s') && facePrompt.includes('male')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 22-25 year old East Asian male appearance  
+- Refine facial features for young adult look (but same bone structure)
+- Enhance skin quality with healthy young adult texture
+- Adjust eye expression for confident, bright look
+- Modify facial expression for mature confidence
+
+Result: Same person with young adult male facial features, IDENTICAL hair preserved.`;
+  }
+  
+  if (facePrompt.includes('30s') && facePrompt.includes('male')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 30-35 year old East Asian male appearance
+- Mature facial features appropriately (but same bone structure)  
+- Add subtle maturity signs to skin texture
+- Adjust eye expression for intelligent, experienced look
+- Modify facial expression for sophisticated confidence
+
+Result: Same person with mature male facial features, IDENTICAL hair preserved.`;
+  }
+  
+  if (facePrompt.includes('40s') && facePrompt.includes('male')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 40-45 year old East Asian male appearance
+- Distinguished facial features (but same bone structure)
+- Natural aging characteristics in skin texture  
+- Adjust eye expression for wisdom and experience
+- Modify facial expression for distinguished confidence
+
+Result: Same person with distinguished male facial features, IDENTICAL hair preserved.`;
+  }
+  
+  if (facePrompt.includes('late teens') && facePrompt.includes('female')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 17-19 year old East Asian female appearance
+- Soften facial features for innocent teenage look (but same bone structure)
+- Perfect skin texture with natural teenage glow
+- Adjust eye expression for youthful brightness  
+- Modify facial expression for sweet, shy charm
+
+Result: Same person with teenage female facial features, IDENTICAL hair preserved.`;
+  }
+  
+  if (facePrompt.includes('early 20s') && facePrompt.includes('female')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 22-25 year old East Asian female appearance
+- Refine facial features for vibrant young adult look (but same bone structure)
+- Perfect skin quality with natural radiant glow
+- Adjust eye expression for confident, lively charm
+- Modify facial expression for young adult confidence
+
+Result: Same person with young adult female facial features, IDENTICAL hair preserved.`;
+  }
+  
+  if (facePrompt.includes('30s') && facePrompt.includes('female')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 30-35 year old East Asian female appearance  
+- Sophisticated facial features (but same bone structure)
+- Enhance skin texture with mature elegance
+- Adjust eye expression for intelligent sophistication
+- Modify facial expression for mature confidence
+
+Result: Same person with sophisticated female facial features, IDENTICAL hair preserved.`;
+  }
+  
+  if (facePrompt.includes('40s') && facePrompt.includes('female')) {
+    return basePrompt + `
+
+FACIAL TRANSFORMATION TARGET: 40-45 year old East Asian female appearance
+- Graceful facial features (but same bone structure)  
+- Natural elegant aging in skin texture
+- Adjust eye expression for gentle wisdom
+- Modify facial expression for graceful confidence
+
+Result: Same person with graceful female facial features, IDENTICAL hair preserved.`;
+  }
+  
+  // 기본 프롬프트 (스타일 옵션들)
+  return basePrompt + `
+
+STYLE TRANSFORMATION TARGET: ${facePrompt}
+- Apply the requested style to facial features only (but same bone structure)
+- Modify skin texture and quality as appropriate for the style
+- Adjust eye expression and facial expression for the style
+- Keep all other elements identical
+
+Result: Same person with styled facial features, IDENTICAL hair preserved.`;
+};
   }
   
   // 20대 남성
