@@ -1,5 +1,5 @@
 // services/bullnabiService.ts
-import type { UserCredits } from '../types';
+import type { UserCredits, GenerationResult } from '../types';
 
 const API_BASE_URL = '/.netlify/functions/bullnabi-proxy';
 
@@ -243,5 +243,141 @@ export const getCreditHistory = async (userId: string, limit: number = 10): Prom
   } catch (error) {
     console.error('Error fetching history:', error);
     return [];
+  }
+};
+
+/**
+ * 🆕 생성 결과 저장
+ */
+export const saveGenerationResult = async (params: {
+  userId: string;
+  type: 'image' | 'video';
+  originalImageUrl: string;
+  resultUrl: string;
+  prompt?: string;
+  facePrompt?: string;
+  clothingPrompt?: string;
+  videoDuration?: number;
+  creditsUsed: number;
+}): Promise<boolean> => {
+  try {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // 3일 후
+
+    const response = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'create',
+        metaCode: '_users',
+        collectionName: 'aiGenerationHistory',
+        documentJson: {
+          userId: { "$oid": params.userId },
+          type: params.type,
+          originalImageUrl: params.originalImageUrl,
+          resultUrl: params.resultUrl,
+          prompt: params.prompt || '',
+          facePrompt: params.facePrompt || '',
+          clothingPrompt: params.clothingPrompt || '',
+          videoDuration: params.videoDuration || null,
+          creditsUsed: params.creditsUsed,
+          createdAt: now.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          _createTime: now.toISOString()
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to save generation result:', response.status);
+      return false;
+    }
+
+    console.log('Generation result saved successfully');
+    return true;
+  } catch (error) {
+    console.error('Error saving generation result:', error);
+    return false;
+  }
+};
+
+/**
+ * 🆕 생성 내역 조회 (최근 3일)
+ */
+export const getGenerationHistory = async (userId: string, limit: number = 50): Promise<GenerationResult[]> => {
+  try {
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+    const response = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'aggregate',
+        metaCode: '_users',
+        collectionName: 'aiGenerationHistory',
+        documentJson: {
+          "pipeline": {
+            "$match": { 
+              "userId": { "$oid": userId },
+              "createdAt": { "$gte": threeDaysAgo.toISOString() }
+            },
+            "$sort": { "createdAt": -1 },
+            "$limit": limit
+          }
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to fetch generation history:', response.status);
+      return [];
+    }
+
+    const data: BullnabiResponse = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.error('Error fetching generation history:', error);
+    return [];
+  }
+};
+
+/**
+ * 🆕 만료된 생성 결과 정리 (3일 지난 데이터 삭제)
+ */
+export const cleanupExpiredGenerations = async (userId: string): Promise<boolean> => {
+  try {
+    const now = new Date();
+    
+    const response = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'delete',
+        metaCode: '_users',
+        collectionName: 'aiGenerationHistory',
+        documentJson: {
+          "userId": { "$oid": userId },
+          "expiresAt": { "$lt": now.toISOString() }
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to cleanup expired generations:', response.status);
+      return false;
+    }
+
+    console.log('Expired generations cleaned up successfully');
+    return true;
+  } catch (error) {
+    console.error('Error cleaning up expired generations:', error);
+    return false;
   }
 };
