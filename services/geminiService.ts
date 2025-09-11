@@ -334,35 +334,40 @@ const changeFaceOnly = async (
         console.log('🎯 Face-only transformation starting...');
         
         const prompt = `
-You are a master facial feature transformer with HAIR PRESERVATION technology.
+You are a master facial feature transformer with **ULTRA HAIR PRESERVATION** technology.
+Your sole mission is to transform **ONLY THE FACE** based on the following: ${facePrompt}
 
-Transform this person's facial features based on: ${facePrompt}
+**ULTRA-CRITICAL PRESERVATION PROTOCOL (ABSOLUTE RULES):**
 
-CRITICAL PRESERVATION PROTOCOL:
-- HAIR: Keep exact same hair texture - if naturally wavy, don't make it curly. Preserve original volume level and styling direction
-- POSE: Maintain identical head angle, gaze direction, and body positioning from original image
-- CLOTHING: Keep original clothing/accessories unchanged (salon cape, neck band, etc.)
-- ANGLE: Preserve the same camera angle and perspective - do not change viewing angle
+1. **HAIR PRESERVATION - ZERO CHANGE:**
+   - **Keep the hair's exact texture, styling, volume, length, and color identical to the original image.**
+   - **If the hair is naturally wavy, it MUST remain wavy. DO NOT make it curly, straight, or change its flow whatsoever.**
+   - **Every strand, every curve, every aspect of the hair MUST be 100% preserved.**
+   - **STRICTLY FORBIDDEN: 곱슬머리, 부스스한 머리, 생머리, 짧은 머리, 긴 머리, 헤어스타일 변화 (curly, frizzy, straight, short, long hair, any hairstyle change).**
 
-FACIAL TRANSFORMATION ONLY:
-- Change only the facial features to match the requested style
-- Keep identical lighting, shadows, and background
-- Maintain same head positioning and pose
+2. **CLOTHING PRESERVATION - ZERO CHANGE:**
+   - **Keep all original clothing, accessories (e.g., salon cape, neck band), and any visible garments COMPLETELY UNCHANGED.**
+   - **STRICTLY FORBIDDEN: 의상 변화 (clothing changes).**
 
-STRICTLY FORBIDDEN (DO NOT CREATE):
-- 곱슬머리, 부스스한 머리, 생머리 없이 (no curly hair, frizzy hair, straight hair)
-- 짧은 머리, 긴 머리 없이 (no short hair, long hair)
-- 헤어스타일 변화 없이 (no hairstyle changes)
-- 각도 변화, 포즈 변화 없이 (no angle change, pose change)
-- 배경 변화, 의상 변화 없이 (no background change, clothing change)
-- 얼굴 왜곡, 부자연스러운 얼굴 없이 (no facial distortion, unnatural face)
+3. **POSE & ANGLE PRESERVATION - ZERO CHANGE:**
+   - **Maintain identical head angle, gaze direction, and body positioning from the original image.**
+   - **Preserve the same camera angle and perspective - do not change viewing angle.**
+   - **STRICTLY FORBIDDEN: 각도 변화, 포즈 변화 (angle change, pose change).**
 
-TECHNICAL REQUIREMENTS:
-- Photorealistic result with natural facial proportions
-- Zero changes to non-facial elements
-- Exact preservation of pose and angle
+4. **BACKGROUND PRESERVATION - ZERO CHANGE:**
+   - **Keep the background exactly as it appears in the original image.**
+   - **STRICTLY FORBIDDEN: 배경 변화 (background change).**
 
-Result: Same person with transformed facial features but identical hair and clothing.`;
+**FACIAL TRANSFORMATION ONLY (Targeted Change):**
+- **Change ONLY the facial features to match the requested style: ${facePrompt}.**
+- **Ensure the new face has a natural, photorealistic appearance with correct proportions.**
+- **Maintain original lighting, shadows, and ambient light on the face.**
+
+**FINAL STRICTLY FORBIDDEN LIST (DO NOT CREATE):**
+- 얼굴 왜곡, 부자연스러운 얼굴 (facial distortion, unnatural face).
+- 원본 이미지의 어떤 부분도 헤어, 의류, 배경, 포즈, 각도에 대한 변경 없이. (No changes to hair, clothing, background, pose, or angle from the original image.)
+
+Result: A completely new person's face on the original body, with identical hair, clothing, background, pose, and lighting.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
