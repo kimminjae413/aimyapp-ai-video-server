@@ -1,4 +1,11 @@
-// services/geminiService.ts
+const prompt = `
+기존 이미지의 얼굴과 자연스러운 웨이브 헤어스타일을 완벽하게 유지한 채, 의상만 ${clothingPrompt}로 변경하고, 나머지는 그대로.
+
+CRITICAL REQUIREMENTS:
+- 얼굴을 완벽하게 유지한 채: 얼굴의 모든 특징을 원본과 동일하게 보존
+- 자연스러운 웨이브 헤어스타일을 완벽하게 유지한 채: 헤어 텍스처, 스타일, 색상 모든 것을 원본과 동일하게
+- 의상만 변경: 옷만 새로운 스타일로 교체
+- 나머지는 그대로: 포즈, 시선 방향, 배경 모// services/geminiService.ts
 import { GoogleGenAI, Modality } from "@google/genai";
 import { ImageProcessor } from '../utils/imageProcessor';
 import type { ImageFile } from '../types';
