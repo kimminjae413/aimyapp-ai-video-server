@@ -12,272 +12,40 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 
-// 1단계: 얼굴 변형 전용 프롬프트 (Gemini 가이드 반영)
+// 1단계: 얼굴 변형 전용 프롬프트 (Nano Banana 특성에 맞게)
 const getFaceOnlyPrompt = (facePrompt: string): string => {
   
-  // 문서 권장사항에 따른 3단계 프롬프트 구조
-  const basePrompt = `
-STEP 1 - ANALYZE AND REMEMBER HAIRSTYLE:
-Analyze this image and identify the hair characteristics in detail:
-- Exact color and any highlights or lowlights
-- Texture (straight/wavy/curly/coily, fine/thick)
-- Precise length and cut style (layered/blunt cut/bob/etc.)
-- Parting and flow direction
-- Volume and styling details
-- Positioning and how it frames the face
-
-STEP 2 - FACE-ONLY TRANSFORMATION:
-Transform ONLY the facial features while preserving every hair detail identified in Step 1.
-
-CRITICAL HAIR PRESERVATION (HIGHEST PRIORITY):
-- preserve the exact shoulder-length layered brown hair (use specific description from Step 1)
-- maintain the original wavy texture and side part
-- keep the hair color, style, and positioning unchanged
-- NO hair change, NO different hairstyle, NO altered hair color
-- avoid hair modification, NO hair texture changes
-
-TRANSFORMATION BOUNDARIES:
-- MODIFY: facial skin texture, eye expression, facial expression, skin tone
-- PRESERVE: hair (all characteristics), head angle, background, clothing, pose
-
-STEP 3 - VERIFICATION:
-Check if the hair matches the original exactly. The hairstyle must remain completely unchanged from the analysis in Step 1.`;
-
-  // 연령별 얼굴 변형 지시 (문서의 베스트 프랙티스 적용)
+  // 10대 남성
   if (facePrompt.includes('late teens') && facePrompt.includes('male')) {
-    return basePrompt + `
+    return `
+You are a master portrait editor specializing in facial feature adjustment. Transform this person to appear as a different 17-19 year old East Asian male while maintaining their core facial identity.
 
-FACIAL TRANSFORMATION TARGET: 17-19 year old East Asian male
-Change only the facial expression to show youthful energy.
-Preserve exactly:
-- [Hair characteristics from Step 1 analysis]
-- Natural hair texture and volume  
-- Hair positioning and flow
-Only the facial features should change to appear more youthful.
+HAIR PRESERVATION (ABSOLUTE PRIORITY):
+- Study the exact hairstyle: color, texture, length, style, parting, volume, positioning
+- Keep hair 100% IDENTICAL - no changes to any hair characteristics
+- Preserve every strand position and natural flow
 
-Result: Same person with teenage facial features, exact hairstyle preserved.`;
-  }
-  
-  if (facePrompt.includes('early 20s') && facePrompt.includes('male')) {
-    return basePrompt + `
+FACIAL TRANSFORMATION APPROACH:
+- MAINTAIN the person's basic bone structure and facial foundation
+- ADJUST facial features to create a teenage male appearance:
+  * Soften jawline and create more youthful proportions
+  * Adjust eye shape and brightness for teenage energy
+  * Smooth skin texture with natural teenage glow
+  * Modify facial expression to show youthful confidence
+  * Adjust eyebrow shape for natural teenage fullness
+- CREATE the impression of a different person through feature adjustments
+- PRESERVE the core facial identity while transforming the appearance
 
-FACIAL TRANSFORMATION TARGET: 22-25 year old East Asian male
-Change only the facial expression to show confident maturity.
-Preserve exactly:
-- [Hair characteristics from Step 1 analysis]
-- Natural hair texture and volume
-- Hair positioning and flow  
-Only the facial features should change to appear more mature.
+CLOTHING PRESERVATION:
+- Keep original clothing exactly unchanged
+- Preserve all clothing details, colors, and patterns
 
-Result: Same person with young adult facial features, exact hairstyle preserved.`;
-  }
-  
-  if (facePrompt.includes('30s') && facePrompt.includes('male')) {
-    return basePrompt + `
+TECHNICAL PRECISION:
+- Match original lighting and shadows perfectly
+- Maintain photorealistic quality with teenage skin characteristics
+- Preserve background and pose exactly
 
-FACIAL TRANSFORMATION TARGET: 30-35 year old East Asian male
-Change only the facial expression to show sophisticated maturity.
-Preserve exactly:
-- [Hair characteristics from Step 1 analysis]
-- Natural hair texture and volume
-- Hair positioning and flow
-Only the facial features should change to appear more sophisticated.
-
-Result: Same person with mature facial features, exact hairstyle preserved.`;
-  }
-  
-  if (facePrompt.includes('40s') && facePrompt.includes('male')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 40-45 year old East Asian male  
-Change only the facial expression to show distinguished wisdom.
-Preserve exactly:
-- [Hair characteristics from Step 1 analysis]
-- Natural hair texture and volume
-- Hair positioning and flow
-Only the facial features should change to appear more distinguished.
-
-Result: Same person with distinguished facial features, exact hairstyle preserved.`;
-  }
-  
-  if (facePrompt.includes('late teens') && facePrompt.includes('female')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 17-19 year old East Asian female
-Change only the facial expression to show innocent charm.
-Preserve exactly:
-- [Hair characteristics from Step 1 analysis]  
-- Natural hair texture and volume
-- Hair positioning and flow
-Only the facial features should change to appear more youthful.
-
-Result: Same person with teenage facial features, exact hairstyle preserved.`;
-  }
-  
-  if (facePrompt.includes('early 20s') && facePrompt.includes('female')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 22-25 year old East Asian female
-Change only the facial expression to show vibrant confidence.
-Preserve exactly:
-- [Hair characteristics from Step 1 analysis]
-- Natural hair texture and volume  
-- Hair positioning and flow
-Only the facial features should change to appear more vibrant.
-
-Result: Same person with young adult facial features, exact hairstyle preserved.`;
-  }
-  
-  if (facePrompt.includes('30s') && facePrompt.includes('female')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 30-35 year old East Asian female
-Change only the facial expression to show elegant sophistication.
-Preserve exactly:
-- [Hair characteristics from Step 1 analysis]
-- Natural hair texture and volume
-- Hair positioning and flow  
-Only the facial features should change to appear more sophisticated.
-
-Result: Same person with sophisticated facial features, exact hairstyle preserved.`;
-  }
-  
-  if (facePrompt.includes('40s') && facePrompt.includes('female')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 40-45 year old East Asian female
-Change only the facial expression to show graceful wisdom.
-Preserve exactly:
-- [Hair characteristics from Step 1 analysis]
-- Natural hair texture and volume
-- Hair positioning and flow
-Only the facial features should change to appear more graceful.
-
-Result: Same person with graceful facial features, exact hairstyle preserved.`;
-  }
-  
-  // 기본 프롬프트 (스타일 옵션들)
-  return basePrompt + `
-
-STYLE TRANSFORMATION TARGET: ${facePrompt}
-Apply the requested transformation to facial features only.
-Preserve exactly:
-- [Hair characteristics from Step 1 analysis]
-- Natural hair texture and volume
-- Hair positioning and flow
-Only the facial features should change according to the style request.
-
-Result: Same person with styled facial features, exact hairstyle preserved.`;
-};
-
-  // 연령별 얼굴 변형 지시 추가
-  if (facePrompt.includes('late teens') && facePrompt.includes('male')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 17-19 year old East Asian male appearance
-- Soften facial features for teenage look (but same bone structure)
-- Smooth skin texture with youthful glow
-- Adjust eye expression for teenage energy
-- Modify facial expression for youthful confidence
-
-Result: Same person with teenage male facial features, IDENTICAL hair preserved.`;
-  }
-  
-  if (facePrompt.includes('early 20s') && facePrompt.includes('male')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 22-25 year old East Asian male appearance  
-- Refine facial features for young adult look (but same bone structure)
-- Enhance skin quality with healthy young adult texture
-- Adjust eye expression for confident, bright look
-- Modify facial expression for mature confidence
-
-Result: Same person with young adult male facial features, IDENTICAL hair preserved.`;
-  }
-  
-  if (facePrompt.includes('30s') && facePrompt.includes('male')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 30-35 year old East Asian male appearance
-- Mature facial features appropriately (but same bone structure)  
-- Add subtle maturity signs to skin texture
-- Adjust eye expression for intelligent, experienced look
-- Modify facial expression for sophisticated confidence
-
-Result: Same person with mature male facial features, IDENTICAL hair preserved.`;
-  }
-  
-  if (facePrompt.includes('40s') && facePrompt.includes('male')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 40-45 year old East Asian male appearance
-- Distinguished facial features (but same bone structure)
-- Natural aging characteristics in skin texture  
-- Adjust eye expression for wisdom and experience
-- Modify facial expression for distinguished confidence
-
-Result: Same person with distinguished male facial features, IDENTICAL hair preserved.`;
-  }
-  
-  if (facePrompt.includes('late teens') && facePrompt.includes('female')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 17-19 year old East Asian female appearance
-- Soften facial features for innocent teenage look (but same bone structure)
-- Perfect skin texture with natural teenage glow
-- Adjust eye expression for youthful brightness  
-- Modify facial expression for sweet, shy charm
-
-Result: Same person with teenage female facial features, IDENTICAL hair preserved.`;
-  }
-  
-  if (facePrompt.includes('early 20s') && facePrompt.includes('female')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 22-25 year old East Asian female appearance
-- Refine facial features for vibrant young adult look (but same bone structure)
-- Perfect skin quality with natural radiant glow
-- Adjust eye expression for confident, lively charm
-- Modify facial expression for young adult confidence
-
-Result: Same person with young adult female facial features, IDENTICAL hair preserved.`;
-  }
-  
-  if (facePrompt.includes('30s') && facePrompt.includes('female')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 30-35 year old East Asian female appearance  
-- Sophisticated facial features (but same bone structure)
-- Enhance skin texture with mature elegance
-- Adjust eye expression for intelligent sophistication
-- Modify facial expression for mature confidence
-
-Result: Same person with sophisticated female facial features, IDENTICAL hair preserved.`;
-  }
-  
-  if (facePrompt.includes('40s') && facePrompt.includes('female')) {
-    return basePrompt + `
-
-FACIAL TRANSFORMATION TARGET: 40-45 year old East Asian female appearance
-- Graceful facial features (but same bone structure)  
-- Natural elegant aging in skin texture
-- Adjust eye expression for gentle wisdom
-- Modify facial expression for graceful confidence
-
-Result: Same person with graceful female facial features, IDENTICAL hair preserved.`;
-  }
-  
-  // 기본 프롬프트 (스타일 옵션들)
-  return basePrompt + `
-
-STYLE TRANSFORMATION TARGET: ${facePrompt}
-- Apply the requested style to facial features only (but same bone structure)
-- Modify skin texture and quality as appropriate for the style
-- Adjust eye expression and facial expression for the style
-- Keep all other elements identical
-
-Result: Same person with styled facial features, IDENTICAL hair preserved.`;
-};
+Result: The same person transformed to appear as a different teenage male through careful feature adjustments.`;
   }
   
   // 20대 남성
@@ -285,25 +53,18 @@ Result: Same person with styled facial features, IDENTICAL hair preserved.`;
     return `
 You are an expert facial feature modifier. Transform this person's appearance to look like a different 22-25 year old East Asian male while preserving their fundamental facial structure.
 
-ABSOLUTE PRESERVATION REQUIREMENTS:
-- HAIR: Keep EXACT same hairstyle, cut, length, texture, color, layers, styling - NO changes whatsoever
-- HEAD ANGLE: Maintain IDENTICAL head position and viewing angle from original
-- BACKGROUND: Keep the EXACT same background environment and lighting
-- POSE: Preserve the EXACT same body position and pose
-
 CRITICAL HAIR PRESERVATION:
-- Analyze and memorize: exact hair color, texture, length, style, parting, volume, positioning, layering
+- Analyze and memorize: exact hair color, texture, length, style, parting, volume, positioning
 - Hair must remain completely unchanged - preserve every detail
 - Maintain identical hair flow and styling
-- Preserve the exact cut style (layered/straight/etc.)
 
 FACIAL FEATURE ADJUSTMENT:
 - KEEP the person's basic facial bone structure intact
 - MODIFY features to create a young adult male appearance:
-  * Adjust jawline definition for masculine maturity (but same bone structure)
+  * Adjust jawline definition for masculine maturity
   * Refine eye shape with confident, bright expression
   * Enhance skin quality with healthy young adult texture
-  * Modify facial expression while maintaining same head angle
+  * Modify facial proportions for 20s male characteristics
   * Adjust eyebrow shape for masculine definition
 - TRANSFORM the overall appearance while maintaining core identity
 - CREATE the effect of a different person through strategic adjustments
@@ -315,10 +76,9 @@ CLOTHING PRESERVATION:
 TECHNICAL REQUIREMENTS:
 - Perfect lighting and shadow matching
 - Photorealistic young adult male skin
-- Preserve EXACT background, pose, head angle, hair completely
-- NO changes to anything except facial features and skin
+- Preserve background and pose exactly
 
-Result: The same person appearing as a different young adult male through facial adjustments only, with absolutely everything else identical.`;
+Result: The same person appearing as a different young adult male through facial adjustments.`;
   }
   
   // 30대 남성
@@ -326,25 +86,18 @@ Result: The same person appearing as a different young adult male through facial
     return `
 You are a skilled facial transformation specialist. Modify this person's features to appear as a different 30-35 year old East Asian male while maintaining their underlying facial structure.
 
-ABSOLUTE PRESERVATION REQUIREMENTS:
-- HAIR: Keep EXACT same hairstyle, cut, length, texture, color, layers, styling - NO changes whatsoever
-- HEAD ANGLE: Maintain IDENTICAL head position and viewing angle from original
-- BACKGROUND: Keep the EXACT same background environment and lighting
-- POSE: Preserve the EXACT same body position and pose
-
 HAIR PRESERVATION PROTOCOL:
-- Study hair characteristics: color, texture, length, style, parting, volume, positioning, layering
+- Study hair characteristics: color, texture, length, style, parting, volume, positioning
 - Preserve hair with absolute accuracy - no modifications allowed
 - Keep every strand and styling detail identical
-- Maintain exact cut style (layered/straight/etc.)
 
 MATURE MALE TRANSFORMATION:
 - PRESERVE the person's fundamental bone structure
 - ADJUST features for mature male appearance:
-  * Refine jawline and facial contours for masculine maturity (but same bone structure)
+  * Refine jawline and facial contours for masculine maturity
   * Modify eye expression for intelligent, experienced look
   * Enhance skin texture with subtle maturity signs
-  * Adjust facial expression while maintaining same head angle
+  * Adjust facial proportions for sophisticated appearance
   * Refine eyebrow shape with mature masculine definition
 - MAINTAIN core facial identity while creating different appearance
 - ACHIEVE the effect of a different person through careful modifications
@@ -356,10 +109,9 @@ CLOTHING PRESERVATION:
 TECHNICAL EXECUTION:
 - Match original lighting and ambient conditions
 - Photorealistic mature male skin characteristics
-- Preserve EXACT background, pose, head angle, hair completely
-- NO changes to anything except facial features and skin
+- Preserve background and body pose exactly
 
-Result: The same person transformed to appear as a different mature male through facial refinements only, with absolutely everything else identical.`;
+Result: The same person transformed to appear as a different mature male through feature refinements.`;
   }
   
   // 40대 남성  
@@ -367,25 +119,18 @@ Result: The same person transformed to appear as a different mature male through
     return `
 You are a master facial feature sculptor. Transform this person to appear as a different 40-45 year old East Asian male while preserving their core facial identity.
 
-ABSOLUTE PRESERVATION REQUIREMENTS:
-- HAIR: Keep EXACT same hairstyle, cut, length, texture, color, layers, styling - NO changes whatsoever
-- HEAD ANGLE: Maintain IDENTICAL head position and viewing angle from original
-- BACKGROUND: Keep the EXACT same background environment and lighting
-- POSE: Preserve the EXACT same body position and pose
-
 ABSOLUTE HAIR PRESERVATION:
-- Analyze hairstyle details: color, texture, length, style, parting, volume, positioning, layering
+- Analyze hairstyle details: color, texture, length, style, parting, volume, positioning
 - Hair is completely off-limits for changes - preserve perfectly
 - Maintain every strand position and natural styling
-- Preserve the exact cut style (layered/straight/etc.)
 
 DISTINGUISHED MALE TRANSFORMATION:
 - KEEP the person's basic facial architecture
 - MODIFY features for distinguished middle-aged appearance:
-  * Enhance jawline definition with mature masculine strength (but same bone structure)
+  * Enhance jawline definition with mature masculine strength
   * Adjust eye expression for wisdom and life experience
   * Refine skin texture with natural aging characteristics
-  * Modify facial expression while maintaining same head angle
+  * Modify facial contours for distinguished appearance
   * Adjust eyebrow shape with mature sophistication
 - PRESERVE underlying facial structure while transforming look
 - CREATE impression of different person through strategic adjustments
@@ -397,10 +142,9 @@ CLOTHING PRESERVATION:
 TECHNICAL MASTERY:
 - Perfect lighting and shadow preservation
 - Photorealistic middle-aged male skin
-- Preserve EXACT background, pose, head angle, hair completely
-- NO changes to anything except facial features and skin
+- Preserve background and pose exactly
 
-Result: The same person appearing as a different distinguished male through facial modifications only, with absolutely everything else identical.`;
+Result: The same person appearing as a different distinguished male through facial modifications.`;
   }
   
   // 10대 여성
@@ -408,22 +152,15 @@ Result: The same person appearing as a different distinguished male through faci
     return `
 You are an expert portrait modifier. Transform this person to appear as a different 17-19 year old East Asian female while maintaining their fundamental facial characteristics.
 
-ABSOLUTE PRESERVATION REQUIREMENTS:
-- HAIR: Keep EXACT same hairstyle, cut, length, texture, color, layers, styling - NO changes whatsoever
-- HEAD ANGLE: Maintain IDENTICAL head position and viewing angle from original
-- BACKGROUND: Keep the EXACT same background environment and lighting
-- POSE: Preserve the EXACT same body position and pose
-
 HAIR PRESERVATION (TOP PRIORITY):
-- Study and memorize exact hairstyle: color, texture, length, style, parting, volume, positioning, layering
+- Study and memorize exact hairstyle: color, texture, length, style, parting, volume, positioning
 - Hair must remain completely identical - no changes permitted
 - Preserve every detail of hair styling and flow
-- Maintain exact cut style (layered/straight/etc.)
 
 TEENAGE FEMALE TRANSFORMATION:
 - MAINTAIN the person's core facial structure
 - ADJUST features for innocent teenage female appearance:
-  * Soften facial contours with youthful roundness (but same bone structure)
+  * Soften facial contours with youthful roundness
   * Enhance eye brightness with innocent sparkle
   * Perfect skin texture with natural teenage glow
   * Modify facial expression for sweet, shy charm
@@ -438,10 +175,9 @@ CLOTHING PRESERVATION:
 TECHNICAL PRECISION:
 - Match original lighting perfectly
 - Photorealistic teenage female skin characteristics
-- Preserve EXACT background, pose, head angle, hair completely
-- NO changes to anything except facial features and skin
+- Preserve background and pose exactly
 
-Result: The same person transformed to appear as a different teenage female through facial adjustments only, with absolutely everything else identical.`;
+Result: The same person transformed to appear as a different teenage female through feature adjustments.`;
   }
   
   // 20대 여성 
@@ -449,40 +185,32 @@ Result: The same person transformed to appear as a different teenage female thro
     return `
 You are a skilled facial feature artist. Modify this person's appearance to look like a different 22-25 year old East Asian female while preserving their core facial foundation.
 
-ABSOLUTE PRESERVATION REQUIREMENTS:
-- HAIR: Keep EXACT same hairstyle, cut, length, texture, color, layers, styling - NO changes whatsoever
-- HEAD ANGLE: Maintain IDENTICAL head position and viewing angle from original
-- BACKGROUND: Keep the EXACT same background environment and lighting
-- POSE: Preserve the EXACT same body position and pose
-
 CRITICAL HAIR PRESERVATION:
-- Analyze hair: exact color, texture, length, style, parting, volume, positioning, layering
-- Hair preservation is MANDATORY - absolutely no modifications allowed
+- Analyze hair: exact color, texture, length, style, parting, volume, positioning
+- Hair preservation is mandatory - no modifications allowed
 - Keep every strand and styling detail identical
-- Preserve the exact cut style (layered/straight/etc.)
 
-FACIAL FEATURE ADJUSTMENT ONLY:
+VIBRANT FEMALE TRANSFORMATION:
 - KEEP the person's fundamental facial structure
 - REFINE features for vibrant young adult female appearance:
-  * Enhance facial contours with elegant femininity (but same bone structure)
+  * Enhance facial contours with elegant femininity
   * Adjust eye expression for confident, lively charm
   * Perfect skin quality with natural radiant glow
-  * Modify facial expression while maintaining same head angle
+  * Modify facial proportions for refined beauty
   * Adjust eyebrow shape for naturally beautiful definition
 - MAINTAIN underlying identity while transforming appearance
-- CREATE effect of different person through strategic facial refinements only
+- CREATE effect of different person through strategic refinements
 
 CLOTHING PRESERVATION:
 - Original clothing must remain unchanged
 - Preserve all clothing elements perfectly
 
 TECHNICAL EXCELLENCE:
-- Perfect lighting and shadow matching to original environment
+- Perfect lighting and shadow matching
 - Photorealistic young adult female skin
-- Preserve EXACT background, pose, head angle, hair completely
-- NO changes to anything except facial features and skin
+- Preserve background and pose exactly
 
-Result: The same person appearing as a different young adult female through facial refinements only, with absolutely everything else identical.`;
+Result: The same person appearing as a different young adult female through facial refinements.`;
   }
   
   // 30대 여성
@@ -490,25 +218,18 @@ Result: The same person appearing as a different young adult female through faci
     return `
 You are a master facial transformation artist. Transform this person to appear as a different 30-35 year old East Asian female while maintaining their essential facial characteristics.
 
-ABSOLUTE PRESERVATION REQUIREMENTS:
-- HAIR: Keep EXACT same hairstyle, cut, length, texture, color, layers, styling - NO changes whatsoever
-- HEAD ANGLE: Maintain IDENTICAL head position and viewing angle from original
-- BACKGROUND: Keep the EXACT same background environment and lighting
-- POSE: Preserve the EXACT same body position and pose
-
 HAIR PRESERVATION MANDATE:
-- Study hair details: color, texture, length, style, parting, volume, positioning, layering
+- Study hair details: color, texture, length, style, parting, volume, positioning
 - Preserve hair with complete accuracy - no changes permitted
 - Keep every aspect of hairstyle identical
-- Maintain exact cut style (layered/straight/etc.)
 
 SOPHISTICATED FEMALE TRANSFORMATION:
 - PRESERVE the person's core facial architecture
 - ENHANCE features for sophisticated mature female appearance:
-  * Refine facial contours with elegant maturity (but same bone structure)
+  * Refine facial contours with elegant maturity
   * Adjust eye expression for intelligent sophistication
   * Enhance skin texture with mature grace
-  * Modify facial expression while maintaining same head angle
+  * Modify facial proportions for refined elegance
   * Adjust eyebrow shape for sophisticated definition
 - MAINTAIN basic facial identity while creating different impression
 - ACHIEVE appearance of different person through elegant modifications
@@ -520,10 +241,9 @@ CLOTHING PRESERVATION:
 TECHNICAL MASTERY:
 - Match original lighting and conditions
 - Photorealistic mature female skin characteristics
-- Preserve EXACT background, pose, head angle, hair completely
-- NO changes to anything except facial features and skin
+- Preserve background and pose exactly
 
-Result: The same person transformed to appear as a different sophisticated female through facial enhancements only, with absolutely everything else identical.`;
+Result: The same person transformed to appear as a different sophisticated female through feature enhancements.`;
   }
   
   // 40대 여성
@@ -531,25 +251,18 @@ Result: The same person transformed to appear as a different sophisticated femal
     return `
 You are an expert facial feature enhancer. Modify this person to appear as a different 40-45 year old East Asian female while preserving their fundamental facial structure.
 
-ABSOLUTE PRESERVATION REQUIREMENTS:
-- HAIR: Keep EXACT same hairstyle, cut, length, texture, color, layers, styling - NO changes whatsoever
-- HEAD ANGLE: Maintain IDENTICAL head position and viewing angle from original
-- BACKGROUND: Keep the EXACT same background environment and lighting
-- POSE: Preserve the EXACT same body position and pose
-
 ABSOLUTE HAIR PRESERVATION:
-- Analyze hairstyle: color, texture, length, style, parting, volume, positioning, layering
+- Analyze hairstyle: color, texture, length, style, parting, volume, positioning
 - Hair is completely protected from changes - preserve perfectly
 - Maintain every detail of hair styling
-- Preserve the exact cut style (layered/straight/etc.)
 
 GRACEFUL FEMALE TRANSFORMATION:
 - KEEP the person's essential facial foundation
 - ADJUST features for graceful middle-aged female appearance:
-  * Enhance facial contours with mature grace (but same bone structure)
+  * Enhance facial contours with mature grace
   * Modify eye expression for gentle wisdom
   * Refine skin texture with natural elegant aging
-  * Adjust facial expression while maintaining same head angle
+  * Adjust facial proportions for dignified beauty
   * Enhance eyebrow shape with mature sophistication
 - PRESERVE core identity while transforming overall look
 - CREATE impression of different person through graceful adjustments
@@ -561,36 +274,28 @@ CLOTHING PRESERVATION:
 TECHNICAL EXCELLENCE:
 - Perfect lighting and shadow preservation
 - Photorealistic middle-aged female skin
-- Preserve EXACT background, pose, head angle, hair completely
-- NO changes to anything except facial features and skin
+- Preserve background and pose exactly
 
-Result: The same person appearing as a different graceful middle-aged female through facial adjustments only, with absolutely everything else identical.`;
+Result: The same person appearing as a different graceful middle-aged female through feature adjustments.`;
   }
   
   // 기본 프롬프트 (스타일 옵션들)
   return `
 You are a master facial feature transformer with advanced preservation technology. Transform this person's appearance based on the following style while maintaining their core facial identity.
 
-ABSOLUTE PRESERVATION REQUIREMENTS:
-- HAIR: Keep EXACT same hairstyle, cut, length, texture, color, layers, styling - NO changes whatsoever
-- HEAD ANGLE: Maintain IDENTICAL head position and viewing angle from original
-- BACKGROUND: Keep the EXACT same background environment and lighting
-- POSE: Preserve the EXACT same body position and pose
-
 HAIR PRESERVATION PROTOCOL:
-- Analyze hair: exact color, texture, length, style, parting, volume, positioning, layering
+- Analyze hair: exact color, texture, length, style, parting, volume, positioning
 - Hair is completely off-limits for modifications - preserve with perfect accuracy
 - Keep every strand and styling detail identical
-- Maintain exact cut style (layered/straight/etc.)
 
 STYLE TRANSFORMATION:
 Transform based on: ${facePrompt}
 - PRESERVE the person's fundamental facial structure and bone architecture
 - MODIFY features to create the requested style/appearance:
-  * Adjust facial contours and proportions appropriately (but same bone structure)
+  * Adjust facial contours and proportions appropriately
   * Enhance or modify expression and facial characteristics
   * Refine skin texture and quality for the desired look
-  * Modify facial expression while maintaining same head angle
+  * Modify facial features while maintaining core identity
 - MAINTAIN the person's basic facial foundation while transforming appearance
 - CREATE the impression of a different person through strategic feature adjustments
 
@@ -601,10 +306,9 @@ CLOTHING PRESERVATION:
 TECHNICAL MASTERY:
 - Match original lighting and shadows perfectly
 - Maintain photorealistic quality appropriate for transformation
-- Preserve EXACT background, pose, head angle, hair completely
-- NO changes to anything except facial features and skin
+- Preserve background and pose exactly
 
-Result: The same person transformed to appear different through strategic facial feature modifications only, preserving their core identity and absolutely everything else identical.`;
+Result: The same person transformed to appear different through strategic facial feature modifications while preserving their core identity.`;
 };
 
 // 2단계: 의상 변환 전용 프롬프트
