@@ -12,8 +12,8 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 
-// 안전 플래그: 환경변수로 제어
-const ENABLE_TWO_STEP = process.env.ENABLE_TWO_STEP === 'true';
+// 안전 플래그: 일단 false로 설정해서 기존 방식으로 테스트
+const ENABLE_TWO_STEP = false; // process.env.ENABLE_TWO_STEP === 'true';
 
 console.log('Gemini Service Configuration:', { 
     twoStep: ENABLE_TWO_STEP
