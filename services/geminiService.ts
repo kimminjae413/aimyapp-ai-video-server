@@ -318,6 +318,7 @@ export const changeFaceInImage = async (
         
         // 2단계: 의상만 변경
         console.log('Step 2: Clothing transformation');
+        console.log('🔥 Using model: gemini-1.5-pro');
         const clothingPromptText = `
 Change only the clothing to: ${clothingPrompt}
 Keep the face, hair, pose, and background exactly the same.`;
