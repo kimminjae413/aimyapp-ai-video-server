@@ -323,7 +323,7 @@ Change only the clothing to: ${clothingPrompt}
 Keep the face, hair, pose, and background exactly the same.`;
 
         const clothingResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image-preview',
+            model: 'gemini-1.5-pro',
             contents: {
                 parts: [
                     {
