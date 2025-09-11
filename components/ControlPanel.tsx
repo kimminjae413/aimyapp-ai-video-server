@@ -13,39 +13,47 @@ interface ControlPanelProps {
   credits: UserCredits | null;
 }
 
-// 강화된 얼굴 변환 옵션 (구체적인 시각적 특징 포함)
+// 강화된 얼굴 변환 옵션 (성별 색상 포함)
 const faceOptions = [
     { 
         value: 'Completely different East Asian male face, age 17-19, soft round face shape, smooth skin without facial hair, small monolid eyes, low nose bridge, thin lips, youthful innocent appearance, black hair', 
-        label: '남성: 10대' 
+        label: '남성: 10대',
+        gender: 'male'
     },
     { 
         value: 'Totally new East Asian male face, age 22-25, oval face shape, clear skin with slight stubble, parallel double eyelids, defined nose bridge, medium lips with clear cupid\'s bow, fresh vibrant appearance', 
-        label: '남성: 20대' 
+        label: '남성: 20대',
+        gender: 'male'
     },
     { 
         value: 'Completely transformed East Asian male face, age 32-36, square jawline, visible nasolabial folds, hooded eyes with crow\'s feet beginning, prominent nose, fuller lower lip, mature masculine features', 
-        label: '남성: 30대' 
+        label: '남성: 30대',
+        gender: 'male'
     },
     { 
         value: 'Entirely different East Asian male face, age 42-46, rectangular face with strong jaw, forehead wrinkles, deep-set eyes with visible eye bags, wider nose, thinner lips, distinguished gray temples', 
-        label: '남성: 40대' 
+        label: '남성: 40대',
+        gender: 'male'
     },
     { 
         value: 'Completely different East Asian female face, age 17-19, soft V-line face shape, porcelain smooth skin, large round eyes with aegyo sal, button nose, plump pink lips, innocent youthful glow', 
-        label: '여성: 10대' 
+        label: '여성: 10대',
+        gender: 'female'
     },
     { 
         value: 'Totally transformed East Asian female face, age 22-25, oval face with high cheekbones, glass skin texture, almond eyes with natural double eyelids, refined nose tip, gradient lips, vibrant fresh beauty', 
-        label: '여성: 20대' 
+        label: '여성: 20대',
+        gender: 'female'
     },
     { 
         value: 'Entirely new East Asian female face, age 32-36, elegant heart-shaped face, fine lines around eyes, sophisticated eye shape with subtle eyeshadow, contoured nose, defined lip shape, mature graceful features', 
-        label: '여성: 30대' 
+        label: '여성: 30대',
+        gender: 'female'
     },
     { 
         value: 'Completely different East Asian female face, age 42-46, diamond face shape, smile lines and crow\'s feet, gentle eyes with wisdom, natural nose, softer lip line, dignified mature beauty', 
-        label: '여성: 40대' 
+        label: '여성: 40대',
+        gender: 'female'
     },
 ];
 
@@ -135,7 +143,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     >
                         <option value="">옵션을 선택하세요</option>
                         <optgroup label="인물 (성별/나이)">
-                            {faceOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            {faceOptions.map(option => (
+                                <option 
+                                    key={option.value} 
+                                    value={option.value}
+                                    style={{
+                                        color: option.gender === 'male' ? '#60a5fa' : '#f472b6'
+                                    }}
+                                >
+                                    {option.label}
+                                </option>
+                            ))}
                         </optgroup>
                         <optgroup label="아트 스타일">
                             {styleOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
