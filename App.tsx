@@ -7,7 +7,7 @@ import { Loader } from './components/Loader';
 import { ImageDisplay } from './components/ImageDisplay';
 import { ControlPanel } from './components/ControlPanel';
 import { changeFaceInImage } from './services/geminiService';
-import { getUserCredits, useCredits, restoreCredits } from './services/bullnabiService';
+import { getUserCredits, useCredits, restoreCredits, saveGenerationResult } from './services/bullnabiService';
 import type { ImageFile, UserCredits } from './types';
 
 type PageType = 'main' | 'faceSwap' | 'videoSwap';
@@ -92,6 +92,19 @@ const FaceSwapPage: React.FC<{
         // 성공: 결과 저장 후 크레딧 차감
         setGeneratedImage(resultImage);
         onResultGenerated(resultImage); // 상위 컴포넌트에도 저장
+        
+        // 🆕 이미지 생성 결과 저장
+        if (originalImage && resultImage) {
+          await saveGenerationResult({
+            userId,
+            type: 'image',
+            originalImageUrl: originalImage.url,
+            resultUrl: resultImage.url,
+            facePrompt,
+            clothingPrompt,
+            creditsUsed: 1
+          });
+        }
         
         // 크레딧 차감은 비동기로 처리
         setTimeout(async () => {
