@@ -384,6 +384,6 @@ export const getServiceStatus = () => {
     return {
         twoStepEnabled: ENABLE_TWO_STEP,
         environment: process.env.NODE_ENV,
-        model: 'gemini-2.5-flash-image-preview'
+        model: 'gemini-1.5-pro'
     };
 };
