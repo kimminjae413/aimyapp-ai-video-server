@@ -307,34 +307,41 @@ const changeFaceOnly = async (
     } catch (error) {
         console.error("❌ Error in face-only transformation:", error);
         
-        // 개선된 프롬프트 실패 시 기본 프롬프트로 재시도
-        if (FEATURE_FLAGS.ENABLE_IMPROVED_PROMPTS) {
-            console.log('🔄 Retrying with original prompt...');
-            try {
-                const fallbackPrompt = getFaceOnlyPromptOriginal(facePrompt);
-                const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash-image-preview',
-                    contents: {
-                        parts: [
-                            {
-                                inlineData: {
-                                    data: originalImage.base64,
-                                    mimeType: originalImage.mimeType,
-                                },
+        // 개선된 프롬프트 실패 시 기본 프롬프트로 재시도 (안전장치)
+        console.log('🔄 Retrying with original prompt as fallback...');
+        try {
+            const fallbackPrompt = getFaceOnlyPromptOriginal(facePrompt);
+            const fallbackResponse = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-image-preview',
+                contents: {
+                    parts: [
+                        {
+                            inlineData: {
+                                data: originalImage.base64,
+                                mimeType: originalImage.mimeType,
                             },
-                            {
-                                text: fallbackPrompt,
-                            },
-                        ],
-                    },
-                    config: {
-                        responseModalities: [Modality.IMAGE, Modality.TEXT],
-                    },
-                });
-                
-                for (const part of response.candidates[0].content.parts) {
-                    if (part.inlineData) {
-                        console.log('✅ Fallback transformation successful');
+                        },
+                        {
+                            text: fallbackPrompt,
+                        },
+                    ],
+                },
+                config: {
+                    responseModalities: [Modality.IMAGE, Modality.TEXT],
+                    temperature: 0.3,
+                },
+            });
+            
+            for (const part of fallbackResponse.candidates[0].content.parts) {
+                if (part.inlineData) {
+                    console.log('✅ Fallback transformation successful');
+                    try {
+                        const cleanedImage = await ImageProcessor.cleanBase64Image(
+                            part.inlineData.data, 
+                            part.inlineData.mimeType
+                        );
+                        return cleanedImage;
+                    } catch (cleanError) {
                         return {
                             base64: part.inlineData.data,
                             mimeType: part.inlineData.mimeType,
@@ -342,9 +349,9 @@ const changeFaceOnly = async (
                         };
                     }
                 }
-            } catch (fallbackError) {
-                console.error("❌ Fallback also failed:", fallbackError);
             }
+        } catch (fallbackError) {
+            console.error("❌ Fallback also failed:", fallbackError);
         }
         
         throw new Error("Failed to change face using Gemini API.");
