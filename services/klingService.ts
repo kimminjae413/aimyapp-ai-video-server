@@ -42,6 +42,17 @@ interface KlingQueryTaskResponse {
   };
 }
 
+// 🆕 영상 길이별 필요 크레딧 계산
+export const getRequiredCredits = (duration: number): number => {
+  if (duration <= 5) {
+    return 2; // 5초 이하: 2회 차감
+  } else if (duration <= 10) {
+    return 3; // 10초 이하: 3회 차감
+  } else {
+    return Math.ceil(duration / 5) + 1; // 그 이상: 5초당 1회씩 추가
+  }
+};
+
 export const generateVideoWithKling = async (
   image: ImageFile,
   prompt: string,
@@ -63,6 +74,7 @@ export const generateVideoWithKling = async (
     console.log('🎬 Kling 비디오 생성 시작 (Netlify Proxy)');
     console.log('- Prompt:', prompt);
     console.log('- Duration:', duration, '초');
+    console.log('- Required Credits:', getRequiredCredits(duration), '회');
     console.log('- Image base64 length:', cleanBase64.length);
 
     if (USE_NETLIFY_PROXY) {
