@@ -153,19 +153,32 @@ async function optimizeImage(base64Image) {
   return cleanBase64;
 }
 
-// Base64 이미지 리사이징 (Node.js 환경용 - sharp 없이)
-async function resizeBase64Image(base64) {
+// PNG 형식으로 변환하는 함수 (Node.js 환경용)
+async function convertToPNG(base64Image) {
   try {
-    // 간단한 해상도 줄이기 로직
-    const buffer = Buffer.from(base64, 'base64');
+    // Buffer로 변환
+    const inputBuffer = Buffer.from(base64Image, 'base64');
     
-    // 실제 리사이징은 복잡하므로, 여기서는 품질만 조정
-    // 실제 환경에서는 sharp 라이브러리나 다른 방법 필요
+    // 간단한 방법: 이미 PNG인지 확인
+    if (inputBuffer[0] === 0x89 && inputBuffer[1] === 0x50 && inputBuffer[2] === 0x4E && inputBuffer[3] === 0x47) {
+      console.log('[OpenAI Proxy] Already PNG format');
+      return base64Image;
+    }
     
-    return base64; // 임시로 원본 반환
+    console.log('[OpenAI Proxy] Converting to PNG format');
+    
+    // Node.js 환경에서 Canvas API 사용 불가하므로
+    // 클라이언트에서 PNG 변환을 요청하거나
+    // 서버에서 이미지 처리 라이브러리 필요
+    
+    // 임시 해결책: JPEG를 PNG 헤더로 감싸기 (실제 변환은 아님)
+    // 실제로는 sharp나 다른 이미지 라이브러리가 필요
+    
+    return base64Image; // 일단 원본 반환
+    
   } catch (error) {
-    console.warn('[OpenAI Proxy] Resize failed:', error.message);
-    return base64;
+    console.warn('[OpenAI Proxy] PNG conversion failed:', error.message);
+    return base64Image;
   }
 }
 
