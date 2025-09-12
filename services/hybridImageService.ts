@@ -1,3 +1,8 @@
+// services/hybridImageService.ts - 캐시 버스트 추가
+console.log('🚀 HYBRID SERVICE VERSION: 4.0 - gpt-image-1 + Gemini Image');
+console.log('📅 BUILD: 2025-09-12-18:20 - FINAL CACHE BUST');
+console.log('🔥 FORCE CACHE BUST: 2025-09-12-18:20');
+
 // services/hybridImageService.ts - 최종 완성 버전 (진짜 gpt-image-1 + 기존 기능 통합)
 import { changeClothingOnly, changeFaceInImage } from './geminiService';
 import { PNGConverter } from '../utils/pngConverter';
