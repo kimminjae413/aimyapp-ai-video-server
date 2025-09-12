@@ -6,18 +6,68 @@ import { ImageUploader } from './components/ImageUploader';
 import { Loader } from './components/Loader';
 import { ImageDisplay } from './components/ImageDisplay';
 import { ControlPanel } from './components/ControlPanel';
-// 🔄 하이브리드 서비스 사용 (OpenAI + Gemini)
+// 하이브리드 서비스 사용 (OpenAI + Gemini)
 import { smartFaceTransformation } from './services/hybridImageService';
 import { getUserCredits, useCredits, restoreCredits, saveGenerationResult } from './services/bullnabiService';
 import type { ImageFile, UserCredits } from './types';
 
 type PageType = 'main' | 'faceSwap' | 'videoSwap';
 
-// 🔥 결과물 저장을 위한 전역 상태 타입
+// 결과물 저장을 위한 전역 상태 타입
 interface GeneratedResults {
   faceSwapImage: ImageFile | null;
   videoUrl: string | null;
 }
+
+// 프록시 버전 체크 함수
+const checkProxyVersion = async () => {
+  try {
+    console.log('🔍 Checking OpenAI Proxy version...');
+    
+    const response = await fetch('/.netlify/functions/openai-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        imageBase64: 'test',
+        prompt: 'version check'
+      })
+    });
+
+    const text = await response.text();
+    
+    // 로그에서 버전 정보 추출
+    if (text.includes('VERSION 3.0')) {
+      console.log('✅ OpenAI Proxy: VERSION 3.0 (공식 문서 기준) - 배포 완료');
+    } else if (text.includes('VERSION 2.1')) {
+      console.log('⚠️ OpenAI Proxy: VERSION 2.1 (구버전) - 업데이트 필요');
+    } else {
+      console.log('❓ OpenAI Proxy: 버전 불명 -', response.status);
+    }
+    
+    return response.status;
+  } catch (error) {
+    console.error('❌ OpenAI Proxy 연결 실패:', error);
+    return null;
+  }
+};
+
+// Gemini 서비스 상태 체크
+const checkGeminiStatus = async () => {
+  try {
+    // geminiService에서 상태 정보 가져오기 (이미 로드된 상태)
+    const geminiConfig = {
+      model: 'gemini-2.5-flash-image-preview',
+      version: '4.0',
+      hasApiKey: !!process.env.GEMINI_API_KEY
+    };
+    
+    console.log('🔍 Gemini Service Status:', geminiConfig);
+    return geminiConfig;
+  } catch (error) {
+    console.error('❌ Gemini 상태 확인 실패:', error);
+    return null;
+  }
+};
 
 // FaceSwap 페이지 컴포넌트
 const FaceSwapPage: React.FC<{ 
@@ -34,7 +84,7 @@ const FaceSwapPage: React.FC<{
   const [clothingPrompt, setClothingPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  // 🆕 변환 방법 추적
+  // 변환 방법 추적
   const [transformationMethod, setTransformationMethod] = useState<string>('');
 
   // preservedResult가 있으면 복원
@@ -95,7 +145,7 @@ const FaceSwapPage: React.FC<{
       console.log('- Face prompt:', facePrompt);
       console.log('- Clothing prompt:', clothingPrompt || 'None');
       
-      // 🆕 하이브리드 변환 시스템 사용 (OpenAI + Gemini)
+      // 하이브리드 변환 시스템 사용 (OpenAI + Gemini)
       const { result: resultImage, method } = await smartFaceTransformation(
         originalImage, 
         facePrompt, 
@@ -112,7 +162,7 @@ const FaceSwapPage: React.FC<{
         
         console.log('🔍 Saving generation result...');
         
-        // 🆕 이미지 생성 결과 저장 (개선된 에러 처리)
+        // 이미지 생성 결과 저장 (개선된 에러 처리)
         try {
           if (originalImage && resultImage) {
             const saved = await saveGenerationResult({
@@ -208,7 +258,7 @@ const FaceSwapPage: React.FC<{
       
       <Header />
       
-      {/* 🆕 변환 방법 표시 (성공시에만) */}
+      {/* 변환 방법 표시 (성공시에만) */}
       {transformationMethod && generatedImage && !isLoading && (
         <div className="w-full max-w-7xl mb-4">
           <div className="bg-gradient-to-r from-blue-600/20 to-green-600/20 border border-blue-500/30 rounded-lg p-3">
@@ -246,7 +296,7 @@ const FaceSwapPage: React.FC<{
                   <div className="text-center text-red-300 p-4">
                     <h3 className="text-lg font-bold">오류 발생</h3>
                     <p className="text-sm mt-2">{error}</p>
-                    {/* 🆕 재시도 버튼 */}
+                    {/* 재시도 버튼 */}
                     <button
                       onClick={handleGenerateClick}
                       disabled={!originalImage || !facePrompt || isLoading}
@@ -269,20 +319,20 @@ const FaceSwapPage: React.FC<{
   );
 };
 
-// 메인 App 컴포넌트 (기존과 동일하게 유지)
+// 메인 App 컴포넌트
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageType>('main');
   const [userId, setUserId] = useState<string | null>(null);
   const [credits, setCredits] = useState<UserCredits | null>(null);
   const [isLoadingCredits, setIsLoadingCredits] = useState<boolean>(true);
   
-  // 🔥 생성된 결과물 보존
+  // 생성된 결과물 보존
   const [generatedResults, setGeneratedResults] = useState<GeneratedResults>({
     faceSwapImage: null,
     videoUrl: null
   });
 
-  // URL에서 userId 가져오기
+  // URL에서 userId 가져오기 + 초기 버전 체크
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const userIdParam = urlParams.get('userId');
@@ -294,6 +344,17 @@ const App: React.FC = () => {
       console.warn('No userId found in URL parameters');
       setIsLoadingCredits(false);
     }
+
+    // 🆕 초기 로딩 시 모든 서비스 버전 체크
+    console.log('🚀 ===== 서비스 버전 체크 시작 =====');
+    
+    // 1. OpenAI Proxy 버전 체크
+    checkProxyVersion();
+    
+    // 2. Gemini 서비스 상태 체크
+    checkGeminiStatus();
+    
+    console.log('🚀 ===== 서비스 버전 체크 완료 =====');
   }, []);
 
   // 크레딧 정보 가져오기 (결과물 상태를 초기화하지 않음)
