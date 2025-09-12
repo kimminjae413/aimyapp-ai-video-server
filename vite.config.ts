@@ -9,12 +9,15 @@ export default defineConfig(({ mode }) => {
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY || env.GEMINI_API_KEY;
     const KLING_ACCESS_KEY = process.env.KLING_ACCESS_KEY || env.KLING_ACCESS_KEY;
     const KLING_SECRET_KEY = process.env.KLING_SECRET_KEY || env.KLING_SECRET_KEY;
+    // 🆕 OpenAI API 키 추가
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY || env.OPENAI_API_KEY;
     
     // 디버깅용 로그 (배포 시 확인)
     console.log('🔧 Build Configuration:');
     console.log('- Mode:', mode);
     console.log('- GEMINI_API_KEY found:', !!GEMINI_API_KEY);
-    console.log('- KLING_ACCESS_KEY found:', !!KLING_ACCESS_KEY);  // 추가
+    console.log('- KLING_ACCESS_KEY found:', !!KLING_ACCESS_KEY);
+    console.log('- OPENAI_API_KEY found:', !!OPENAI_API_KEY); // 🆕 추가
     console.log('- Source:', process.env.GEMINI_API_KEY ? 'Netlify' : 'Local .env');
     
     return {
@@ -22,7 +25,8 @@ export default defineConfig(({ mode }) => {
         'process.env.API_KEY': JSON.stringify(GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(GEMINI_API_KEY),
         'process.env.KLING_ACCESS_KEY': JSON.stringify(KLING_ACCESS_KEY),
-        'process.env.KLING_SECRET_KEY': JSON.stringify(KLING_SECRET_KEY)
+        'process.env.KLING_SECRET_KEY': JSON.stringify(KLING_SECRET_KEY),
+        'process.env.OPENAI_API_KEY': JSON.stringify(OPENAI_API_KEY) // 🆕 추가
       },
       resolve: {
         alias: {
