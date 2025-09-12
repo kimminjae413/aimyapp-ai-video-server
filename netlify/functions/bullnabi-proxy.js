@@ -23,7 +23,7 @@ exports.handler = async (event, context) => {
   
   try {
     const requestBody = JSON.parse(event.body);
-    const { action, metaCode, collectionName, documentJson, token } = requestBody;
+    const { action, metaCode, collectionName, documentJson } = requestBody; // token 제거
     
     // API URL 구성
     let apiUrl = 'https://drylink.ohmyapp.io/bnb';
@@ -54,6 +54,20 @@ exports.handler = async (event, context) => {
         };
     }
     
+    // 토큰 설정 (환경변수만 사용)
+    const token = process.env.BULLNABI_TOKEN;
+
+    if (!token) {
+        return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({
+                code: "-1",
+                message: "BULLNABI_TOKEN not configured"
+            })
+        };
+    }
+    
     console.log('[Bullnabi Proxy] Request:', {
       url: apiUrl,
       action: action,
@@ -78,25 +92,9 @@ exports.handler = async (event, context) => {
     
     // 헤더 설정
     const fetchHeaders = {
-      'Content-Type': 'application/x-www-form-urlencoded'
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': token
     };
-    
-    // 토큰 설정 (환경변수 우선, 없으면 기본 토큰)
-   const token = process.env.BULLNABI_TOKEN;
-
-if (!token) {
-    return {
-        statusCode: 500,
-        headers: corsHeaders,
-        body: JSON.stringify({
-            code: "-1",
-            message: "BULLNABI_TOKEN not configured"
-        })
-    };
-}
-    
-    // Authorization 헤더 추가
-    fetchHeaders['Authorization'] = token || defaultToken;
     
     // API 요청
     const response = await fetch(apiUrl, {
