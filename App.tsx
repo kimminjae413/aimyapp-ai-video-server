@@ -6,7 +6,8 @@ import { ImageUploader } from './components/ImageUploader';
 import { Loader } from './components/Loader';
 import { ImageDisplay } from './components/ImageDisplay';
 import { ControlPanel } from './components/ControlPanel';
-import { changeFaceInImage } from './services/geminiService';
+// 🔄 기존 geminiService 대신 하이브리드 서비스 사용
+import { smartFaceTransformation } from './services/hybridImageService';
 import { getUserCredits, useCredits, restoreCredits, saveGenerationResult } from './services/bullnabiService';
 import type { ImageFile, UserCredits } from './types';
 
@@ -85,8 +86,14 @@ const FaceSwapPage: React.FC<{
     setError(null);
 
     try {
-      // 먼저 이미지 생성
-      const resultImage = await changeFaceInImage(originalImage, facePrompt, clothingPrompt);
+      // 🆕 하이브리드 변환 시스템 사용 (GPT-Image-1 + Gemini)
+      const { result: resultImage, method } = await smartFaceTransformation(
+        originalImage, 
+        facePrompt, 
+        clothingPrompt
+      );
+      
+      console.log(`✅ Transformation completed using: ${method}`);
       
       if (resultImage) {
         // 성공: 결과 저장 후 크레딧 차감
