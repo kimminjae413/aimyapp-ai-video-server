@@ -3,7 +3,10 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "20"  # 18에서 20으로 변경
+  NODE_VERSION = "20"
+
+[functions]
+  timeout = 30
 
 [[redirects]]
   from = "/*"
