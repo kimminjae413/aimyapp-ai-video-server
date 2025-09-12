@@ -46,78 +46,8 @@ Transform **only the facial features** based on: ${facePrompt}. **It is imperati
 ${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
 };
 
-// 2단계 방식: 얼굴만 변환 (심플)
-const changeFaceOnly = async (
-    originalImage: ImageFile, 
-    facePrompt: string
-): Promise<ImageFile | null> => {
-    try {
-        console.log('Face-only transformation starting...');
-        
-        const prompt = `
-Change only the face to: ${facePrompt}
-Keep everything else exactly the same - hair, clothing, pose, background.
-
-Do not change the hairstyle.`;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image-preview',
-            contents: {
-                parts: [
-                    {
-                        inlineData: {
-                            data: originalImage.base64,
-                            mimeType: originalImage.mimeType,
-                        },
-                    },
-                    {
-                        text: prompt,
-                    },
-                ],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
-                temperature: 0.3,
-            },
-        });
-        
-        if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {
-            throw new Error('Invalid API response structure');
-        }
-        
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                const originalBase64 = part.inlineData.data;
-                const originalMimeType = part.inlineData.mimeType;
-                
-                try {
-                    const cleanedImage = await ImageProcessor.cleanBase64Image(
-                        originalBase64, 
-                        originalMimeType
-                    );
-                    console.log('Face transformation completed');
-                    return cleanedImage;
-                } catch (cleanError) {
-                    console.warn('Metadata cleaning failed, using original');
-                    return {
-                        base64: originalBase64,
-                        mimeType: originalMimeType,
-                        url: `data:${originalMimeType};base64,${originalBase64}`
-                    };
-                }
-            }
-        }
-        
-        throw new Error('No image data in API response');
-
-    } catch (error) {
-        console.error("Face transformation error:", error);
-        throw error;
-    }
-};
-
-// 2단계 방식: 옷만 변환 (심플)
-const changeClothingOnly = async (
+// 2단계 방식: 옷만 변환 (심플) - 🔥 export 추가
+export const changeClothingOnly = async (
     faceChangedImage: ImageFile, 
     clothingPrompt: string
 ): Promise<ImageFile | null> => {
@@ -181,70 +111,6 @@ Keep the face, hair, pose, and background exactly the same.`;
     } catch (error) {
         console.error("Clothing transformation error:", error);
         throw error;
-    }
-};
-
-// 기존 단일 방식 (심플)
-const changeFaceInImageOriginal = async (
-    originalImage: ImageFile, 
-    facePrompt: string,
-    clothingPrompt: string
-): Promise<ImageFile | null> => {
-    try {
-        console.log('Using original single-step method');
-        
-        const prompt = getSimplePrompt(facePrompt, clothingPrompt);
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image-preview',
-            contents: {
-                parts: [
-                    {
-                        inlineData: {
-                            data: originalImage.base64,
-                            mimeType: originalImage.mimeType,
-                        },
-                    },
-                    {
-                        text: prompt,
-                    },
-                ],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
-            },
-        });
-        
-        if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {
-            throw new Error('Invalid API response structure');
-        }
-        
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                const originalBase64 = part.inlineData.data;
-                const originalMimeType = part.inlineData.mimeType;
-                
-                try {
-                    const cleanedImage = await ImageProcessor.cleanBase64Image(
-                        originalBase64, 
-                        originalMimeType
-                    );
-                    return cleanedImage;
-                } catch (cleanError) {
-                    console.warn('Failed to clean metadata, returning original:', cleanError);
-                    return {
-                        base64: originalBase64,
-                        mimeType: originalMimeType,
-                        url: `data:${originalMimeType};base64,${originalBase64}`
-                    };
-                }
-            }
-        }
-        return null;
-
-    } catch (error) {
-        console.error("Error calling Gemini API for image transformation:", error);
-        throw new Error("Failed to change face using Gemini API.");
     }
 };
 
@@ -322,13 +188,12 @@ export const changeFaceInImage = async (
         
         // 2단계: 의상만 변경
         console.log('Step 2: Clothing transformation');
-        console.log('🔥 Using model: gemini-1.5-pro');
         const clothingPromptText = `
 Change only the clothing to: ${clothingPrompt}
 Keep the face, hair, pose, and background exactly the same.`;
 
         const clothingResponse = await ai.models.generateContent({
-            model: 'gemini-1.5-pro',
+            model: 'gemini-2.5-flash-image-preview',
             contents: {
                 parts: [
                     {
@@ -389,6 +254,6 @@ export const getServiceStatus = () => {
     return {
         twoStepEnabled: ENABLE_TWO_STEP,
         environment: process.env.NODE_ENV,
-        model: 'gemini-1.5-pro'
+        model: 'gemini-2.5-flash-image-preview'
     };
 };
