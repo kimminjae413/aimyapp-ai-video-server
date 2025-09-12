@@ -1,7 +1,7 @@
-// services/hybridImageService.ts - Firebase + Gemini 하이브리드 최종 완성판
-console.log('🔥 FIREBASE HYBRID SERVICE VERSION: 5.0 - Firebase OpenAI + Gemini');
-console.log('📅 BUILD: 2025-09-12-19:30 - FIREBASE FUNCTIONS COMPLETE VERSION');
-console.log('🔥 FORCE CACHE BUST: 2025-09-12-19:30');
+// services/hybridImageService.ts - 안전한 Firebase + Gemini 하이브리드 최종판
+console.log('🔥 FIREBASE HYBRID SERVICE VERSION: 6.0 - SAFE FINAL');
+console.log('📅 BUILD: 2025-09-12-20:00 - PRODUCTION READY');
+console.log('🔥 CACHE BUST: 2025-09-12-20:00');
 
 import { changeClothingOnly, changeFaceInImage } from './geminiService';
 import { transformFaceWithFirebase } from './firebaseOpenAIService';
@@ -76,78 +76,8 @@ export const firebaseHybridTransformation = async (
 };
 
 /**
- * 레거시 Netlify 비동기 변환 (폴백용 - 기존 코드 유지)
- */
-const legacyNetlifyTransformation = async (
-  originalImage: ImageFile,
-  facePrompt: string,
-  clothingPrompt: string,
-  onProgress?: (status: string) => void
-): Promise<ImageFile | null> => {
-  try {
-    console.log('⚠️ 레거시 Netlify 비동기 변환 시작 (폴백)');
-    
-    // 기존 비동기 OpenAI 방식 (Netlify Functions)
-    // 이 부분은 기존 코드를 그대로 사용
-    const { generateImageAsync } = await import('./asyncOpenAIService');
-    const { PNGConverter } = await import('../utils/pngConverter');
-    
-    // 이미지 전처리
-    const pngBase64 = await PNGConverter.convertToPNGForOpenAI(originalImage.base64);
-    
-    const optimizedPrompt = `
-HIGHEST PRIORITY - HAIR PRESERVATION:
-- Keep EXACT same hair: style, color, length, texture, parting
-- Hair must remain 100% identical to original
-
-SECONDARY - FACE TRANSFORMATION:
-${facePrompt}
-- Replace facial features completely
-- Change face shape, eyes, nose, mouth, skin
-
-TECHNICAL:
-- Keep pose and background
-- Photorealistic skin texture
-
-Hair preservation is CRITICAL priority.
-    `.trim();
-    
-    if (onProgress) {
-      onProgress('Netlify 비동기 처리 중... (최대 2분)');
-    }
-    
-    const processedImageFile: ImageFile = {
-      base64: pngBase64,
-      mimeType: 'image/png',
-      url: `data:image/png;base64,${pngBase64}`
-    };
-    
-    const result = await generateImageAsync(processedImageFile, optimizedPrompt, 120000);
-    
-    if (!result) {
-      throw new Error('Netlify 비동기 변환 실패');
-    }
-    
-    // 의상 변경이 있으면 Gemini로 추가 처리
-    if (clothingPrompt && clothingPrompt.trim() !== '') {
-      if (onProgress) {
-        onProgress('의상 변환 처리 중...');
-      }
-      
-      const finalResult = await changeClothingOnly(result, clothingPrompt);
-      return finalResult || result;
-    }
-    
-    return result;
-    
-  } catch (error) {
-    console.error('❌ 레거시 Netlify 변환 실패:', error);
-    throw error;
-  }
-};
-
-/**
- * 스마트 변환 (Firebase 우선, 실패시 Netlify 폴백, 최후 Gemini)
+ * 스마트 변환 (Firebase 우선, 실패시 Gemini 폴백)
+ * Netlify 비동기 서비스는 제거되어 2단계 시스템으로 변경
  */
 export const smartFaceTransformation = async (
   originalImage: ImageFile,
@@ -156,7 +86,7 @@ export const smartFaceTransformation = async (
   onProgress?: (status: string) => void
 ): Promise<{ result: ImageFile | null; method: string }> => {
   try {
-    // 🔥 1순위: Firebase + Gemini 하이브리드 (9분 타임아웃)
+    // 1순위: Firebase + Gemini 하이브리드 (9분 타임아웃)
     console.log('🔥 1순위: Firebase Functions 시도...');
     
     const firebaseResult = await firebaseHybridTransformation(
@@ -172,104 +102,79 @@ export const smartFaceTransformation = async (
     };
     
   } catch (firebaseError) {
-    console.log('Firebase 실패, Netlify 비동기로 폴백...');
+    console.log('Firebase 실패, Gemini 전용으로 폴백...');
     console.error('Firebase 오류:', firebaseError);
     
     try {
-      // 🔄 2순위: Netlify 비동기 OpenAI (2분 타임아웃)
-      console.log('🔄 2순위: Netlify 비동기 OpenAI 시도...');
+      // 2순위: Gemini Only (최종 폴백)
+      console.log('🆘 2순위: Gemini Only 최종 시도...');
       
       if (onProgress) {
-        onProgress('Firebase 실패, Netlify 비동기로 폴백 중...');
+        onProgress('Firebase 실패, Gemini로 폴백 중...');
       }
       
-      const netlifyResult = await legacyNetlifyTransformation(
+      const geminiResult = await changeFaceInImage(
         originalImage, 
-        facePrompt, 
-        clothingPrompt,
-        onProgress
+        facePrompt,
+        clothingPrompt
       );
       
       if (onProgress) {
-        onProgress('Netlify 비동기 변환 완료!');
+        onProgress('Gemini 변환 완료!');
       }
       
       return { 
-        result: netlifyResult, 
-        method: 'Netlify 비동기 OpenAI (Firebase 폴백)' 
+        result: geminiResult, 
+        method: 'Gemini Only (Firebase 폴백)' 
       };
       
-    } catch (netlifyError) {
-      console.log('Netlify 비동기도 실패, Gemini 전용으로 최종 폴백...');
-      console.error('Netlify 오류:', netlifyError);
-      
-      try {
-        // 🆘 3순위: Gemini Only (최종 폴백)
-        console.log('🆘 3순위: Gemini Only 최종 시도...');
-        
-        if (onProgress) {
-          onProgress('모든 OpenAI 실패, Gemini 전용으로 폴백 중...');
-        }
-        
-        const geminiResult = await changeFaceInImage(
-          originalImage, 
-          facePrompt,
-          clothingPrompt
-        );
-        
-        if (onProgress) {
-          onProgress('Gemini 변환 완료!');
-        }
-        
-        return { 
-          result: geminiResult, 
-          method: 'Gemini Only (Firebase + Netlify 모두 폴백)' 
-        };
-        
-      } catch (geminiError) {
-        console.error('모든 변환 방법 실패');
-        throw new Error(`모든 변환 실패 - Firebase: ${firebaseError instanceof Error ? firebaseError.message : 'Unknown'}, Netlify: ${netlifyError instanceof Error ? netlifyError.message : 'Unknown'}, Gemini: ${geminiError instanceof Error ? geminiError.message : 'Unknown'}`);
-      }
+    } catch (geminiError) {
+      console.error('모든 변환 방법 실패');
+      throw new Error(`모든 변환 실패 - Firebase: ${firebaseError instanceof Error ? firebaseError.message : 'Unknown'}, Gemini: ${geminiError instanceof Error ? geminiError.message : 'Unknown'}`);
     }
   }
 };
 
 /**
- * 서비스 상태 확인 - Firebase 우선 버전
+ * 서비스 상태 확인 - 안전한 2단계 시스템
  */
 export const getHybridServiceStatus = () => {
   return {
-    version: '5.0-FIREBASE-HYBRID-COMPLETE',
-    priority: 'Firebase Functions 우선',
+    version: '6.0-FIREBASE-GEMINI-SAFE',
+    architecture: '2단계 안전 시스템',
     step1: 'Firebase OpenAI (헤어 보존 최우선, 9분 대기)',
     step2: 'Gemini 의상 변환',
-    fallback1: 'Netlify 비동기 OpenAI (2분 대기)',
-    fallback2: 'Gemini Only',
+    fallback: 'Gemini Only (안전한 폴백)',
     features: [
       '🔥 Firebase Functions v2 (9분 타임아웃)',
       '💾 2GB 메모리 할당',
       '🤖 OpenAI gpt-image-1 Edit API',
       '💇 헤어 보존 HIGHEST PRIORITY',
-      '📸 PNG 자동 변환 + 리사이즈',
+      '📸 PNG 자동 변환 + 리사이즈 (최대 1792px)',
       '📐 종횡비 자동 보정',
       '📊 실시간 진행 상황 추적',
-      '📝 1000자 프롬프트 최적화',
-      '🔄 3단계 스마트 폴백 시스템',
-      '🎨 하이브리드 변환 연계'
+      '📝 1200자 프롬프트 지원',
+      '🛡️ 안전한 2단계 폴백 시스템',
+      '🎨 하이브리드 변환 연계',
+      '⚡ 빌드 오류 없는 안전한 구조'
     ],
+    services: {
+      primary: 'Firebase Functions (9분)',
+      fallback: 'Google Gemini 2.5 Flash (14초)',
+      removed: 'Netlify 비동기 (충돌 방지를 위해 제거)'
+    },
     urls: {
       firebase: 'https://us-central1-hgfaceswap-functions.cloudfunctions.net/openaiProxy',
-      netlify: '/.netlify/functions/openai-start (비동기)',
-      gemini: 'Google Gemini 2.5 Flash Image'
+      gemini: 'Google Gemini 2.5 Flash Image API'
     }
   };
 };
 
-// 🔥 기존 함수들 호환성 유지 (다른 파일에서 import하는 경우)
+// 호환성 유지를 위한 별칭들
 export const hybridFaceTransformation = firebaseHybridTransformation;
 
 /**
- * Firebase 연결 상태 확인용 헬퍼
+ * Firebase 연결 상태 확인
  */
 export const checkFirebaseAvailability = async (): Promise<boolean> => {
   try {
@@ -279,4 +184,42 @@ export const checkFirebaseAvailability = async (): Promise<boolean> => {
     console.error('Firebase 연결 확인 실패:', error);
     return false;
   }
+};
+
+/**
+ * 안전성 검증 함수 - 모든 필요한 의존성이 있는지 확인
+ */
+export const validateServiceDependencies = async (): Promise<{
+  firebase: boolean;
+  gemini: boolean;
+  safe: boolean;
+  errors: string[];
+}> => {
+  const errors: string[] = [];
+  let firebase = false;
+  let gemini = false;
+
+  // Firebase 서비스 확인
+  try {
+    await import('./firebaseOpenAIService');
+    firebase = true;
+    console.log('✅ Firebase 서비스 의존성 확인됨');
+  } catch (error) {
+    errors.push('Firebase 서비스 파일 누락');
+    console.error('❌ Firebase 서비스 의존성 누락:', error);
+  }
+
+  // Gemini 서비스 확인
+  try {
+    await import('./geminiService');
+    gemini = true;
+    console.log('✅ Gemini 서비스 의존성 확인됨');
+  } catch (error) {
+    errors.push('Gemini 서비스 파일 누락');
+    console.error('❌ Gemini 서비스 의존성 누락:', error);
+  }
+
+  const safe = firebase && gemini && errors.length === 0;
+
+  return { firebase, gemini, safe, errors };
 };
