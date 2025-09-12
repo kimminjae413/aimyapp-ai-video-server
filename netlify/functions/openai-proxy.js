@@ -22,22 +22,29 @@ exports.handler = async (event, context) => {
   try {
     const { imageBase64, prompt } = JSON.parse(event.body);
     
-    // 올바른 엔드포인트: /images/edits
+    // Base64를 Buffer로 변환
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    
+    // FormData 생성
+    const formData = new FormData();
+    formData.append('model', 'gpt-image-1');
+    formData.append('prompt', prompt);
+    formData.append('input_fidelity', 'high');
+    formData.append('quality', 'high');
+    formData.append('size', 'auto');
+    formData.append('output_format', 'png');
+    
+    // 이미지를 Blob으로 추가
+    const blob = new Blob([imageBuffer], { type: 'image/png' });
+    formData.append('image', blob, 'image.png');
+
     const response = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
+        // Content-Type 헤더는 FormData가 자동으로 설정
       },
-      body: JSON.stringify({
-        model: "gpt-image-1",
-        image: [imageBase64], // 배열 형태로 전달
-        prompt: prompt,
-        input_fidelity: "high", // 🔥 중요: 얼굴 특징 보존
-        quality: "high",
-        size: "auto",
-        output_format: "png"
-      })
+      body: formData
     });
 
     const data = await response.json();
