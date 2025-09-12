@@ -2,7 +2,11 @@
 exports.config = { timeout: 5 }; // 빠른 조회
 
 // 동일한 메모리 저장소 참조 (openai-start.js와 공유)
-const taskResults = new Map();
+// 수정
+if (!global.taskResults) {
+  global.taskResults = new Map();
+}
+const taskResults = global.taskResults;
 
 exports.handler = async (event, context) => {
   const corsHeaders = {
