@@ -28,7 +28,7 @@ const resizeImageForFirebase = (originalImage: ImageFile): Promise<ImageFile> =>
             const ctx = canvas.getContext('2d')!;
             
             // Firebase Functions + gpt-image-1 최적화 (9분 타임아웃이므로 더 큰 크기 허용)
-            const maxSize = 1792; // Netlify보다 더 큰 크기 허용
+            const maxSize = 1024; // Netlify보다 더 큰 크기 허용
             const ratio = Math.min(maxSize / img.width, maxSize / img.height);
             
             const newWidth = Math.round(img.width * ratio);
