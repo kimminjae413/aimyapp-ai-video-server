@@ -5,6 +5,45 @@ import type { ImageFile } from '../types';
 console.log('HYBRID SERVICE VERSION: 2.0 - OpenAI Proxy + Gemini Pipeline');
 
 /**
+ * 이미지 리사이즈 (OpenAI API 용)
+ */
+const resizeImageForOpenAI = (originalImage: ImageFile): Promise<ImageFile> => {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d')!;
+            
+            // 1024x1024 최대 크기로 비율 유지하며 리사이즈
+            const maxSize = 1024;
+            const ratio = Math.min(maxSize / img.width, maxSize / img.height);
+            
+            canvas.width = img.width * ratio;
+            canvas.height = img.height * ratio;
+            
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            
+            const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            const resizedBase64 = resizedDataUrl.split(',')[1];
+            
+            console.log('이미지 리사이즈 완료:', {
+                original: `${img.width}x${img.height}`,
+                resized: `${canvas.width}x${canvas.height}`,
+                originalSize: Math.round(originalImage.base64.length / 1024) + 'KB',
+                resizedSize: Math.round(resizedBase64.length / 1024) + 'KB'
+            });
+            
+            resolve({
+                base64: resizedBase64,
+                mimeType: 'image/jpeg',
+                url: resizedDataUrl
+            });
+        };
+        img.src = originalImage.url;
+    });
+};
+
+/**
  * OpenAI 프록시를 통한 얼굴 변환
  */
 const transformFaceWithOpenAIProxy = async (
@@ -13,6 +52,9 @@ const transformFaceWithOpenAIProxy = async (
 ): Promise<ImageFile | null> => {
     try {
         console.log('OpenAI Proxy: Face transformation starting...');
+        
+        // 이미지 리사이즈 (1024x1024 최대)
+        const resizedImage = await resizeImageForOpenAI(originalImage);
         
         // 헤어 보존 최적화 프롬프트
         const optimizedPrompt = `
@@ -42,14 +84,14 @@ The goal is facial reconstruction only - everything else must remain identical.
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                imageBase64: originalImage.base64,  // 수정: imageData → imageBase64
+                imageBase64: resizedImage.base64,
                 prompt: optimizedPrompt
             })
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`OpenAI Proxy Error: ${errorData.error || response.statusText}`);
+            const errorText = await response.text();
+            throw new Error(`OpenAI Proxy Error: ${response.status} - ${errorText}`);
         }
 
         const data = await response.json();
