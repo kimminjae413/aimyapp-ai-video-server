@@ -64,7 +64,7 @@ Keep the face, hair, pose, and background exactly the same.`;
         const startTime = Date.now();
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash', // 🆕 2.5 Flash 사용
+            model: 'gemini-2.5-flash-image-preview', // 🆕 2.5 Flash 사용
             contents: {
                 parts: [
                     {
