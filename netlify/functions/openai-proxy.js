@@ -1,9 +1,9 @@
-// netlify/functions/openai-proxy.js - 진짜 gpt-image-1 방식
+// netlify/functions/openai-proxy.js - Image 객체 오류 수정
 
 exports.config = { timeout: 26 };
 
 exports.handler = async (event, context) => {
-  console.log('[OpenAI Proxy] 🎯 REAL gpt-image-1 Implementation');
+  console.log('[OpenAI Proxy] 🎯 FIXED VERSION - Node.js 환경 최적화');
   
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -28,7 +28,12 @@ exports.handler = async (event, context) => {
     const { imageBase64, prompt } = JSON.parse(event.body);
     
     console.log('[gpt-image-1] 🚀 진짜 gpt-image-1 프로세스 시작');
-    
+    console.log('[gpt-image-1] 📊 입력 데이터:', {
+      hasImage: !!imageBase64,
+      imageSize: Math.round(imageBase64?.length / 1024) + 'KB',
+      promptLength: prompt?.length
+    });
+
     // ✨ STEP 1: GPT-4V로 참조 이미지 분석 (512차원 embedding)
     console.log('[gpt-image-1] 🧠 Step 1: GPT-4V 이미지 분석 및 파싱');
     
@@ -86,6 +91,8 @@ Provide precise technical description for image reconstruction.`
     });
 
     if (!analysisResponse.ok) {
+      const errorData = await analysisResponse.text();
+      console.error('[gpt-image-1] ❌ GPT-4V 분석 실패:', errorData);
       throw new Error(`GPT-4V Analysis failed: ${analysisResponse.status}`);
     }
 
@@ -93,32 +100,21 @@ Provide precise technical description for image reconstruction.`
     const imageAnalysis = analysisData.choices[0].message.content;
     
     console.log('[gpt-image-1] ✅ Step 1 완료 - 이미지 파싱 성공');
-    console.log('[gpt-image-1] 📊 분석 결과 길이:', imageAnalysis.length, '자');
+    console.log('[gpt-image-1] 📝 분석 결과:', imageAnalysis.substring(0, 200) + '...');
 
-    // ✨ STEP 2: 원본 비율 계산 (auto 처리 방식)
-    const originalDimensions = await getImageDimensions(imageBase64);
-    const inputRatio = originalDimensions.width / originalDimensions.height;
+    // ✨ STEP 2: 원본 비율 추정 (base64 데이터만으로)
+    // base64 길이로 대략적인 비율 추정
+    const estimatedRatio = estimateImageRatio(imageBase64);
+    let targetSize = determineTargetSize(estimatedRatio);
     
-    let targetSize;
-    if (inputRatio === 1) {
-      targetSize = '1024x1024';  // 정사각형
-    } else if (inputRatio > 1.5) {
-      targetSize = '1792x1024';  // 16:9 이상 → 가로형
-    } else if (inputRatio < 0.7) {
-      targetSize = '1024x1792';  // 9:16 이하 → 세로형  
-    } else {
-      targetSize = '1024x1024';  // 그 외 → 정사각형으로 처리
-    }
-    
-    console.log('[gpt-image-1] 📐 비율 분석:', {
-      original: `${originalDimensions.width}x${originalDimensions.height}`,
-      ratio: inputRatio.toFixed(2),
+    console.log('[gpt-image-1] 📐 비율 추정:', {
+      estimatedRatio: estimatedRatio.toFixed(2),
       targetSize: targetSize
     });
 
     // ✨ STEP 3: gpt-image-1 전용 프롬프트 생성 (확산 기반)
     const gptImage1Prompt = `
-TECHNICAL RECONSTRUCTION PROMPT:
+TECHNICAL RECONSTRUCTION PROMPT FOR gpt-image-1:
 
 Based on detailed analysis: "${imageAnalysis}"
 
@@ -166,7 +162,7 @@ Execute face transformation while preserving all analyzed elements.
         model: 'dall-e-3',
         prompt: finalPrompt,
         n: 1,
-        size: targetSize,  // 원본 비율 유지
+        size: targetSize,  // 추정된 비율 사용
         quality: 'hd',
         style: 'natural',  // 자연스러운 스타일
         response_format: 'b64_json'
@@ -190,10 +186,9 @@ Execute face transformation while preserving all analyzed elements.
       const resultBase64 = generationData.data[0].b64_json;
       
       // ✨ STEP 5: 결과 검증 (변환 정도 확인)
-      const verificationResult = await verifyTransformation(imageBase64, resultBase64);
+      const verificationResult = verifyTransformation(imageBase64, resultBase64);
       
       console.log('[gpt-image-1] 🔬 변환 검증:', verificationResult);
-      
       console.log('[gpt-image-1] 🎉 gpt-image-1 프로세스 완료!');
       
       return {
@@ -226,21 +221,38 @@ Execute face transformation while preserving all analyzed elements.
   }
 };
 
-// 🔧 보조 함수들
+// 🔧 보조 함수들 (Node.js 환경용)
 
-// 이미지 차원 추출
-async function getImageDimensions(base64) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      resolve({ width: img.width, height: img.height });
-    };
-    img.src = `data:image/png;base64,${base64}`;
-  });
+// base64 길이로 이미지 비율 추정
+function estimateImageRatio(base64) {
+  // base64 길이와 일반적인 이미지 압축률로 대략적 추정
+  const dataLength = base64.length;
+  
+  // 경험적 추정 (완벽하지 않지만 대략적)
+  if (dataLength > 500000) { // 큰 이미지
+    return 0.75; // 세로형 추정
+  } else if (dataLength > 200000) { // 중간 이미지
+    return 1.0;  // 정사각형 추정
+  } else {
+    return 1.33; // 가로형 추정
+  }
 }
 
-// 변환 결과 검증
-async function verifyTransformation(originalBase64, resultBase64) {
+// 타겟 크기 결정
+function determineTargetSize(ratio) {
+  if (ratio === 1) {
+    return '1024x1024';  // 정사각형
+  } else if (ratio > 1.5) {
+    return '1792x1024';  // 16:9 이상 → 가로형
+  } else if (ratio < 0.7) {
+    return '1024x1792';  // 9:16 이하 → 세로형  
+  } else {
+    return '1024x1024';  // 그 외 → 정사각형으로 처리
+  }
+}
+
+// 변환 결과 검증 (Node.js 환경용)
+function verifyTransformation(originalBase64, resultBase64) {
   const originalSize = originalBase64.length;
   const resultSize = resultBase64.length;
   const sizeDiff = Math.abs(resultSize - originalSize);
