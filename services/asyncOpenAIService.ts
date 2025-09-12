@@ -20,7 +20,7 @@ export const startAsyncGeneration = async (
   try {
     console.log('🚀 Starting async OpenAI generation...');
     
-    const response = await fetch('/.netlify/functions/openai-start', {
+    const response = await fetch('/.netlify/functions/openai-async', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -51,7 +51,7 @@ export const startAsyncGeneration = async (
  */
 export const checkTaskResult = async (taskId: string): Promise<AsyncTaskResult> => {
   try {
-    const response = await fetch(`/.netlify/functions/openai-result/${taskId}`);
+    const response = await fetch(`/.netlify/functions/openai-async/${taskId}`);
     
     if (!response.ok) {
       if (response.status === 404) {
