@@ -1,8 +1,9 @@
-// services/hybridImageService.ts - OpenAI 프록시 사용 버전
+// services/hybridImageService.ts - OpenAI 프록시 + PNG 변환 + 기존 호환성
 import { changeClothingOnly, changeFaceInImage } from './geminiService';
+import { PNGConverter } from '../utils/pngConverter';
 import type { ImageFile } from '../types';
 
-console.log('HYBRID SERVICE VERSION: 2.0 - OpenAI Proxy + Gemini Pipeline');
+console.log('HYBRID SERVICE VERSION: 2.1 - OpenAI Proxy + PNG 변환 + Gemini Pipeline');
 
 /**
  * 이미지 리사이즈 (OpenAI API 용)
@@ -44,7 +45,7 @@ const resizeImageForOpenAI = (originalImage: ImageFile): Promise<ImageFile> => {
 };
 
 /**
- * OpenAI 프록시를 통한 얼굴 변환
+ * OpenAI 프록시를 통한 얼굴 변환 (PNG 변환 포함)
  */
 const transformFaceWithOpenAIProxy = async (
     originalImage: ImageFile,
@@ -53,8 +54,12 @@ const transformFaceWithOpenAIProxy = async (
     try {
         console.log('OpenAI Proxy: Face transformation starting...');
         
-        // 이미지 리사이즈 (1024x1024 최대)
+        // 1. 이미지 리사이즈 (1024x1024 최대)
         const resizedImage = await resizeImageForOpenAI(originalImage);
+        
+        // 2. PNG 형식으로 변환 (OpenAI 요구사항)
+        console.log('OpenAI용 PNG 변환 중...');
+        const pngBase64 = await PNGConverter.convertToPNGForOpenAI(resizedImage.base64);
         
         // 헤어 보존 최적화 프롬프트
         const optimizedPrompt = `
@@ -78,13 +83,15 @@ TECHNICAL REQUIREMENTS:
 The goal is facial reconstruction only - everything else must remain identical.
         `.trim();
 
+        console.log('PNG 변환 완료, OpenAI API 호출...');
+
         const response = await fetch('/.netlify/functions/openai-proxy', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                imageBase64: resizedImage.base64,
+                imageBase64: pngBase64, // PNG 변환된 데이터
                 prompt: optimizedPrompt
             })
         });
@@ -185,7 +192,7 @@ export const hybridFaceTransformation = async (
 };
 
 /**
- * 스마트 변환 (OpenAI 프록시 실패시 Gemini 폴백)
+ * 스마트 변환 (OpenAI 프록시 실패시 Gemini 폴백) - 기존 호환성 유지
  */
 export const smartFaceTransformation = async (
   originalImage: ImageFile,
@@ -206,8 +213,8 @@ export const smartFaceTransformation = async (
     };
     
   } catch (error) {
-    console.warn('Hybrid failed, falling back to Gemini-only...');
-    console.warn('Error:', error);
+    console.log('Hybrid failed, falling back to Gemini-only...');
+    console.error('Error:', error);
     
     try {
       // 하이브리드 실패시 기존 Gemini 방식으로 폴백
@@ -237,6 +244,8 @@ export const getHybridServiceStatus = () => {
     step1: 'OpenAI Proxy (Face transformation)',
     step2: 'Gemini (Clothing transformation)', 
     fallback: 'Gemini Only',
-    faceOptions: 'Maintains existing age/style options'
+    faceOptions: 'Maintains existing age/style options',
+    pngConversion: 'Enabled for OpenAI compatibility',
+    version: '2.1'
   };
 };
