@@ -1,4 +1,4 @@
-// netlify/functions/openai-proxy.js - 진짜 gpt-image-1 Edit API
+// netlify/functions/openai-proxy.js - 진짜 gpt-image-1 Edit API 
 
 exports.config = { timeout: 26 };
 
