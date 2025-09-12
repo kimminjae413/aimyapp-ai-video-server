@@ -1,4 +1,3 @@
-// netlify/functions/openai-proxy.js (디버깅 버전)
 exports.handler = async (event, context) => {
   console.log('[OpenAI Proxy] Function started');
   
@@ -13,13 +12,6 @@ exports.handler = async (event, context) => {
     return { statusCode: 200, headers: corsHeaders, body: '' };
   }
 
-  console.log('[OpenAI Proxy] Environment check:', {
-    hasAPIKey: !!process.env.OPENAI_API_KEY,
-    keyPrefix: process.env.OPENAI_API_KEY?.substring(0, 10) + '...',
-    httpMethod: event.httpMethod,
-    bodyLength: event.body?.length
-  });
-
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     console.error('[OpenAI Proxy] API key not found');
@@ -31,96 +23,88 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    console.log('[OpenAI Proxy] Parsing request body...');
-    const requestBody = JSON.parse(event.body);
-    const { imageBase64, prompt } = requestBody;
-    
+    const { imageBase64, prompt } = JSON.parse(event.body);
     console.log('[OpenAI Proxy] Request parsed:', {
       hasImage: !!imageBase64,
       imageLength: imageBase64?.length,
-      promptLength: prompt?.length,
-      promptPreview: prompt?.substring(0, 50) + '...'
+      promptLength: prompt?.length
     });
 
-    // Base64 유효성 검사
-    if (!imageBase64 || imageBase64.length < 100) {
-      console.error('[OpenAI Proxy] Invalid image data');
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({ error: 'Invalid image data' })
-      };
-    }
-
-    console.log('[OpenAI Proxy] Creating FormData...');
-    
     // Base64를 Buffer로 변환
     const imageBuffer = Buffer.from(imageBase64, 'base64');
     console.log('[OpenAI Proxy] Image buffer created:', imageBuffer.length, 'bytes');
     
-    // FormData 생성
-    const FormData = require('form-data');
-    const formData = new FormData();
+    // 수동으로 multipart/form-data 생성
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
     
-    formData.append('model', 'gpt-image-1');
-    formData.append('prompt', prompt);
-    formData.append('input_fidelity', 'high');
-    formData.append('quality', 'high');
-    formData.append('size', 'auto');
-    formData.append('output_format', 'png');
-    formData.append('image', imageBuffer, {
-      filename: 'image.png',
-      contentType: 'image/png'
-    });
+    let body = '';
+    body += `--${boundary}\r\n`;
+    body += 'Content-Disposition: form-data; name="model"\r\n\r\n';
+    body += 'gpt-image-1\r\n';
+    
+    body += `--${boundary}\r\n`;
+    body += 'Content-Disposition: form-data; name="prompt"\r\n\r\n';
+    body += `${prompt}\r\n`;
+    
+    body += `--${boundary}\r\n`;
+    body += 'Content-Disposition: form-data; name="input_fidelity"\r\n\r\n';
+    body += 'high\r\n';
+    
+    body += `--${boundary}\r\n`;
+    body += 'Content-Disposition: form-data; name="quality"\r\n\r\n';
+    body += 'high\r\n';
+    
+    body += `--${boundary}\r\n`;
+    body += 'Content-Disposition: form-data; name="size"\r\n\r\n';
+    body += 'auto\r\n';
+    
+    body += `--${boundary}\r\n`;
+    body += 'Content-Disposition: form-data; name="image"; filename="image.png"\r\n';
+    body += 'Content-Type: image/png\r\n\r\n';
+    
+    // 텍스트 부분을 Buffer로 변환
+    const textBuffer = Buffer.from(body, 'utf8');
+    const endBuffer = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
+    
+    // 전체 body 조합
+    const fullBody = Buffer.concat([textBuffer, imageBuffer, endBuffer]);
+    
+    console.log('[OpenAI Proxy] Manual FormData created, size:', fullBody.length);
 
-    console.log('[OpenAI Proxy] FormData created, making API request...');
-    
     const startTime = Date.now();
     
     const response = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        ...formData.getHeaders()
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': fullBody.length.toString()
       },
-      body: formData
+      body: fullBody
     });
 
     const responseTime = Date.now() - startTime;
     console.log('[OpenAI Proxy] API response received:', {
       status: response.status,
-      statusText: response.statusText,
-      responseTime: responseTime + 'ms',
-      headers: Object.fromEntries(response.headers.entries())
+      responseTime: responseTime + 'ms'
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[OpenAI Proxy] API Error Response:', {
-        status: response.status,
-        statusText: response.statusText,
-        body: errorText
-      });
+      console.error('[OpenAI Proxy] API Error:', errorText);
       
       return {
         statusCode: response.status,
         headers: corsHeaders,
         body: JSON.stringify({ 
-          error: `OpenAI API Error: ${response.status} ${response.statusText}`,
+          error: `OpenAI API Error: ${response.status}`,
           details: errorText
         })
       };
     }
 
-    console.log('[OpenAI Proxy] Parsing JSON response...');
     const data = await response.json();
-    
-    console.log('[OpenAI Proxy] Success:', {
-      hasData: !!data.data,
-      dataLength: data.data?.length,
-      hasImage: !!(data.data?.[0]?.b64_json),
-      imageLength: data.data?.[0]?.b64_json?.length
-    });
+    console.log('[OpenAI Proxy] Success');
 
     return {
       statusCode: 200,
@@ -129,20 +113,11 @@ exports.handler = async (event, context) => {
     };
     
   } catch (error) {
-    console.error('[OpenAI Proxy] Fatal Error:', {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    });
-    
+    console.error('[OpenAI Proxy] Error:', error.message);
     return {
       statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({ 
-        error: 'Internal server error',
-        details: error.message,
-        type: error.name
-      })
+      body: JSON.stringify({ error: error.message })
     };
   }
 };
