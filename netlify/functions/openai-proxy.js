@@ -1,3 +1,7 @@
+// 맨 위에 수정
+console.log('[OpenAI Proxy] VERSION 2.1 - FIXED PARAMS - CACHE BUSTED');
+console.log('[OpenAI Proxy] BUILD: 2025-09-12-18:00');
+
 // netlify/functions/openai-proxy.js - 파라미터 수정 버전
 exports.config = { timeout: 26 };
 
