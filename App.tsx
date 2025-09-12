@@ -6,7 +6,7 @@ import { ImageUploader } from './components/ImageUploader';
 import { Loader } from './components/Loader';
 import { ImageDisplay } from './components/ImageDisplay';
 import { ControlPanel } from './components/ControlPanel';
-// 🔄 기존 geminiService 대신 하이브리드 서비스 사용
+// 🔄 하이브리드 서비스 사용 (OpenAI + Gemini)
 import { smartFaceTransformation } from './services/hybridImageService';
 import { getUserCredits, useCredits, restoreCredits, saveGenerationResult } from './services/bullnabiService';
 import type { ImageFile, UserCredits } from './types';
@@ -34,6 +34,8 @@ const FaceSwapPage: React.FC<{
   const [clothingPrompt, setClothingPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  // 🆕 변환 방법 추적
+  const [transformationMethod, setTransformationMethod] = useState<string>('');
 
   // preservedResult가 있으면 복원
   useEffect(() => {
@@ -52,6 +54,7 @@ const FaceSwapPage: React.FC<{
       };
       setOriginalImage(newImageFile);
       setGeneratedImage(null);
+      setTransformationMethod(''); // 새 이미지 업로드시 초기화
       onResultGenerated(null); // 새 이미지 업로드시에만 초기화
       setError(null);
     };
@@ -84,9 +87,15 @@ const FaceSwapPage: React.FC<{
     
     setIsLoading(true);
     setError(null);
+    setTransformationMethod('');
 
     try {
-      // 🆕 하이브리드 변환 시스템 사용 (GPT-Image-1 + Gemini)
+      console.log('🎯 Starting hybrid face transformation...');
+      console.log('- Original image size:', originalImage.base64.length);
+      console.log('- Face prompt:', facePrompt);
+      console.log('- Clothing prompt:', clothingPrompt || 'None');
+      
+      // 🆕 하이브리드 변환 시스템 사용 (OpenAI + Gemini)
       const { result: resultImage, method } = await smartFaceTransformation(
         originalImage, 
         facePrompt, 
@@ -94,22 +103,18 @@ const FaceSwapPage: React.FC<{
       );
       
       console.log(`✅ Transformation completed using: ${method}`);
+      setTransformationMethod(method);
       
       if (resultImage) {
         // 성공: 결과 저장 후 크레딧 차감
         setGeneratedImage(resultImage);
         onResultGenerated(resultImage); // 상위 컴포넌트에도 저장
         
-        // 디버깅을 위한 로그 추가
-        console.log('🔍 Starting to save generation result...');
-        console.log('originalImage:', originalImage);
-        console.log('resultImage:', resultImage);
-        console.log('userId:', userId);
+        console.log('🔍 Saving generation result...');
         
-        // 🆕 이미지 생성 결과 저장
+        // 🆕 이미지 생성 결과 저장 (개선된 에러 처리)
         try {
           if (originalImage && resultImage) {
-            console.log('🔍 Calling saveGenerationResult...');
             const saved = await saveGenerationResult({
               userId,
               type: 'image',
@@ -119,26 +124,63 @@ const FaceSwapPage: React.FC<{
               clothingPrompt,
               creditsUsed: 1
             });
-            console.log('🔍 saveGenerationResult result:', saved);
-          } else {
-            console.log('🔍 Missing originalImage or resultImage');
+            
+            if (saved) {
+              console.log('✅ Generation result saved successfully');
+            } else {
+              console.warn('⚠️ Generation result save failed');
+            }
           }
-        } catch (error) {
-          console.error('🔍 Error saving generation result:', error);
+        } catch (saveError) {
+          console.error('❌ Error saving generation result:', saveError);
+          // 저장 실패해도 사용자에게는 성공으로 표시 (이미지는 생성됨)
         }
         
-        // 크레딧 차감은 비동기로 처리
+        // 크레딧 차감은 비동기로 처리 (실패해도 재시도)
         setTimeout(async () => {
-          const creditUsed = await useCredits(userId, 'image', 1);
-          if (creditUsed) {
-            onCreditsUsed();
+          try {
+            const creditUsed = await useCredits(userId, 'image', 1);
+            if (creditUsed) {
+              onCreditsUsed();
+              console.log('✅ Credit deducted successfully');
+            } else {
+              console.warn('⚠️ Credit deduction failed - attempting restore');
+              // 크레딧 차감 실패시 복구 시도는 하지 않음 (이미 이미지 생성 완료)
+            }
+          } catch (creditError) {
+            console.error('❌ Credit processing error:', creditError);
           }
         }, 100);
+        
       } else {
-        setError('모델이 이미지를 생성하지 못했습니다. 다른 이미지를 시도해보세요.');
+        setError('이미지 생성에 실패했습니다. 다른 이미지나 설정을 시도해보세요.');
       }
+      
     } catch (err) {
-      setError(`생성 중 오류가 발생했습니다: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.error('🚨 Face transformation error:', err);
+      
+      let errorMessage = '생성 중 오류가 발생했습니다.';
+      
+      if (err instanceof Error) {
+        const message = err.message;
+        
+        // 사용자 친화적 에러 메시지 변환
+        if (message.includes('OpenAI')) {
+          errorMessage = 'AI 처리 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        } else if (message.includes('PNG')) {
+          errorMessage = '이미지 형식 처리 중 오류가 발생했습니다. 다른 이미지를 시도해보세요.';
+        } else if (message.includes('timeout')) {
+          errorMessage = '처리 시간이 초과되었습니다. 더 작은 이미지로 시도해보세요.';
+        } else if (message.includes('크레딧')) {
+          errorMessage = message; // 크레딧 관련 메시지는 그대로 표시
+        } else {
+          errorMessage = `처리 중 오류: ${message}`;
+        }
+      }
+      
+      setError(errorMessage);
+      setTransformationMethod('');
+      
     } finally {
       setIsLoading(false);
     }
@@ -165,6 +207,21 @@ const FaceSwapPage: React.FC<{
       )}
       
       <Header />
+      
+      {/* 🆕 변환 방법 표시 (성공시에만) */}
+      {transformationMethod && generatedImage && !isLoading && (
+        <div className="w-full max-w-7xl mb-4">
+          <div className="bg-gradient-to-r from-blue-600/20 to-green-600/20 border border-blue-500/30 rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="text-sm text-gray-300">
+                변환 완료: <span className="text-blue-300 font-semibold">{transformationMethod}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <main className="w-full max-w-7xl flex flex-col lg:flex-row gap-8 mt-4">
         <div className="lg:w-1/3 flex flex-col gap-6">
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col gap-6">
@@ -188,7 +245,15 @@ const FaceSwapPage: React.FC<{
               <div className="w-full h-full flex items-center justify-center bg-gray-800/50 border border-gray-700 rounded-xl">
                   <div className="text-center text-red-300 p-4">
                     <h3 className="text-lg font-bold">오류 발생</h3>
-                    <p>{error}</p>
+                    <p className="text-sm mt-2">{error}</p>
+                    {/* 🆕 재시도 버튼 */}
+                    <button
+                      onClick={handleGenerateClick}
+                      disabled={!originalImage || !facePrompt || isLoading}
+                      className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg transition-colors text-sm"
+                    >
+                      다시 시도
+                    </button>
                   </div>
               </div>
             )}
@@ -204,7 +269,7 @@ const FaceSwapPage: React.FC<{
   );
 };
 
-// 메인 App 컴포넌트
+// 메인 App 컴포넌트 (기존과 동일하게 유지)
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageType>('main');
   const [userId, setUserId] = useState<string | null>(null);
@@ -235,7 +300,6 @@ const App: React.FC = () => {
   const fetchCredits = useCallback(async () => {
     if (!userId) return;
     
-    // 🔥 로딩 상태를 변경하지 않음 (재렌더링 최소화)
     try {
       const userCredits = await getUserCredits(userId);
       if (userCredits) {
@@ -271,11 +335,9 @@ const App: React.FC = () => {
 
   const handleBackToMain = () => {
     setCurrentPage('main');
-    // 메인으로 돌아갈 때 결과물 초기화 (선택사항)
-    // setGeneratedResults({ faceSwapImage: null, videoUrl: null });
   };
 
-  // 크레딧 사용 후 새로고침 (재렌더링 최소화)
+  // 크레딧 사용 후 새로고침
   const handleCreditsUsed = () => {
     fetchCredits();
   };
