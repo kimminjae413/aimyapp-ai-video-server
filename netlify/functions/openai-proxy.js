@@ -1,6 +1,4 @@
 // netlify/functions/openai-proxy.js
-const { Configuration, OpenAIApi } = require('openai');
-
 exports.handler = async (event, context) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -22,9 +20,9 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    const { imageData, prompt } = JSON.parse(event.body);
+    const { imageBase64, prompt } = JSON.parse(event.body);
     
-    // OpenAI API 호출 로직
+    // 올바른 엔드포인트: /images/edits
     const response = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers: {
@@ -33,10 +31,12 @@ exports.handler = async (event, context) => {
       },
       body: JSON.stringify({
         model: "gpt-image-1",
-        image: imageData,
+        image: [imageBase64], // 배열 형태로 전달
         prompt: prompt,
+        input_fidelity: "high", // 🔥 중요: 얼굴 특징 보존
+        quality: "high",
         size: "auto",
-        quality: "high"
+        output_format: "png"
       })
     });
 
