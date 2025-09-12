@@ -1,8 +1,8 @@
 // netlify/functions/openai-proxy.js - Pro 플랜용
 
-// Pro 플랜: 26초 타임아웃 설정
+// Pro 플랜: 26초 타임아웃 설정 (코드에서만 설정)
 exports.config = {
-  timeout: 26
+  timeout: 26  // 초 단위 (Pro 플랜 최대값)
 };
 
 exports.handler = async (event, context) => {
