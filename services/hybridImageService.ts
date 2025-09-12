@@ -1,19 +1,16 @@
-// services/hybridImageService.ts - 캐시 버스트 추가
-console.log('🚀 HYBRID SERVICE VERSION: 4.0 - gpt-image-1 + Gemini Image');
-console.log('📅 BUILD: 2025-09-12-18:20 - FINAL CACHE BUST');
-console.log('🔥 FORCE CACHE BUST: 2025-09-12-18:20');
+// services/hybridImageService.ts - 캐시 버스트 추가 + 비동기 통합 최종판
+console.log('🚀 HYBRID SERVICE VERSION: 4.0 - 비동기 gpt-image-1 + Gemini Image');
+console.log('📅 BUILD: 2025-09-12-18:40 - FINAL COMPLETE VERSION');
+console.log('🔥 FORCE CACHE BUST: 2025-09-12-18:40');
 
-// services/hybridImageService.ts - 최종 완성 버전 (진짜 gpt-image-1 + 기존 기능 통합)
+// services/hybridImageService.ts - 최종 완성 버전 (비동기 gpt-image-1 + 기존 기능 통합)
 import { changeClothingOnly, changeFaceInImage } from './geminiService';
+import { generateImageAsync, createProgressTracker } from './asyncOpenAIService';
 import { PNGConverter } from '../utils/pngConverter';
 import type { ImageFile } from '../types';
 
-// 맨 위에 수정
-console.log('🚀 HYBRID SERVICE VERSION: 4.0 - gpt-image-1 + Gemini 2.5-Flash');
-console.log('📅 BUILD: 2025-09-12-18:00 - CACHE BUSTED');
-
 /**
- * 🆕 이미지 차원 추출 함수
+ * 이미지 차원 추출 함수
  */
 const getImageDimensions = (imageFile: ImageFile): Promise<{width: number, height: number}> => {
     return new Promise((resolve) => {
@@ -26,7 +23,7 @@ const getImageDimensions = (imageFile: ImageFile): Promise<{width: number, heigh
 };
 
 /**
- * 📐 gpt-image-1 전용 리사이즈 (기존 방식 개선)
+ * gpt-image-1 전용 리사이즈 (기존 방식 개선)
  */
 const resizeImageForGPTImage1 = (originalImage: ImageFile): Promise<ImageFile> => {
     return new Promise((resolve) => {
@@ -83,7 +80,7 @@ const resizeImageForGPTImage1 = (originalImage: ImageFile): Promise<ImageFile> =
 };
 
 /**
- * 🆕 종횡비 보정 함수 - gpt-image-1 결과물을 원본 비율로 복원
+ * 종횡비 보정 함수 - gpt-image-1 결과물을 원본 비율로 복원
  */
 const correctAspectRatio = (
     resultImageBase64: string, 
@@ -154,137 +151,133 @@ const correctAspectRatio = (
 };
 
 /**
- * 🔥 진짜 gpt-image-1 방식 얼굴 변환 (완전 통합)
+ * 비동기 OpenAI를 사용한 얼굴 변환 (1분+ 대기 가능) - 전처리 통합
  */
-const transformFaceWithGPTImage1 = async (
-    originalImage: ImageFile,
-    facePrompt: string
+const transformFaceWithAsyncOpenAI = async (
+  originalImage: ImageFile,
+  facePrompt: string,
+  onProgress?: (status: string) => void
 ): Promise<ImageFile | null> => {
-    try {
-        console.log('🎯 진짜 gpt-image-1 변환 시작...');
-        
-        // 1. 원본 이미지 차원 추출 (종횡비 보정용)
-        const originalDimensions = await getImageDimensions(originalImage);
-        console.log('원본 이미지 차원:', originalDimensions);
-        
-        // 2. 이미지 리사이즈 (gpt-image-1 최적화)
-        const resizedImage = await resizeImageForGPTImage1(originalImage);
-        
-        // 3. PNG 형식으로 변환 (gpt-image-1 호환성)
-        console.log('gpt-image-1용 PNG 변환 중...');
-        const pngBase64 = await PNGConverter.convertToPNGForOpenAI(resizedImage.base64);
-        
-        // 4. gpt-image-1 전용 프롬프트 (기존 최적화 유지)
-        let optimizedPrompt = `
-FACE TRANSFORMATION PRIORITY:
+  try {
+    console.log('🎯 비동기 OpenAI 얼굴 변환 시작...');
+    
+    // 1. 원본 이미지 차원 추출 (종횡비 보정용)
+    const originalDimensions = await getImageDimensions(originalImage);
+    console.log('원본 이미지 차원:', originalDimensions);
+    
+    // 2. 이미지 리사이즈 (gpt-image-1 최적화)
+    const resizedImage = await resizeImageForGPTImage1(originalImage);
+    
+    // 3. PNG 형식으로 변환 (gpt-image-1 호환성)
+    console.log('gpt-image-1용 PNG 변환 중...');
+    const pngBase64 = await PNGConverter.convertToPNGForOpenAI(resizedImage.base64);
+    
+    // 4. 프롬프트 최적화 (헤어 보존 최우선 + 1000자 제한)
+    let optimizedPrompt = `
+HIGHEST PRIORITY - HAIR PRESERVATION:
+- Keep EXACT same hair: style, color, length, texture, parting
+- Hair must remain 100% identical to original
+- This is ABSOLUTE requirement
+
+SECONDARY - FACE TRANSFORMATION:
 ${facePrompt}
-
-EXECUTE:
-- Replace ALL facial features completely
-- Change face shape, eyes, nose, mouth, skin texture
-- Make transformation dramatic and clearly visible
-- Create completely different person as requested
-
-SECONDARY:
-- Maintain similar hairstyle if possible
-- Keep pose and background when feasible
+- Replace facial features completely
+- Change face shape, eyes, nose, mouth, skin
+- Create different person with same hair
 
 TECHNICAL:
-- Generate photorealistic skin texture
-- Ensure bold, visible changes
-- Focus on complete facial reconstruction
+- Keep pose and background
+- Photorealistic skin texture
+- Bold facial changes only
 
-Face transformation is PRIMARY GOAL.
-        `.trim();
+Hair preservation is CRITICAL priority.
+    `.trim();
 
-        // 프롬프트 길이 제한 (기존 방식 유지)
-        if (optimizedPrompt.length > 1000) {
-            optimizedPrompt = optimizedPrompt.substring(0, 997) + '...';
-            console.log('Prompt truncated to 1000 characters');
-        }
-
-        console.log('Final prompt length:', optimizedPrompt.length, 'characters');
-        console.log('🧠 gpt-image-1 API 호출 (GPT-4V 분석 + DALL-E-3 재구성)...');
-
-        // 5. 진짜 gpt-image-1 API 호출
-        const response = await fetch('/.netlify/functions/openai-proxy', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                imageBase64: pngBase64, // PNG 변환된 데이터
-                prompt: optimizedPrompt
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`gpt-image-1 프록시 오류: ${response.status} - ${errorText}`);
-        }
-
-        const data = await response.json();
-        
-        console.log('gpt-image-1 응답 분석:', {
-            hasData: !!data.data,
-            model: data.model || 'unknown',
-            processingMethod: data.processing_method || 'standard',
-            verification: data.verification || 'none'
-        });
-        
-        if (data.data && data.data[0] && data.data[0].b64_json) {
-            console.log('✅ gpt-image-1 변환 완료');
-            
-            // 6. 종횡비 보정 (gpt-image-1 결과를 원본 비율로)
-            const correctedBase64 = await correctAspectRatio(
-                data.data[0].b64_json,
-                originalDimensions.width,
-                originalDimensions.height
-            );
-            
-            console.log('🎨 종횡비 보정 완료');
-            
-            return {
-                base64: correctedBase64,
-                mimeType: 'image/png',
-                url: `data:image/png;base64,${correctedBase64}`
-            };
-        } else {
-            throw new Error('gpt-image-1 응답에 이미지 데이터 없음');
-        }
-        
-    } catch (error) {
-        console.error('❌ gpt-image-1 변환 실패:', error);
-        throw error;
+    // 프롬프트 길이 제한 (1000자)
+    if (optimizedPrompt.length > 1000) {
+        optimizedPrompt = optimizedPrompt.substring(0, 997) + '...';
+        console.log('Prompt truncated to 1000 characters');
     }
+
+    console.log('Final prompt length:', optimizedPrompt.length, 'characters');
+    console.log('📤 Starting async OpenAI generation with preprocessed image...');
+    
+    if (onProgress) {
+      onProgress('OpenAI 서버에서 이미지 생성 중... (최대 2분)');
+    }
+
+    // 5. 전처리된 이미지로 비동기 생성 (최대 2분 대기)
+    const processedImageFile: ImageFile = {
+      base64: pngBase64,
+      mimeType: 'image/png',
+      url: `data:image/png;base64,${pngBase64}`
+    };
+    
+    const result = await generateImageAsync(processedImageFile, optimizedPrompt, 120000);
+    
+    if (!result) {
+      throw new Error('비동기 OpenAI 변환 결과 없음');
+    }
+    
+    console.log('✅ 비동기 OpenAI 변환 완료, 종횡비 보정 시작...');
+    
+    // 6. 종횡비 보정 (gpt-image-1 결과를 원본 비율로)
+    const correctedBase64 = await correctAspectRatio(
+      result.base64,
+      originalDimensions.width,
+      originalDimensions.height
+    );
+    
+    console.log('🎨 종횡비 보정 완료');
+    
+    if (onProgress) {
+      onProgress('변환 완료!');
+    }
+    
+    return {
+      base64: correctedBase64,
+      mimeType: 'image/png',
+      url: `data:image/png;base64,${correctedBase64}`
+    };
+    
+  } catch (error) {
+    console.error('❌ 비동기 OpenAI 변환 실패:', error);
+    throw error;
+  }
 };
 
 /**
- * 🚀 업데이트된 하이브리드 변환 (gpt-image-1 + Gemini)
+ * 업데이트된 하이브리드 변환 (비동기 OpenAI + Gemini)
  */
 export const hybridFaceTransformation = async (
   originalImage: ImageFile,
   facePrompt: string,
-  clothingPrompt: string
+  clothingPrompt: string,
+  onProgress?: (status: string) => void
 ): Promise<ImageFile | null> => {
   try {
-    console.log('🚀 gpt-image-1 + Gemini 하이브리드 변환 시작!');
+    console.log('🚀 비동기 OpenAI + Gemini 하이브리드 변환 시작');
     console.log('- Face prompt:', facePrompt);
     console.log('- Clothing prompt:', clothingPrompt || 'None');
     
-    // Step 1: 진짜 gpt-image-1으로 얼굴 변환 (리사이즈 + PNG 변환 + 종횡비 보정 포함)
-    console.log('Step 1: gpt-image-1 얼굴 변환 (GPT-4V + DALL-E-3 + 종횡비 보정)');
+    // Step 1: 비동기 OpenAI로 얼굴 변환 (헤어 보존 최우선)
+    console.log('Step 1: 비동기 OpenAI 얼굴 변환 (헤어 보존 최우선, 최대 2분 대기)');
     
-    const faceChangedImage = await transformFaceWithGPTImage1(
+    if (onProgress) {
+      onProgress('OpenAI에서 얼굴 변환 처리 중... (헤어는 완전 보존, 최대 2분)');
+    }
+    
+    const faceChangedImage = await transformFaceWithAsyncOpenAI(
       originalImage, 
-      facePrompt
+      facePrompt,
+      onProgress
     );
     
     if (!faceChangedImage) {
-      throw new Error('Step 1 실패: gpt-image-1 얼굴 변환 실패');
+      throw new Error('Step 1 실패: 비동기 OpenAI 얼굴 변환 실패');
     }
     
-    console.log('✅ Step 1 완료: gpt-image-1 얼굴 변환 + 종횡비 보정');
+    console.log('✅ Step 1 완료: 비동기 OpenAI 얼굴 변환 (헤어 보존)');
     
     // 의상 변경이 없으면 1단계 결과만 반환
     if (!clothingPrompt || clothingPrompt.trim() === '') {
@@ -295,6 +288,10 @@ export const hybridFaceTransformation = async (
     // Step 2: Gemini로 의상 변환
     console.log('Step 2: Gemini 의상 변환');
     
+    if (onProgress) {
+      onProgress('의상 변환 처리 중...');
+    }
+    
     const finalResult = await changeClothingOnly(faceChangedImage, clothingPrompt);
     
     if (!finalResult) {
@@ -303,7 +300,11 @@ export const hybridFaceTransformation = async (
     }
     
     console.log('✅ Step 2 완료: 의상 변환');
-    console.log('🎉 gpt-image-1 + Gemini 하이브리드 변환 완료!');
+    console.log('🎉 비동기 OpenAI + Gemini 하이브리드 변환 완료!');
+    
+    if (onProgress) {
+      onProgress('모든 변환 완료!');
+    }
     
     return finalResult;
     
@@ -314,54 +315,64 @@ export const hybridFaceTransformation = async (
       const errorMessage = error.message;
       
       if (errorMessage.includes('Step 1')) {
-        throw new Error(`gpt-image-1 얼굴 변환 실패: ${errorMessage}`);
-      } else if (errorMessage.includes('gpt-image-1 프록시')) {
-        throw new Error(`gpt-image-1 API 오류: ${errorMessage}`);
+        throw new Error(`비동기 OpenAI 얼굴 변환 실패: ${errorMessage}`);
+      } else if (errorMessage.includes('Timeout')) {
+        throw new Error(`변환 시간 초과: ${errorMessage}`);
       }
       
       throw error;
     }
     
-    throw new Error("gpt-image-1 하이브리드 얼굴 변환에 실패했습니다.");
+    throw new Error("비동기 OpenAI 하이브리드 얼굴 변환에 실패했습니다.");
   }
 };
 
 /**
- * 🔄 스마트 변환 (gpt-image-1 실패시 Gemini 폴백)
+ * 스마트 변환 (비동기 OpenAI 우선, 실패시 Gemini 폴백)
  */
 export const smartFaceTransformation = async (
   originalImage: ImageFile,
   facePrompt: string,
-  clothingPrompt: string
+  clothingPrompt: string,
+  onProgress?: (status: string) => void
 ): Promise<{ result: ImageFile | null; method: string }> => {
   try {
-    // 먼저 gpt-image-1 + Gemini 하이브리드 시도
+    // 먼저 비동기 OpenAI + Gemini 하이브리드 시도
     const hybridResult = await hybridFaceTransformation(
       originalImage, 
       facePrompt, 
-      clothingPrompt
+      clothingPrompt,
+      onProgress
     );
     
     return { 
       result: hybridResult, 
-      method: 'gpt-image-1 (GPT-4V + DALL-E-3 + 종횡비보정) + Gemini 하이브리드' 
+      method: '비동기 OpenAI (헤어 보존 최우선, 2분 대기) + Gemini 하이브리드' 
     };
     
   } catch (error) {
-    console.log('gpt-image-1 하이브리드 실패, Gemini 전용으로 폴백...');
+    console.log('비동기 OpenAI 하이브리드 실패, Gemini 전용으로 폴백...');
     console.error('오류:', error);
     
     try {
-      // gpt-image-1 실패시 기존 Gemini 방식으로 폴백
+      if (onProgress) {
+        onProgress('OpenAI 실패, Gemini로 폴백 중...');
+      }
+      
+      // 비동기 OpenAI 실패시 기존 Gemini 방식으로 폴백
       const geminiResult = await changeFaceInImage(
         originalImage, 
         facePrompt,
         clothingPrompt
       );
       
+      if (onProgress) {
+        onProgress('Gemini 변환 완료!');
+      }
+      
       return { 
         result: geminiResult, 
-        method: 'Gemini Only (gpt-image-1 폴백)' 
+        method: 'Gemini Only (비동기 OpenAI 폴백)' 
       };
       
     } catch (fallbackError) {
@@ -372,24 +383,27 @@ export const smartFaceTransformation = async (
 };
 
 /**
- * 📊 서비스 상태 확인
+ * 서비스 상태 확인 - 완전 통합 버전
  */
 export const getHybridServiceStatus = () => {
   return {
-    version: '3.0',
-    method: 'gpt-image-1 완전 구현',
-    step1: 'gpt-image-1 (GPT-4V 분석 + DALL-E-3 확산 재구성)',
+    version: '4.0-ASYNC-COMPLETE-FINAL',
+    method: '비동기 gpt-image-1 완전 구현',
+    step1: '비동기 OpenAI (헤어 보존 최우선, 2분 대기 가능, 전처리 통합)',
     step2: 'Gemini 의상 변환',
     fallback: 'Gemini Only',
     features: [
+      '비동기 작업 큐 시스템',
+      'Netlify Functions 타임아웃 우회',
+      '최대 2분 OpenAI 대기',
+      '헤어 보존 HIGHEST PRIORITY',
       'gpt-image-1 리사이즈 최적화 (768~1536px)',
       'PNG 변환 (OpenAI 호환성)',
-      'GPT-4V 이미지 분석 (512차원 embedding)',
-      'DALL-E-3 확산 기반 재구성',
       '종횡비 자동 보정 (세로 비율 유지)',
-      '헤어/배경 보존 (0.95 가중치)',
-      'Gemini 의상 변환 연계',
-      '스마트 폴백 시스템'
+      '실시간 진행 상황 추적',
+      '1000자 프롬프트 최적화',
+      'Gemini 스마트 폴백',
+      '하이브리드 변환 연계'
     ]
   };
 };
