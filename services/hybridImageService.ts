@@ -3,7 +3,9 @@ import { changeClothingOnly, changeFaceInImage } from './geminiService';
 import { PNGConverter } from '../utils/pngConverter';
 import type { ImageFile } from '../types';
 
-console.log('HYBRID SERVICE VERSION: 3.0 - 진짜 gpt-image-1 완전 통합 (리사이즈 + PNG 변환 + 종횡비 보정)');
+// 맨 위에 수정
+console.log('🚀 HYBRID SERVICE VERSION: 4.0 - gpt-image-1 + Gemini 2.5-Flash');
+console.log('📅 BUILD: 2025-09-12-18:00 - CACHE BUSTED');
 
 /**
  * 🆕 이미지 차원 추출 함수
