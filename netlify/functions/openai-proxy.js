@@ -1,9 +1,6 @@
-// netlify/functions/openai-proxy.js - Pro 플랜용
+// netlify/functions/openai-proxy.js - 응답 디버깅 추가
 
-// Pro 플랜: 26초 타임아웃 설정 (코드에서만 설정)
-exports.config = {
-  timeout: 26  // 초 단위 (Pro 플랜 최대값)
-};
+exports.config = { timeout: 26 };
 
 exports.handler = async (event, context) => {
   console.log('[OpenAI Proxy] Pro Plan - Function started');
@@ -37,18 +34,17 @@ exports.handler = async (event, context) => {
       remainingTime: context.getRemainingTimeInMillis()
     });
 
-    // 이미지 최적화 (1024x1024 max)
-    const optimizedImage = await optimizeImage(imageBase64);
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    const sizeInMB = (imageBase64.length * 3) / (4 * 1024 * 1024);
+    console.log('[OpenAI Proxy] Image size:', sizeInMB.toFixed(2) + 'MB');
     
     // FormData 생성
     const boundary = '----formdata-pro-' + Math.random().toString(36).substring(2, 15);
-    const formData = createFormData(boundary, optimizedImage, prompt);
+    const formData = createFormData(boundary, imageBase64, prompt);
     
     console.log('[OpenAI Proxy] FormData created, size:', formData.length);
     
     const startTime = Date.now();
-    
-    // 24초 타임아웃 (2초 여유)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 24000);
     
@@ -92,6 +88,38 @@ exports.handler = async (event, context) => {
       }
 
       const data = await response.json();
+      
+      // 🔍 상세한 응답 로깅 추가
+      console.log('[OpenAI Proxy] Raw API Response Structure:', {
+        hasData: !!data.data,
+        dataLength: data.data?.length,
+        firstItemKeys: data.data?.[0] ? Object.keys(data.data[0]) : 'none',
+        hasB64Json: !!(data.data?.[0]?.b64_json),
+        hasUrl: !!(data.data?.[0]?.url),
+        responseKeys: Object.keys(data)
+      });
+      
+      // 응답 데이터 검증 및 정규화
+      if (data.data && data.data.length > 0) {
+        const firstImage = data.data[0];
+        
+        // URL 형태의 응답을 b64_json으로 변환 시도
+        if (firstImage.url && !firstImage.b64_json) {
+          console.log('[OpenAI Proxy] Converting URL response to b64_json...');
+          try {
+            const imageResponse = await fetch(firstImage.url);
+            const imageBuffer = await imageResponse.arrayBuffer();
+            const base64Data = Buffer.from(imageBuffer).toString('base64');
+            
+            // 응답 형식 정규화
+            data.data[0].b64_json = base64Data;
+            console.log('[OpenAI Proxy] URL to b64_json conversion successful');
+          } catch (conversionError) {
+            console.error('[OpenAI Proxy] URL conversion failed:', conversionError.message);
+          }
+        }
+      }
+      
       console.log('[OpenAI Proxy] Success - Images:', data?.data?.length);
       
       return {
@@ -133,56 +161,7 @@ exports.handler = async (event, context) => {
   }
 };
 
-// 이미지 최적화 함수
-async function optimizeImage(base64Image) {
-  // Base64 정리
-  let cleanBase64 = base64Image;
-  if (cleanBase64.startsWith('data:')) {
-    cleanBase64 = cleanBase64.split(',')[1];
-  }
-  
-  // 크기 확인 후 필요시 리사이징
-  const sizeInMB = (cleanBase64.length * 3) / (4 * 1024 * 1024);
-  console.log('[OpenAI Proxy] Image size:', sizeInMB.toFixed(2) + 'MB');
-  
-  if (sizeInMB > 4) { // 4MB 이상이면 리사이징
-    console.log('[OpenAI Proxy] Image too large, resizing...');
-    return await resizeBase64Image(cleanBase64);
-  }
-  
-  return cleanBase64;
-}
-
-// PNG 형식으로 변환하는 함수 (Node.js 환경용)
-async function convertToPNG(base64Image) {
-  try {
-    // Buffer로 변환
-    const inputBuffer = Buffer.from(base64Image, 'base64');
-    
-    // 간단한 방법: 이미 PNG인지 확인
-    if (inputBuffer[0] === 0x89 && inputBuffer[1] === 0x50 && inputBuffer[2] === 0x4E && inputBuffer[3] === 0x47) {
-      console.log('[OpenAI Proxy] Already PNG format');
-      return base64Image;
-    }
-    
-    console.log('[OpenAI Proxy] Converting to PNG format');
-    
-    // Node.js 환경에서 Canvas API 사용 불가하므로
-    // 클라이언트에서 PNG 변환을 요청하거나
-    // 서버에서 이미지 처리 라이브러리 필요
-    
-    // 임시 해결책: JPEG를 PNG 헤더로 감싸기 (실제 변환은 아님)
-    // 실제로는 sharp나 다른 이미지 라이브러리가 필요
-    
-    return base64Image; // 일단 원본 반환
-    
-  } catch (error) {
-    console.warn('[OpenAI Proxy] PNG conversion failed:', error.message);
-    return base64Image;
-  }
-}
-
-// FormData 생성
+// FormData 생성 함수
 function createFormData(boundary, imageBase64, prompt) {
   const imageBuffer = Buffer.from(imageBase64, 'base64');
   
@@ -192,7 +171,7 @@ function createFormData(boundary, imageBase64, prompt) {
   formParts.push(`--${boundary}`);
   formParts.push('Content-Disposition: form-data; name="model"');
   formParts.push('');
-  formParts.push('dall-e-2'); // DALL-E 2가 더 빠름
+  formParts.push('dall-e-2'); // DALL-E 2가 더 안정적
   
   // prompt
   formParts.push(`--${boundary}`);
@@ -211,6 +190,12 @@ function createFormData(boundary, imageBase64, prompt) {
   formParts.push('Content-Disposition: form-data; name="n"');
   formParts.push('');
   formParts.push('1');
+  
+  // response_format 추가
+  formParts.push(`--${boundary}`);
+  formParts.push('Content-Disposition: form-data; name="response_format"');
+  formParts.push('');
+  formParts.push('b64_json');
   
   // image file
   formParts.push(`--${boundary}`);
