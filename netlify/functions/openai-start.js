@@ -2,7 +2,11 @@
 exports.config = { timeout: 5 }; // 빠른 응답
 
 // 메모리 저장소 (Function간 공유)
-const taskResults = new Map();
+// 수정
+if (!global.taskResults) {
+  global.taskResults = new Map();
+}
+const taskResults = global.taskResults;
 
 exports.handler = async (event, context) => {
   const corsHeaders = {
