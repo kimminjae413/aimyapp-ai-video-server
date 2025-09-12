@@ -73,12 +73,7 @@ exports.handler = async (event, context) => {
         `--${boundary}`,
         'Content-Disposition: form-data; name="quality"',
         '',
-        'high', // 🔧 **수정**: 'high' → 'hd' (올바른 값)
-        `--${boundary}`,
-        // 🆕 **핵심 추가 2: response_format 명시** (base64 보장)
-        'Content-Disposition: form-data; name="response_format"',
-        '',
-        'b64_json',
+        'hd', // 🔧 **수정**: 'high' → 'hd' (올바른 값)
         `--${boundary}`,
         'Content-Disposition: form-data; name="image"; filename="input.png"',
         'Content-Type: image/png',
@@ -128,72 +123,4 @@ exports.handler = async (event, context) => {
           body: JSON.stringify({ 
             error: `gpt-image-1 API Error: ${response.status}`,
             details: errorText.substring(0, 100),
-            useGeminiFallback: true
-          })
-        };
-      }
-
-      const data = await response.json();
-      
-      console.log('[gpt-image-1] Success! Response has data:', !!data.data);
-      console.log('[gpt-image-1] Has b64_json:', !!(data.data?.[0]?.b64_json));
-      
-      // gpt-image-1은 항상 base64로 응답
-      if (data.data && data.data[0] && data.data[0].b64_json) {
-        const resultSize = data.data[0].b64_json.length;
-        console.log('[gpt-image-1] Result image size:', Math.round(resultSize / 1024) + 'KB');
-      }
-      
-      return {
-        statusCode: 200,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          ...data,
-          // 🆕 **핵심 추가 4: 상세한 메타데이터** (디버깅 & 모니터링용)
-          _metadata: {
-            processing_method: 'gpt-image-1_Direct_Edit_V2.0',
-            api_response_time_ms: responseTime,
-            total_time_ms: totalTime,
-            version: '2.0'
-          }
-        })
-      };
-
-    } catch (fetchError) {
-      clearTimeout(timeoutId); // 에러시에도 타임아웃 해제
-      
-      // 🛡️ **핵심 추가 5: 타임아웃 에러 처리**
-      if (fetchError.name === 'AbortError') {
-        const totalTime = Date.now() - startTime;
-        console.log('[gpt-image-1] ⏰ 24초 타임아웃 도달, total:', totalTime + 'ms');
-        return {
-          statusCode: 408,
-          headers: corsHeaders,
-          body: JSON.stringify({ 
-            error: 'TIMEOUT',
-            message: 'gpt-image-1 request timeout after 24 seconds',
-            useGeminiFallback: true,
-            total_time_ms: totalTime
-          })
-        };
-      }
-      
-      throw fetchError; // 다른 에러는 외부 catch로 전달
-    }
-    
-  } catch (error) {
-    const totalTime = Date.now() - startTime;
-    console.error('[gpt-image-1] Error:', error.message);
-    console.error('[gpt-image-1] Total time before error:', totalTime + 'ms');
-    
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({ 
-        error: error.message,
-        useGeminiFallback: true,
-        total_time_ms: totalTime
-      })
-    };
-  }
-};
+            useGeminiFallback
