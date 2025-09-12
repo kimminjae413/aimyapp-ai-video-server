@@ -6,8 +6,9 @@ import { ImageUploader } from './components/ImageUploader';
 import { Loader } from './components/Loader';
 import { ImageDisplay } from './components/ImageDisplay';
 import { ControlPanel } from './components/ControlPanel';
-// 하이브리드 서비스 사용 (OpenAI + Gemini)
+// 🔥 Firebase 하이브리드 서비스 사용 (Firebase + Gemini)
 import { smartFaceTransformation } from './services/hybridImageService';
+import { testFirebaseConnection } from './services/firebaseOpenAIService'; // 🆕 추가
 import { getUserCredits, useCredits, restoreCredits, saveGenerationResult } from './services/bullnabiService';
 import type { ImageFile, UserCredits } from './types';
 
@@ -19,42 +20,30 @@ interface GeneratedResults {
   videoUrl: string | null;
 }
 
-// 프록시 버전 체크 함수
-const checkProxyVersion = async () => {
+// 🔥 Firebase Functions 연결 체크 함수 (기존 checkProxyVersion 대체)
+const checkFirebaseConnection = async () => {
   try {
-    console.log('🔍 Checking OpenAI Proxy version...');
+    console.log('🔥 Checking Firebase Functions connection...');
     
-    const response = await fetch('/.netlify/functions/openai-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        imageBase64: 'test',
-        prompt: 'version check'
-      })
-    });
-
-    const text = await response.text();
+    const isConnected = await testFirebaseConnection();
     
-    // 로그에서 버전 정보 추출
-    if (text.includes('VERSION 3.0')) {
-      console.log('✅ OpenAI Proxy: VERSION 3.0 (공식 문서 기준) - 배포 완료');
-    } else if (text.includes('VERSION 2.1')) {
-      console.log('⚠️ OpenAI Proxy: VERSION 2.1 (구버전) - 업데이트 필요');
+    if (isConnected) {
+      console.log('✅ Firebase Functions: 연결 성공 - 9분 타임아웃 사용 가능');
+      console.log('✅ URL: https://us-central1-hgfaceswap-functions.cloudfunctions.net/openaiProxy');
     } else {
-      console.log('❓ OpenAI Proxy: 버전 불명 -', response.status);
+      console.log('❌ Firebase Functions: 연결 실패 - Gemini 폴백 사용');
     }
     
-    return response.status;
+    return isConnected;
   } catch (error) {
-    console.error('❌ OpenAI Proxy 연결 실패:', error);
-    return null;
+    console.error('❌ Firebase 연결 테스트 오류:', error);
+    return false;
   }
 };
 
-// Gemini 서비스 상태 체크
+// Gemini 서비스 상태 체크 (기존 유지)
 const checkGeminiStatus = async () => {
   try {
-    // geminiService에서 상태 정보 가져오기 (이미 로드된 상태)
     const geminiConfig = {
       model: 'gemini-2.5-flash-image-preview',
       version: '4.0',
@@ -69,7 +58,7 @@ const checkGeminiStatus = async () => {
   }
 };
 
-// FaceSwap 페이지 컴포넌트
+// FaceSwap 페이지 컴포넌트 (기존과 동일)
 const FaceSwapPage: React.FC<{ 
   onBack: () => void;
   userId: string | null;
@@ -140,12 +129,12 @@ const FaceSwapPage: React.FC<{
     setTransformationMethod('');
 
     try {
-      console.log('🎯 Starting hybrid face transformation...');
+      console.log('🔥 Starting Firebase hybrid face transformation...');
       console.log('- Original image size:', originalImage.base64.length);
       console.log('- Face prompt:', facePrompt);
       console.log('- Clothing prompt:', clothingPrompt || 'None');
       
-      // 하이브리드 변환 시스템 사용 (OpenAI + Gemini)
+      // 🔥 Firebase 하이브리드 변환 시스템 사용 (Firebase OpenAI + Gemini)
       const { result: resultImage, method } = await smartFaceTransformation(
         originalImage, 
         facePrompt, 
@@ -207,15 +196,17 @@ const FaceSwapPage: React.FC<{
       }
       
     } catch (err) {
-      console.error('🚨 Face transformation error:', err);
+      console.error('🚨 Firebase face transformation error:', err);
       
       let errorMessage = '생성 중 오류가 발생했습니다.';
       
       if (err instanceof Error) {
         const message = err.message;
         
-        // 사용자 친화적 에러 메시지 변환
-        if (message.includes('OpenAI')) {
+        // 🔥 Firebase 관련 에러 메시지 추가
+        if (message.includes('Firebase')) {
+          errorMessage = 'Firebase AI 처리 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        } else if (message.includes('OpenAI')) {
           errorMessage = 'AI 처리 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
         } else if (message.includes('PNG')) {
           errorMessage = '이미지 형식 처리 중 오류가 발생했습니다. 다른 이미지를 시도해보세요.';
@@ -258,15 +249,26 @@ const FaceSwapPage: React.FC<{
       
       <Header />
       
-      {/* 변환 방법 표시 (성공시에만) */}
+      {/* 🔥 Firebase 변환 방법 표시 (성공시에만) */}
       {transformationMethod && generatedImage && !isLoading && (
         <div className="w-full max-w-7xl mb-4">
-          <div className="bg-gradient-to-r from-blue-600/20 to-green-600/20 border border-blue-500/30 rounded-lg p-3">
+          <div className={`border rounded-lg p-3 ${
+            transformationMethod.includes('Firebase') 
+              ? 'bg-gradient-to-r from-orange-600/20 to-red-600/20 border-orange-500/30' 
+              : 'bg-gradient-to-r from-blue-600/20 to-green-600/20 border-blue-500/30'
+          }`}>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <div className={`w-2 h-2 rounded-full animate-pulse ${
+                transformationMethod.includes('Firebase') ? 'bg-orange-400' : 'bg-green-400'
+              }`}></div>
               <span className="text-sm text-gray-300">
-                변환 완료: <span className="text-blue-300 font-semibold">{transformationMethod}</span>
+                변환 완료: <span className={`font-semibold ${
+                  transformationMethod.includes('Firebase') ? 'text-orange-300' : 'text-blue-300'
+                }`}>{transformationMethod}</span>
               </span>
+              {transformationMethod.includes('Firebase') && (
+                <span className="text-xs text-orange-400 ml-2">🔥 9분 타임아웃</span>
+              )}
             </div>
           </div>
         </div>
@@ -332,7 +334,7 @@ const App: React.FC = () => {
     videoUrl: null
   });
 
-  // URL에서 userId 가져오기 + 초기 버전 체크
+  // 🔥 URL에서 userId 가져오기 + Firebase 초기 연결 체크
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const userIdParam = urlParams.get('userId');
@@ -345,19 +347,19 @@ const App: React.FC = () => {
       setIsLoadingCredits(false);
     }
 
-    // 🆕 초기 로딩 시 모든 서비스 버전 체크
-    console.log('🚀 ===== 서비스 버전 체크 시작 =====');
+    // 🔥 Firebase Functions 연결 테스트 (기존 Netlify 대신)
+    console.log('🚀 ===== Firebase 서비스 테스트 시작 =====');
     
-    // 1. OpenAI Proxy 버전 체크
-    checkProxyVersion();
+    // 1. Firebase Functions 연결 테스트 (우선)
+    checkFirebaseConnection();
     
-    // 2. Gemini 서비스 상태 체크
+    // 2. Gemini 서비스 상태 체크 (폴백용)
     checkGeminiStatus();
     
-    console.log('🚀 ===== 서비스 버전 체크 완료 =====');
+    console.log('🚀 ===== 서비스 테스트 완료 =====');
   }, []);
 
-  // 크레딧 정보 가져오기 (결과물 상태를 초기화하지 않음)
+  // 크레딧 정보 가져오기 (결과물 상태를 초기화하지 않음) - 기존과 동일
   const fetchCredits = useCallback(async () => {
     if (!userId) return;
     
@@ -374,7 +376,7 @@ const App: React.FC = () => {
     }
   }, [userId]);
 
-  // 초기 크레딧 로드
+  // 초기 크레딧 로드 - 기존과 동일
   useEffect(() => {
     if (userId) {
       const loadInitialCredits = async () => {
@@ -413,7 +415,7 @@ const App: React.FC = () => {
     setGeneratedResults(prev => ({ ...prev, videoUrl: result }));
   };
 
-  // 로딩 중일 때
+  // 로딩 중일 때 - 기존과 동일
   if (isLoadingCredits) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -425,7 +427,7 @@ const App: React.FC = () => {
     );
   }
 
-  // userId가 없을 때
+  // userId가 없을 때 - 기존과 동일
   if (!userId) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -438,7 +440,7 @@ const App: React.FC = () => {
     );
   }
 
-  // 페이지별 렌더링
+  // 페이지별 렌더링 - 기존과 동일
   switch (currentPage) {
     case 'main':
       return (
