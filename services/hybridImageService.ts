@@ -12,23 +12,23 @@ const transformFaceWithOpenAIProxy = async (
     facePrompt: string
 ): Promise<ImageFile | null> => {
     try {
-        console.log('🎯 OpenAI Proxy: Face transformation starting...');
+        console.log('OpenAI Proxy: Face transformation starting...');
         
         // 헤어 보존 최적화 프롬프트
         const optimizedPrompt = `
 Transform this person's facial features while preserving all other elements:
 
-🎯 FACE TRANSFORMATION:
+FACE TRANSFORMATION:
 ${facePrompt}
 
-🔒 CRITICAL PRESERVATION:
+CRITICAL PRESERVATION:
 - Hair: Keep EXACT same hairstyle, color, texture, length, and styling
 - Clothing: Maintain identical outfit and accessories
 - Background: Preserve environment completely  
 - Pose: Keep body position and angle unchanged
 - Lighting: Match original illumination and shadows
 
-⚙️ TECHNICAL REQUIREMENTS:
+TECHNICAL REQUIREMENTS:
 - Generate photorealistic skin with natural texture
 - Ensure seamless blending between new face and existing hair
 - Maintain color harmony throughout the image
@@ -42,8 +42,7 @@ The goal is facial reconstruction only - everything else must remain identical.
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                imageData: originalImage.base64,
-                mimeType: originalImage.mimeType,
+                imageBase64: originalImage.base64,  // 수정: imageData → imageBase64
                 prompt: optimizedPrompt
             })
         });
@@ -56,7 +55,7 @@ The goal is facial reconstruction only - everything else must remain identical.
         const data = await response.json();
         
         if (data.data && data.data[0] && data.data[0].b64_json) {
-            console.log('✅ OpenAI Proxy: Face transformation completed');
+            console.log('OpenAI Proxy: Face transformation completed');
             
             return {
                 base64: data.data[0].b64_json,
@@ -68,7 +67,7 @@ The goal is facial reconstruction only - everything else must remain identical.
         }
         
     } catch (error) {
-        console.error('❌ OpenAI Proxy transformation error:', error);
+        console.error('OpenAI Proxy transformation error:', error);
         throw error;
     }
 };
@@ -82,12 +81,12 @@ export const hybridFaceTransformation = async (
   clothingPrompt: string
 ): Promise<ImageFile | null> => {
   try {
-    console.log('🚀 Starting 2-step hybrid transformation (Proxy)...');
-    console.log('- Original face prompt:', facePrompt);
+    console.log('Starting 2-step hybrid transformation...');
+    console.log('- Face prompt:', facePrompt);
     console.log('- Clothing prompt:', clothingPrompt || 'None');
     
-    // ========== STEP 1: OpenAI 프록시로 얼굴 변환 ==========
-    console.log('🎯 Step 1: OpenAI Proxy face transformation');
+    // Step 1: OpenAI 프록시로 얼굴 변환
+    console.log('Step 1: OpenAI Proxy face transformation');
     
     const faceChangedImage = await transformFaceWithOpenAIProxy(
       originalImage, 
@@ -98,16 +97,16 @@ export const hybridFaceTransformation = async (
       throw new Error('Step 1 failed: OpenAI Proxy face transformation unsuccessful');
     }
     
-    console.log('✅ Step 1 complete: Face transformed, hair perfectly preserved');
+    console.log('Step 1 complete: Face transformed, hair preserved');
     
     // 의상 변경이 없으면 1단계 결과만 반환
     if (!clothingPrompt || clothingPrompt.trim() === '') {
-      console.log('🎉 Transformation complete (face only)');
+      console.log('Transformation complete (face only)');
       return faceChangedImage;
     }
     
-    // ========== STEP 2: Gemini 의상 변환 ==========
-    console.log('🎯 Step 2: Gemini clothing transformation');
+    // Step 2: Gemini 의상 변환
+    console.log('Step 2: Gemini clothing transformation');
     
     const finalResult = await changeClothingOnly(
       faceChangedImage,
@@ -115,17 +114,17 @@ export const hybridFaceTransformation = async (
     );
     
     if (!finalResult) {
-      console.warn('⚠️ Step 2 failed, returning Step 1 result');
+      console.warn('Step 2 failed, returning Step 1 result');
       return faceChangedImage;
     }
     
-    console.log('✅ Step 2 complete: Clothing transformed');
-    console.log('🎉 2-step hybrid transformation fully complete!');
+    console.log('Step 2 complete: Clothing transformed');
+    console.log('2-step hybrid transformation complete!');
     
     return finalResult;
     
   } catch (error) {
-    console.error('❌ Hybrid transformation failed:', error);
+    console.error('Hybrid transformation failed:', error);
     
     if (error instanceof Error) {
       const errorMessage = error.message;
@@ -165,7 +164,7 @@ export const smartFaceTransformation = async (
     };
     
   } catch (error) {
-    console.warn('🔄 Hybrid failed, falling back to Gemini-only...');
+    console.warn('Hybrid failed, falling back to Gemini-only...');
     console.warn('Error:', error);
     
     try {
@@ -182,7 +181,7 @@ export const smartFaceTransformation = async (
       };
       
     } catch (fallbackError) {
-      console.error('❌ All transformation methods failed');
+      console.error('All transformation methods failed');
       throw new Error(`모든 변환 방법 실패: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`);
     }
   }
