@@ -1,199 +1,278 @@
-// netlify/functions/openai-proxy.js - 순수 gpt-image-1 Edit API
-exports.config = { timeout: 26 };
+// services/geminiService.ts
+import { GoogleGenAI, Modality } from "@google/genai";
+import { ImageProcessor } from '../utils/imageProcessor';
+import type { ImageFile } from '../types';
 
-exports.handler = async (event, context) => {
-  const startTime = Date.now();
-  console.log('[OpenAI Proxy] PURE gpt-image-1 Edit API - NO GPT4V - VERSION 2.0');
-  console.log('[OpenAI Proxy] Remaining time:', context.getRemainingTimeInMillis(), 'ms');
+// 🆕 Gemini 2.0 Flash 업데이트
+console.log('GEMINI SERVICE VERSION: 4.0 - USING 2.0-FLASH-EXP');
+console.log('File timestamp:', new Date().toISOString());
+
+const apiKey = process.env.GEMINI_API_KEY;
+
+if (!apiKey) {
+    throw new Error("GEMINI_API_KEY environment variable is not set.");
+}
+
+const ai = new GoogleGenAI({ apiKey });
+
+console.log('Gemini Service Configuration:', { 
+    model: 'gemini-2.0-flash-exp',
+    features: ['faster_processing', 'improved_image_generation', 'latest_capabilities']
+});
+
+// 심플한 프롬프트 (최종 개선된 버전)
+const getSimplePrompt = (facePrompt: string, clothingPrompt: string): string => {
   
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS'
-  };
+  // 20대 남성
+  if (facePrompt.includes('early 20s') && facePrompt.includes('male')) {
+    return `
+Transform **only the facial features** to those of a distinct East Asian male in his 20s. **It is imperative that the hair, including the fringe, length, texture, style, and color, remains perfectly unchanged and identical to the original image.** Absolutely no alterations to the hair. The background and pose must also be preserved.
+${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
+  }
   
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers: corsHeaders, body: '' };
+  // 20대 여성
+  if (facePrompt.includes('early 20s') && facePrompt.includes('female')) {
+    return `
+Transform **only the facial features** to those of a distinct East Asian female in her 20s. **It is imperative that the hair, including the fringe, length, texture, style, and color, remains perfectly unchanged and identical to the original image.** Absolutely no alterations to the hair. The background and pose must also be preserved.
+${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
   }
+  
+  // 기본값
+  return `
+Transform **only the facial features** based on: ${facePrompt}. **It is imperative that the hair, including the fringe, length, texture, style, and color, remains perfectly unchanged and identical to the original image.** Absolutely no alterations to the hair. The background and pose must also be preserved.
+${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
+};
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    console.error('[OpenAI Proxy] Missing API key');
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({ error: 'API key missing' })
-    };
-  }
-
-  try {
-    const { imageBase64, prompt } = JSON.parse(event.body);
-    
-    console.log('[gpt-image-1] Direct Edit API call starting');
-    console.log('[gpt-image-1] Image size:', Math.round(imageBase64?.length / 1024) + 'KB');
-    console.log('[gpt-image-1] Prompt length:', prompt?.length);
-
-    if (!imageBase64 || !prompt) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({ error: 'Missing imageBase64 or prompt' })
-      };
-    }
-
-    // 🛡️ **핵심 추가 1: 타임아웃 보호** (24초 후 강제 중단)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.log('[gpt-image-1] ⚠️ 24초 타임아웃 - 강제 중단');
-      controller.abort();
-    }, 24000); // Netlify 26초 한도 고려
-
+// 2단계 방식: 옷만 변환 (심플) - 🔥 export 추가
+export const changeClothingOnly = async (
+    faceChangedImage: ImageFile, 
+    clothingPrompt: string
+): Promise<ImageFile | null> => {
     try {
-      const imageBuffer = Buffer.from(imageBase64, 'base64');
-      const boundary = '----gpt1edit' + Date.now();
-      
-      // gpt-image-1 Edit API FormData
-      const formParts = [
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="model"',
-        '',
-        'gpt-image-1',
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="prompt"',
-        '',
-        prompt,
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="size"',
-        '',
-        'auto',
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="input_fidelity"',
-        '',
-        'high',
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="quality"',
-        '',
-        'hd', // 🔧 **수정**: 'high' → 'hd' (올바른 값)
-        `--${boundary}`,
-        // 🆕 **핵심 추가 2: response_format 명시** (base64 보장)
-        'Content-Disposition: form-data; name="response_format"',
-        '',
-        'b64_json',
-        `--${boundary}`,
-        'Content-Disposition: form-data; name="image"; filename="input.png"',
-        'Content-Type: image/png',
-        ''
-      ];
-      
-      const textPart = formParts.join('\r\n') + '\r\n';
-      const closingBoundary = `\r\n--${boundary}--\r\n`;
-      
-      const formData = Buffer.concat([
-        Buffer.from(textPart, 'utf8'),
-        imageBuffer,
-        Buffer.from(closingBoundary, 'utf8')
-      ]);
+        console.log('🔄 [Gemini 2.0 Flash] Clothing-only transformation starting...');
+        
+        const prompt = `
+Change only the clothing to: ${clothingPrompt}
+Keep the face, hair, pose, and background exactly the same.`;
 
-      console.log('[gpt-image-1] FormData created, calling API...');
-      const apiStartTime = Date.now();
-      
-      // 직접 gpt-image-1 Edit API 호출 + 타임아웃 보호
-      const response = await fetch('https://api.openai.com/v1/images/edits', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          // 🆕 **핵심 추가 3: User-Agent** (API 호출 추적용)
-          'User-Agent': 'HairGator-gpt-image-1/2.0'
-        },
-        body: formData,
-        signal: controller.signal // 🛡️ **타임아웃 보호 연결**
-      });
+        const startTime = Date.now();
 
-      clearTimeout(timeoutId); // 성공시 타임아웃 해제
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.0-flash-exp', // 🆕 2.0 Flash 사용
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            data: faceChangedImage.base64,
+                            mimeType: faceChangedImage.mimeType,
+                        },
+                    },
+                    {
+                        text: prompt,
+                    },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE, Modality.TEXT],
+                temperature: 0.3, // 일관성을 위해 낮은 temperature
+            },
+        });
+        
+        const responseTime = Date.now() - startTime;
+        console.log('⚡ [Gemini 2.0 Flash] Clothing response time:', responseTime + 'ms');
+        
+        if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {
+            throw new Error('Invalid API response structure');
+        }
+        
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const originalBase64 = part.inlineData.data;
+                const originalMimeType = part.inlineData.mimeType;
+                
+                try {
+                    const cleanedImage = await ImageProcessor.cleanBase64Image(
+                        originalBase64, 
+                        originalMimeType
+                    );
+                    console.log('✅ [Gemini 2.0 Flash] Clothing transformation completed in', responseTime + 'ms');
+                    return cleanedImage;
+                } catch (cleanError) {
+                    console.warn('⚠️ Metadata cleaning failed, using original');
+                    return {
+                        base64: originalBase64,
+                        mimeType: originalMimeType,
+                        url: `data:${originalMimeType};base64,${originalBase64}`
+                    };
+                }
+            }
+        }
+        
+        throw new Error('No image data in clothing transformation response');
 
-      const responseTime = Date.now() - apiStartTime;
-      const totalTime = Date.now() - startTime;
-      
-      console.log('[gpt-image-1] API responded in:', responseTime + 'ms');
-      console.log('[gpt-image-1] Total time:', totalTime + 'ms');
-      console.log('[gpt-image-1] Status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[gpt-image-1] API Error:', response.status, errorText.substring(0, 200));
-        return {
-          statusCode: response.status,
-          headers: corsHeaders,
-          body: JSON.stringify({ 
-            error: `gpt-image-1 API Error: ${response.status}`,
-            details: errorText.substring(0, 100),
-            useGeminiFallback: true
-          })
-        };
-      }
-
-      const data = await response.json();
-      
-      console.log('[gpt-image-1] Success! Response has data:', !!data.data);
-      console.log('[gpt-image-1] Has b64_json:', !!(data.data?.[0]?.b64_json));
-      
-      // gpt-image-1은 항상 base64로 응답
-      if (data.data && data.data[0] && data.data[0].b64_json) {
-        const resultSize = data.data[0].b64_json.length;
-        console.log('[gpt-image-1] Result image size:', Math.round(resultSize / 1024) + 'KB');
-      }
-      
-      return {
-        statusCode: 200,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          ...data,
-          // 🆕 **핵심 추가 4: 상세한 메타데이터** (디버깅 & 모니터링용)
-          _metadata: {
-            processing_method: 'gpt-image-1_Direct_Edit_V2.0',
-            api_response_time_ms: responseTime,
-            total_time_ms: totalTime,
-            version: '2.0'
-          }
-        })
-      };
-
-    } catch (fetchError) {
-      clearTimeout(timeoutId); // 에러시에도 타임아웃 해제
-      
-      // 🛡️ **핵심 추가 5: 타임아웃 에러 처리**
-      if (fetchError.name === 'AbortError') {
-        const totalTime = Date.now() - startTime;
-        console.log('[gpt-image-1] ⏰ 24초 타임아웃 도달, total:', totalTime + 'ms');
-        return {
-          statusCode: 408,
-          headers: corsHeaders,
-          body: JSON.stringify({ 
-            error: 'TIMEOUT',
-            message: 'gpt-image-1 request timeout after 24 seconds',
-            useGeminiFallback: true,
-            total_time_ms: totalTime
-          })
-        };
-      }
-      
-      throw fetchError; // 다른 에러는 외부 catch로 전달
+    } catch (error) {
+        console.error("❌ [Gemini 2.0 Flash] Clothing transformation error:", error);
+        throw error;
     }
-    
-  } catch (error) {
-    const totalTime = Date.now() - startTime;
-    console.error('[gpt-image-1] Error:', error.message);
-    console.error('[gpt-image-1] Total time before error:', totalTime + 'ms');
-    
+};
+
+// 메인 함수 - 수동 2단계 방식
+export const changeFaceInImage = async (
+    originalImage: ImageFile, 
+    facePrompt: string,
+    clothingPrompt: string
+): Promise<ImageFile | null> => {
+    try {
+        console.log('🚀 [Gemini 2.0 Flash] Starting transformation...');
+        
+        // 1단계: 얼굴만 변환 (기존 방식으로)
+        console.log('👤 Step 1: Face transformation only');
+        const prompt = getSimplePrompt(facePrompt, ''); // 의상 변경 없이 얼굴만
+        
+        const step1StartTime = Date.now();
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.0-flash-exp', // 🆕 2.0 Flash 사용
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            data: originalImage.base64,
+                            mimeType: originalImage.mimeType,
+                        },
+                    },
+                    {
+                        text: prompt,
+                    },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE, Modality.TEXT],
+                temperature: 0.4, // 얼굴 변환은 약간 더 창의적
+            },
+        });
+        
+        const step1Time = Date.now() - step1StartTime;
+        console.log('⚡ [Gemini 2.0 Flash] Step 1 response time:', step1Time + 'ms');
+        
+        if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {
+            throw new Error('Invalid API response structure');
+        }
+        
+        let faceResult: ImageFile | null = null;
+        
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const originalBase64 = part.inlineData.data;
+                const originalMimeType = part.inlineData.mimeType;
+                
+                try {
+                    faceResult = await ImageProcessor.cleanBase64Image(
+                        originalBase64, 
+                        originalMimeType
+                    );
+                } catch (cleanError) {
+                    console.warn('⚠️ Failed to clean metadata, returning original:', cleanError);
+                    faceResult = {
+                        base64: originalBase64,
+                        mimeType: originalMimeType,
+                        url: `data:${originalMimeType};base64,${originalBase64}`
+                    };
+                }
+                break;
+            }
+        }
+        
+        if (!faceResult) {
+            throw new Error('No image data in face transformation response');
+        }
+        
+        console.log('✅ Step 1 completed - face transformed in', step1Time + 'ms');
+        
+        // 의상 변경이 없으면 1단계 결과만 반환
+        if (!clothingPrompt || clothingPrompt.trim() === '') {
+            console.log('🏁 [Gemini 2.0 Flash] Face-only transformation completed');
+            return faceResult;
+        }
+        
+        // 2단계: 의상만 변경
+        console.log('👕 Step 2: Clothing transformation');
+        const step2StartTime = Date.now();
+        
+        const clothingPromptText = `
+Change only the clothing to: ${clothingPrompt}
+Keep the face, hair, pose, and background exactly the same.`;
+
+        const clothingResponse = await ai.models.generateContent({
+            model: 'gemini-2.0-flash-exp', // 🆕 2.0 Flash 사용
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            data: faceResult.base64,
+                            mimeType: faceResult.mimeType,
+                        },
+                    },
+                    {
+                        text: clothingPromptText,
+                    },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE, Modality.TEXT],
+                temperature: 0.3, // 의상은 더 일관되게
+            },
+        });
+        
+        const step2Time = Date.now() - step2StartTime;
+        const totalTime = step1Time + step2Time;
+        
+        console.log('⚡ [Gemini 2.0 Flash] Step 2 response time:', step2Time + 'ms');
+        console.log('⚡ [Gemini 2.0 Flash] Total time:', totalTime + 'ms');
+        
+        if (!clothingResponse.candidates || !clothingResponse.candidates[0] || !clothingResponse.candidates[0].content) {
+            console.warn('⚠️ Clothing transformation failed, returning face result');
+            return faceResult;
+        }
+        
+        for (const part of clothingResponse.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const originalBase64 = part.inlineData.data;
+                const originalMimeType = part.inlineData.mimeType;
+                
+                try {
+                    const finalResult = await ImageProcessor.cleanBase64Image(
+                        originalBase64, 
+                        originalMimeType
+                    );
+                    console.log('✅ [Gemini 2.0 Flash] All steps completed in', totalTime + 'ms');
+                    return finalResult;
+                } catch (cleanError) {
+                    console.warn('⚠️ Failed to clean final metadata, returning original:', cleanError);
+                    return {
+                        base64: originalBase64,
+                        mimeType: originalMimeType,
+                        url: `data:${originalMimeType};base64,${originalBase64}`
+                    };
+                }
+            }
+        }
+        
+        console.warn('⚠️ No clothing transformation result, returning face result');
+        return faceResult;
+
+    } catch (error) {
+        console.error("❌ [Gemini 2.0 Flash] Critical transformation error:", error);
+        throw error;
+    }
+};
+
+// 디버깅용 상태 확인
+export const getServiceStatus = () => {
     return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({ 
-        error: error.message,
-        useGeminiFallback: true,
-        total_time_ms: totalTime
-      })
+        model: 'gemini-2.5-flash',
+        version: '4.0',
+        features: ['2x_faster_than_1.5_pro', 'latest_multimodal', 'improved_consistency'],
+        environment: process.env.NODE_ENV
     };
-  }
 };
