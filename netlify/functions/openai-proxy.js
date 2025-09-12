@@ -1,8 +1,7 @@
-// 30초 타임아웃 설정
+// 60초 타임아웃 설정
 exports.config = {
-  timeout: 30000
+  timeout: 60000
 };
-
 exports.handler = async (event, context) => {
   console.log('[OpenAI Proxy] Function started');
   
