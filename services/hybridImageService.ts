@@ -1,9 +1,9 @@
-// services/hybridImageService.ts - OpenAI 프록시 + PNG 변환 + 기존 호환성
+// services/hybridImageService.ts - OpenAI 프록시 + PNG 변환 + 얼굴 변환 우선
 import { changeClothingOnly, changeFaceInImage } from './geminiService';
 import { PNGConverter } from '../utils/pngConverter';
 import type { ImageFile } from '../types';
 
-console.log('HYBRID SERVICE VERSION: 2.1 - OpenAI Proxy + PNG 변환 + Gemini Pipeline');
+console.log('HYBRID SERVICE VERSION: 2.2 - OpenAI Proxy + PNG 변환 + 얼굴 변환 우선');
 
 /**
  * 이미지 리사이즈 (OpenAI API 용)
@@ -45,7 +45,7 @@ const resizeImageForOpenAI = (originalImage: ImageFile): Promise<ImageFile> => {
 };
 
 /**
- * OpenAI 프록시를 통한 얼굴 변환 (PNG 변환 포함)
+ * OpenAI 프록시를 통한 얼굴 변환 (PNG 변환 포함) - 얼굴 변환 우선
  */
 const transformFaceWithOpenAIProxy = async (
     originalImage: ImageFile,
@@ -61,26 +61,32 @@ const transformFaceWithOpenAIProxy = async (
         console.log('OpenAI용 PNG 변환 중...');
         const pngBase64 = await PNGConverter.convertToPNGForOpenAI(resizedImage.base64);
         
-        // 헤어 보존 최적화 프롬프트
+        // 얼굴 변환 우선 프롬프트 (보존보다 변환에 집중)
         const optimizedPrompt = `
-Transform this person's facial features while preserving all other elements:
+PRIMARY OBJECTIVE: Complete facial transformation as requested.
 
-FACE TRANSFORMATION:
+FACE TRANSFORMATION (HIGHEST PRIORITY):
 ${facePrompt}
 
-CRITICAL PRESERVATION:
-- Hair: Keep EXACT same hairstyle, color, texture, length, and styling
-- Clothing: Maintain identical outfit and accessories
-- Background: Preserve environment completely  
-- Pose: Keep body position and angle unchanged
-- Lighting: Match original illumination and shadows
+EXECUTE THIS TRANSFORMATION:
+- Replace ALL facial features according to the description above
+- Change face shape, eyes, nose, mouth, skin texture completely
+- Alter facial bone structure and proportions as specified
+- Transform facial expressions and characteristics entirely
+- Make the face transformation dramatic and clearly visible
+
+SECONDARY CONSIDERATIONS (lower priority):
+- Try to maintain similar hairstyle if possible, but face transformation takes priority
+- Keep similar pose and lighting when feasible
+- Preserve background elements when possible
 
 TECHNICAL REQUIREMENTS:
-- Generate photorealistic skin with natural texture
-- Ensure seamless blending between new face and existing hair
-- Maintain color harmony throughout the image
+- Generate photorealistic results with natural skin texture
+- Ensure facial features match the requested transformation exactly
+- Make changes bold and clearly visible
+- Focus on creating a completely different person as requested
 
-The goal is facial reconstruction only - everything else must remain identical.
+The face transformation is the PRIMARY GOAL - all other considerations are secondary.
         `.trim();
 
         console.log('PNG 변환 완료, OpenAI API 호출...');
@@ -241,11 +247,11 @@ export const smartFaceTransformation = async (
  */
 export const getHybridServiceStatus = () => {
   return {
-    step1: 'OpenAI Proxy (Face transformation)',
+    step1: 'OpenAI Proxy (Face transformation - Priority)',
     step2: 'Gemini (Clothing transformation)', 
     fallback: 'Gemini Only',
-    faceOptions: 'Maintains existing age/style options',
+    faceOptions: 'Enhanced dramatic transformation prompts',
     pngConversion: 'Enabled for OpenAI compatibility',
-    version: '2.1'
+    version: '2.2'
   };
 };
