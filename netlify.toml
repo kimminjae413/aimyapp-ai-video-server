@@ -5,6 +5,10 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# Pro 플랜에서 Functions 타임아웃 설정 가능
+[functions]
+  timeout = 26  # Pro 플랜 최대값
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
