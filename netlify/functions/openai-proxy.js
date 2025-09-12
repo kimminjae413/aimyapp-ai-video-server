@@ -2,6 +2,7 @@
 exports.config = {
   timeout: 60000
 };
+
 exports.handler = async (event, context) => {
   console.log('[OpenAI Proxy] Function started');
   
@@ -77,13 +78,7 @@ exports.handler = async (event, context) => {
 
     const startTime = Date.now();
     
-    // 타임아웃 제어를 위한 AbortController 추가
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.log('[OpenAI Proxy] Request timeout after 25 seconds');
-      controller.abort();
-    }, 25000); // 25초 후 중단 (Function 타임아웃 30초보다 짧게)
-    
+    // AbortController 제거 - 60초 전체 대기
     const response = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers: {
@@ -91,11 +86,8 @@ exports.handler = async (event, context) => {
         'Content-Type': `multipart/form-data; boundary=${boundary}`,
         'Content-Length': fullBody.length.toString()
       },
-      body: fullBody,
-      signal: controller.signal
+      body: fullBody
     });
-
-    clearTimeout(timeoutId);
     
     const responseTime = Date.now() - startTime;
     console.log('[OpenAI Proxy] API response received:', {
@@ -128,15 +120,6 @@ exports.handler = async (event, context) => {
     
   } catch (error) {
     console.error('[OpenAI Proxy] Error:', error.message);
-    
-    if (error.name === 'AbortError') {
-      return {
-        statusCode: 408,
-        headers: corsHeaders,
-        body: JSON.stringify({ error: 'Request timeout' })
-      };
-    }
-    
     return {
       statusCode: 500,
       headers: corsHeaders,
