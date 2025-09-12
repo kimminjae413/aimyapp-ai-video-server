@@ -1,4 +1,4 @@
-// services/bullnabiService.ts
+// services/bullnabiService.ts - 최종 최적화 버전
 import type { UserCredits, GenerationResult } from '../types';
 
 const API_BASE_URL = '/.netlify/functions/bullnabi-proxy';
@@ -23,14 +23,14 @@ export const getUserCredits = async (userId: string): Promise<UserCredits | null
       },
       body: JSON.stringify({
         action: 'aggregate',
-        metaCode: '_users',  // 수정: community → _users
+        metaCode: '_users',
         collectionName: '_users',
         documentJson: {
-          "pipeline": {  // 수정: pipeline 형식 사용
+          "pipeline": {
             "$match": { 
               "_id": { 
                 "$eq": { 
-                  "$oid": userId  // 수정: ObjectId 형식
+                  "$oid": userId
                 } 
               } 
             },
@@ -48,7 +48,6 @@ export const getUserCredits = async (userId: string): Promise<UserCredits | null
     const data: BullnabiResponse = await response.json();
     console.log('User credits response:', data);
     
-    // 수정: data.data 체크 (data.code 체크 제거 - 없을 수도 있음)
     if (data.data && data.data.length > 0) {
       const user = data.data[0];
       return {
@@ -92,10 +91,10 @@ export const useCredits = async (
       },
       body: JSON.stringify({
         action: 'create',
-        metaCode: '_users',  // 수정: community → _users
+        metaCode: '_users',
         collectionName: 'aiTicketHistory',
         documentJson: {
-          userJoin: { "$oid": userId },  // 수정: ObjectId 형식
+          userJoin: { "$oid": userId },
           uses: uses,
           count: -Math.abs(count), // 음수로 저장 (차감)
           _createTime: new Date().toISOString()
@@ -165,10 +164,10 @@ export const restoreCredits = async (
       },
       body: JSON.stringify({
         action: 'create',
-        metaCode: '_users',  // 수정
+        metaCode: '_users',
         collectionName: 'aiTicketHistory',
         documentJson: {
-          userJoin: { "$oid": userId },  // 수정: ObjectId 형식
+          userJoin: { "$oid": userId },
           uses: `${uses}_restore`, // 복구 구분을 위해
           count: Math.abs(count), // 양수로 저장 (복구)
           _createTime: new Date().toISOString(),
@@ -219,12 +218,12 @@ export const getCreditHistory = async (userId: string, limit: number = 10): Prom
       },
       body: JSON.stringify({
         action: 'aggregate',
-        metaCode: '_users',  // 수정
+        metaCode: '_users',
         collectionName: 'aiTicketHistory',
         documentJson: {
-          "pipeline": {  // 수정: pipeline 형식
+          "pipeline": {
             "$match": { 
-              "userJoin": { "$oid": userId }  // 수정: ObjectId 형식
+              "userJoin": { "$oid": userId }
             },
             "$sort": { "_createTime": -1 },
             "$limit": limit
@@ -247,7 +246,7 @@ export const getCreditHistory = async (userId: string, limit: number = 10): Prom
 };
 
 /**
- * 🆕 생성 결과 저장
+ * 생성 결과 저장 (최적화된 버전 - 네트워크 에러 방지)
  */
 export const saveGenerationResult = async (params: {
   userId: string;
@@ -264,6 +263,20 @@ export const saveGenerationResult = async (params: {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // 3일 후
 
+    // URL 크기 체크 및 축약 (네트워크 에러 방지)
+    const truncateUrl = (url: string, maxLength: number = 100): string => {
+      if (!url || url.length <= maxLength) return url || '';
+      return url.substring(0, maxLength) + '...[truncated]';
+    };
+
+    // 프롬프트 길이 제한
+    const truncateText = (text: string, maxLength: number = 300): string => {
+      if (!text || text.length <= maxLength) return text || '';
+      return text.substring(0, maxLength) + '...';
+    };
+
+    console.log('Saving generation result with optimized data...');
+
     const response = await fetch(API_BASE_URL, {
       method: 'POST',
       headers: {
@@ -276,16 +289,20 @@ export const saveGenerationResult = async (params: {
         documentJson: {
           userId: { "$oid": params.userId },
           type: params.type,
-          originalImageUrl: params.originalImageUrl,
-          resultUrl: params.resultUrl,
-          prompt: params.prompt || '',
-          facePrompt: params.facePrompt || '',
-          clothingPrompt: params.clothingPrompt || '',
+          // URL 축약으로 데이터 크기 줄이기 (네트워크 타임아웃 방지)
+          originalImageUrl: truncateUrl(params.originalImageUrl, 150),
+          resultUrl: truncateUrl(params.resultUrl, 150),
+          // 프롬프트 길이 제한
+          prompt: truncateText(params.prompt || '', 200),
+          facePrompt: truncateText(params.facePrompt || '', 200),
+          clothingPrompt: truncateText(params.clothingPrompt || '', 200),
           videoDuration: params.videoDuration || null,
           creditsUsed: params.creditsUsed,
           createdAt: now.toISOString(),
           expiresAt: expiresAt.toISOString(),
-          _createTime: now.toISOString()
+          _createTime: now.toISOString(),
+          // 상태 기록
+          status: 'completed'
         }
       }),
     });
@@ -295,16 +312,38 @@ export const saveGenerationResult = async (params: {
       return false;
     }
 
-    console.log('Generation result saved successfully');
-    return true;
+    const data = await response.json();
+    
+    if (data.code === '1' || data.code === 1) {
+      console.log('Generation result saved successfully');
+      return true;
+    } else {
+      console.warn('Unexpected save response:', data);
+      return false;
+    }
+    
   } catch (error) {
     console.error('Error saving generation result:', error);
+    
+    // 네트워크 에러 타입 감지
+    if (error instanceof Error) {
+      const errorMessage = error.message.toLowerCase();
+      if (errorMessage.includes('terminated') || 
+          errorMessage.includes('fetch') || 
+          errorMessage.includes('network') ||
+          errorMessage.includes('timeout') ||
+          errorMessage.includes('aborted')) {
+        console.warn('Network error detected during save, skipping retry to prevent timeout');
+        return false;
+      }
+    }
+    
     return false;
   }
 };
 
 /**
- * 🆕 생성 내역 조회 (최근 3일)
+ * 생성 내역 조회 (최근 3일) - 에러 처리 강화
  */
 export const getGenerationHistory = async (userId: string, limit: number = 50): Promise<GenerationResult[]> => {
   try {
@@ -347,7 +386,7 @@ export const getGenerationHistory = async (userId: string, limit: number = 50): 
 };
 
 /**
- * 🆕 만료된 생성 결과 정리 (3일 지난 데이터 삭제)
+ * 만료된 생성 결과 정리 (3일 지난 데이터 삭제)
  */
 export const cleanupExpiredGenerations = async (userId: string): Promise<boolean> => {
   try {
@@ -378,6 +417,56 @@ export const cleanupExpiredGenerations = async (userId: string): Promise<boolean
     return true;
   } catch (error) {
     console.error('Error cleaning up expired generations:', error);
+    return false;
+  }
+};
+
+/**
+ * 간소화된 결과 저장 (네트워크 에러 시 대체용)
+ */
+export const saveSimpleGenerationResult = async (
+  userId: string, 
+  type: 'image' | 'video', 
+  creditsUsed: number
+): Promise<boolean> => {
+  try {
+    console.log('Saving simplified generation result...');
+    
+    const now = new Date();
+    
+    const response = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'create',
+        metaCode: '_users',
+        collectionName: 'aiGenerationHistory',
+        documentJson: {
+          userId: { "$oid": userId },
+          type: type,
+          // 최소한의 정보만 저장
+          originalImageUrl: 'simplified_record',
+          resultUrl: 'simplified_record',
+          creditsUsed: creditsUsed,
+          createdAt: now.toISOString(),
+          _createTime: now.toISOString(),
+          status: 'simplified'
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to save simplified result:', response.status);
+      return false;
+    }
+
+    const data = await response.json();
+    return data.code === '1' || data.code === 1;
+    
+  } catch (error) {
+    console.error('Error saving simplified result:', error);
     return false;
   }
 };
