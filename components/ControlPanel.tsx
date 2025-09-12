@@ -13,45 +13,45 @@ interface ControlPanelProps {
   credits: UserCredits | null;
 }
 
-// 강화된 얼굴 변환 옵션 (성별 색상 포함)
+// 강화된 얼굴 변환 옵션 - 더 극적인 변화를 위한 프롬프트
 const faceOptions = [
     { 
-        value: 'Completely different East Asian male face, age 17-19, soft round face shape, smooth skin without facial hair, small monolid eyes, low nose bridge, thin lips, youthful innocent appearance, black hair', 
+        value: 'COMPLETELY REPLACE the face with an entirely different East Asian male teenager, age 17-19: baby-faced with chubby cheeks, completely smooth hairless skin, very small narrow monolid eyes, extremely low flat nose bridge, thin small lips, round innocent face shape, youthful appearance that looks much younger than actual age', 
         label: '남성: 10대',
         gender: 'male'
     },
     { 
-        value: 'Totally new East Asian male face, age 22-25, oval face shape, clear skin with slight stubble, parallel double eyelids, defined nose bridge, medium lips with clear cupid\'s bow, fresh vibrant appearance', 
+        value: 'TOTALLY TRANSFORM into a completely different East Asian male in early twenties, age 22-25: sharp angular jaw, well-defined cheekbones, clear skin with light stubble, large parallel double eyelids, prominent straight nose bridge, full lips with defined cupid bow, confident masculine facial structure, fresh handsome appearance', 
         label: '남성: 20대',
         gender: 'male'
     },
     { 
-        value: 'Completely transformed East Asian male face, age 32-36, square jawline, visible nasolabial folds, hooded eyes with crow\'s feet beginning, prominent nose, fuller lower lip, mature masculine features', 
+        value: 'COMPLETELY CHANGE to an entirely different East Asian male in thirties, age 32-36: strong square jaw, deep-set mature eyes with slight crow feet, visible nasolabial folds, broader nose, weathered skin texture, fuller lower lip, distinguished masculine features showing life experience and maturity', 
         label: '남성: 30대',
         gender: 'male'
     },
     { 
-        value: 'Entirely different East Asian male face, age 42-46, rectangular face with strong jaw, forehead wrinkles, deep-set eyes with visible eye bags, wider nose, thinner lips, distinguished gray temples', 
+        value: 'ENTIRELY REPLACE with a different East Asian male in forties, age 42-46: rectangular face with pronounced jaw, deep forehead wrinkles, hooded eyes with eye bags, wider flatter nose, thinner lips, graying temples, weathered mature skin showing age, distinguished older gentleman appearance', 
         label: '남성: 40대',
         gender: 'male'
     },
     { 
-        value: 'Completely different East Asian female face, age 17-19, soft V-line face shape, porcelain smooth skin, large round eyes with aegyo sal, button nose, plump pink lips, innocent youthful glow', 
+        value: 'COMPLETELY REPLACE the face with an entirely different East Asian female teenager, age 17-19: perfect V-line face shape, porcelain doll-like skin, very large round eyes with prominent aegyo sal, tiny button nose, small plump pink lips, innocent youthful features that look much younger than age', 
         label: '여성: 10대',
         gender: 'female'
     },
     { 
-        value: 'Totally transformed East Asian female face, age 22-25, oval face with high cheekbones, glass skin texture, almond eyes with natural double eyelids, refined nose tip, gradient lips, vibrant fresh beauty', 
+        value: 'TOTALLY TRANSFORM into a completely different East Asian female in early twenties, age 22-25: elegant oval face with high cheekbones, glass-like perfect skin, large almond-shaped eyes with natural double eyelids, refined narrow nose tip, gradient coral lips, sophisticated beautiful features', 
         label: '여성: 20대',
         gender: 'female'
     },
     { 
-        value: 'Entirely new East Asian female face, age 32-36, elegant heart-shaped face, fine lines around eyes, sophisticated eye shape with subtle eyeshadow, contoured nose, defined lip shape, mature graceful features', 
+        value: 'COMPLETELY CHANGE to an entirely different East Asian female in thirties, age 32-36: heart-shaped face with mature features, subtle fine lines around eyes, sophisticated eye makeup, contoured nose, well-defined lip shape, elegant mature beauty with confident expression', 
         label: '여성: 30대',
         gender: 'female'
     },
     { 
-        value: 'Completely different East Asian female face, age 42-46, diamond face shape, smile lines and crow\'s feet, gentle eyes with wisdom, natural nose, softer lip line, dignified mature beauty', 
+        value: 'ENTIRELY REPLACE with a different East Asian female in forties, age 42-46: diamond-shaped face, visible smile lines and crow feet, gentle wise eyes, natural aging skin, softer lip line, dignified mature features showing life experience and wisdom', 
         label: '여성: 40대',
         gender: 'female'
     },
