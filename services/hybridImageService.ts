@@ -1,14 +1,80 @@
-// services/hybridImageService.ts - GPT-Image-1 + Gemini 2단계 시스템
-import { transformFaceWithGPTImage } from './openaiService';
-import { changeFaceInImage } from './geminiService';
+// services/hybridImageService.ts - OpenAI 프록시 사용 버전
+import { changeClothingOnly, changeFaceInImage } from './geminiService';
 import type { ImageFile } from '../types';
 
-console.log('HYBRID SERVICE VERSION: 1.0 - GPT-Image-1 + Gemini Pipeline');
+console.log('HYBRID SERVICE VERSION: 2.0 - OpenAI Proxy + Gemini Pipeline');
 
 /**
- * 🎯 2단계 하이브리드 변환
- * 1단계: GPT-Image-1로 얼굴 변환 (헤어 보존)
- * 2단계: Gemini로 의상 변환 (얼굴+헤어 보존)
+ * OpenAI 프록시를 통한 얼굴 변환
+ */
+const transformFaceWithOpenAIProxy = async (
+    originalImage: ImageFile,
+    facePrompt: string
+): Promise<ImageFile | null> => {
+    try {
+        console.log('🎯 OpenAI Proxy: Face transformation starting...');
+        
+        // 헤어 보존 최적화 프롬프트
+        const optimizedPrompt = `
+Transform this person's facial features while preserving all other elements:
+
+🎯 FACE TRANSFORMATION:
+${facePrompt}
+
+🔒 CRITICAL PRESERVATION:
+- Hair: Keep EXACT same hairstyle, color, texture, length, and styling
+- Clothing: Maintain identical outfit and accessories
+- Background: Preserve environment completely  
+- Pose: Keep body position and angle unchanged
+- Lighting: Match original illumination and shadows
+
+⚙️ TECHNICAL REQUIREMENTS:
+- Generate photorealistic skin with natural texture
+- Ensure seamless blending between new face and existing hair
+- Maintain color harmony throughout the image
+
+The goal is facial reconstruction only - everything else must remain identical.
+        `.trim();
+
+        const response = await fetch('/.netlify/functions/openai-proxy', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                imageData: originalImage.base64,
+                mimeType: originalImage.mimeType,
+                prompt: optimizedPrompt
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`OpenAI Proxy Error: ${errorData.error || response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.data && data.data[0] && data.data[0].b64_json) {
+            console.log('✅ OpenAI Proxy: Face transformation completed');
+            
+            return {
+                base64: data.data[0].b64_json,
+                mimeType: 'image/png',
+                url: `data:image/png;base64,${data.data[0].b64_json}`
+            };
+        } else {
+            throw new Error('No image data in OpenAI proxy response');
+        }
+        
+    } catch (error) {
+        console.error('❌ OpenAI Proxy transformation error:', error);
+        throw error;
+    }
+};
+
+/**
+ * 2단계 하이브리드 변환 (OpenAI 프록시 + Gemini)
  */
 export const hybridFaceTransformation = async (
   originalImage: ImageFile,
@@ -16,20 +82,20 @@ export const hybridFaceTransformation = async (
   clothingPrompt: string
 ): Promise<ImageFile | null> => {
   try {
-    console.log('🚀 Starting 2-step hybrid transformation...');
+    console.log('🚀 Starting 2-step hybrid transformation (Proxy)...');
     console.log('- Original face prompt:', facePrompt);
     console.log('- Clothing prompt:', clothingPrompt || 'None');
     
-    // ========== STEP 1: GPT-Image-1 얼굴 변환 ==========
-    console.log('🎯 Step 1: GPT-Image-1 face transformation');
+    // ========== STEP 1: OpenAI 프록시로 얼굴 변환 ==========
+    console.log('🎯 Step 1: OpenAI Proxy face transformation');
     
-    const faceChangedImage = await transformFaceWithGPTImage(
+    const faceChangedImage = await transformFaceWithOpenAIProxy(
       originalImage, 
-      facePrompt // 기존 20대, 30대 등 옵션 그대로 사용!
+      facePrompt
     );
     
     if (!faceChangedImage) {
-      throw new Error('Step 1 failed: GPT-Image-1 face transformation unsuccessful');
+      throw new Error('Step 1 failed: OpenAI Proxy face transformation unsuccessful');
     }
     
     console.log('✅ Step 1 complete: Face transformed, hair perfectly preserved');
@@ -43,32 +109,14 @@ export const hybridFaceTransformation = async (
     // ========== STEP 2: Gemini 의상 변환 ==========
     console.log('🎯 Step 2: Gemini clothing transformation');
     
-    // Gemini용 의상 전용 프롬프트 (얼굴+헤어 보존 강조)
-    const clothingOnlyPrompt = `
-CRITICAL: This image has been processed with GPT-Image-1 and has PERFECT face and hair.
-
-CLOTHING TRANSFORMATION ONLY:
-Change the clothing to: ${clothingPrompt}
-
-ABSOLUTE PRESERVATION RULES:
-- Face: Keep EXACTLY as shown (already transformed by GPT-Image-1)
-- Hair: Keep EXACTLY as shown (already preserved perfectly)  
-- Background: Keep identical
-- Pose: Keep identical
-- ONLY MODIFY: Clothing/outfit
-
-The face and hair are already perfect - preserve them completely while changing only the clothes.
-    `.trim();
-    
-    const finalResult = await changeFaceInImage(
+    const finalResult = await changeClothingOnly(
       faceChangedImage,
-      '', // 얼굴 프롬프트는 빈 문자열 (이미 변환 완료)
-      clothingOnlyPrompt // 의상만 변경하는 특별한 프롬프트
+      clothingPrompt
     );
     
     if (!finalResult) {
       console.warn('⚠️ Step 2 failed, returning Step 1 result');
-      return faceChangedImage; // 2단계 실패해도 1단계 결과는 반환
+      return faceChangedImage;
     }
     
     console.log('✅ Step 2 complete: Clothing transformed');
@@ -84,8 +132,8 @@ The face and hair are already perfect - preserve them completely while changing 
       
       if (errorMessage.includes('Step 1')) {
         throw new Error(`얼굴 변환 실패: ${errorMessage}`);
-      } else if (errorMessage.includes('verification')) {
-        throw new Error('GPT-Image-1 접근 권한이 필요합니다.');
+      } else if (errorMessage.includes('OpenAI Proxy')) {
+        throw new Error(`OpenAI 프록시 오류: ${errorMessage}`);
       }
       
       throw error;
@@ -96,7 +144,7 @@ The face and hair are already perfect - preserve them completely while changing 
 };
 
 /**
- * 🔄 스마트 변환 (GPT-Image-1 실패시 Gemini 폴백)
+ * 스마트 변환 (OpenAI 프록시 실패시 Gemini 폴백)
  */
 export const smartFaceTransformation = async (
   originalImage: ImageFile,
@@ -104,7 +152,7 @@ export const smartFaceTransformation = async (
   clothingPrompt: string
 ): Promise<{ result: ImageFile | null; method: string }> => {
   try {
-    // 먼저 하이브리드 방식 시도
+    // 먼저 하이브리드 방식 시도 (OpenAI 프록시 + Gemini)
     const hybridResult = await hybridFaceTransformation(
       originalImage, 
       facePrompt, 
@@ -113,7 +161,7 @@ export const smartFaceTransformation = async (
     
     return { 
       result: hybridResult, 
-      method: 'GPT-Image-1 + Gemini (2-step Hybrid)' 
+      method: 'OpenAI Proxy + Gemini (2-step Hybrid)' 
     };
     
   } catch (error) {
@@ -124,7 +172,7 @@ export const smartFaceTransformation = async (
       // 하이브리드 실패시 기존 Gemini 방식으로 폴백
       const geminiResult = await changeFaceInImage(
         originalImage, 
-        facePrompt,  // 기존 20대, 30대 옵션 그대로 사용
+        facePrompt,
         clothingPrompt
       );
       
@@ -145,9 +193,9 @@ export const smartFaceTransformation = async (
  */
 export const getHybridServiceStatus = () => {
   return {
-    step1: 'GPT-Image-1 (Face transformation)',
+    step1: 'OpenAI Proxy (Face transformation)',
     step2: 'Gemini (Clothing transformation)', 
     fallback: 'Gemini Only',
-    faceOptions: 'Maintains existing 20s, 30s, 40s age options'
+    faceOptions: 'Maintains existing age/style options'
   };
 };
