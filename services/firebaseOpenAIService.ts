@@ -186,6 +186,10 @@ TECHNICAL SPECIFICATIONS:
 - Professional photorealistic skin texture and lighting
 - Seamless integration between new face and preserved hair
 - High quality detailed result (Firebase 9-minute processing)
+- PRESERVE exact facial width-to-height ratio and proportions
+- DO NOT stretch or compress face horizontally or vertically
+- MAINTAIN original face shape geometry (V-line, oval, etc.)
+- Keep identical facial dimensions without distortion
 
 REMINDER: Hair preservation is THE MOST CRITICAL priority. Face can be completely different, but hair MUST be identical.
     `.trim();
