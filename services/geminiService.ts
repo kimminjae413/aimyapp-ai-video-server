@@ -32,8 +32,12 @@ const getSimplePrompt = (facePrompt: string, clothingPrompt: string): string => 
 Transform **only the facial features** based on: ${facePrompt}.
 ${clothingPrompt ? `\nCHANGE CLOTHING: ${clothingPrompt} (ONLY within existing visible frame - do not expand to show more body parts)` : ''}
 
-**ABSOLUTE CRITICAL REQUIREMENTS - HIGHEST PRIORITY:**
-- MAINTAIN EXACT SAME IMAGE COMPOSITION, FRAMING, AND ASPECT RATIO as the original
+**FACE PROPORTION PRESERVATION (CRITICAL):**
+- MAINTAIN EXACT same facial width-to-height ratio as original
+- DO NOT stretch or compress face horizontally or vertically
+- PRESERVE original face shape and proportions (V-line, oval, etc.)
+- Keep identical facial dimensions and aspect ratio
+- Transform features WITHOUT changing overall face geometry or width
 - PRESERVE identical crop boundaries - DO NOT change from close-up to full body
 - KEEP identical camera angle, distance, and zoom level  
 - MAINTAIN same portrait dimensions and orientation
