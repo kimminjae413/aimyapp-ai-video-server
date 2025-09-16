@@ -28,25 +28,37 @@ console.log('🔧 Gemini Service Configuration:', {
 
 // 심플한 프롬프트 (최종 개선된 버전)
 const getSimplePrompt = (facePrompt: string, clothingPrompt: string): string => {
-  
-  // 20대 남성
-  if (facePrompt.includes('early 20s') && facePrompt.includes('male')) {
-    return `
-Transform **only the facial features** to those of a distinct East Asian male in his 20s. **It is imperative that the hair, including the fringe, length, texture, style, and color, remains perfectly unchanged and identical to the original image.** Absolutely no alterations to the hair. The background and pose must also be preserved.
-${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
-  }
-  
-  // 20대 여성
-  if (facePrompt.includes('early 20s') && facePrompt.includes('female')) {
-    return `
-Transform **only the facial features** to those of a distinct East Asian female in her 20s. **It is imperative that the hair, including the fringe, length, texture, style, and color, remains perfectly unchanged and identical to the original image.** Absolutely no alterations to the hair. The background and pose must also be preserved.
-${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
-  }
-  
-  // 기본값
   return `
-Transform **only the facial features** based on: ${facePrompt}. **It is imperative that the hair, including the fringe, length, texture, style, and color, remains perfectly unchanged and identical to the original image.** Absolutely no alterations to the hair. The background and pose must also be preserved.
-${clothingPrompt ? `Change clothing to: ${clothingPrompt}` : ''}`;
+Transform **only the facial features** based on: ${facePrompt}.
+${clothingPrompt ? `\nCHANGE CLOTHING: ${clothingPrompt} (ONLY within existing visible frame - do not expand to show more body parts)` : ''}
+
+**ABSOLUTE CRITICAL REQUIREMENTS - HIGHEST PRIORITY:**
+- MAINTAIN EXACT SAME IMAGE COMPOSITION, FRAMING, AND ASPECT RATIO as the original
+- PRESERVE identical crop boundaries - DO NOT change from close-up to full body
+- KEEP identical camera angle, distance, and zoom level  
+- MAINTAIN same portrait dimensions and orientation
+- DO NOT expand the frame or show more of the body to accommodate clothing changes
+
+**HAIR PRESERVATION (MANDATORY):**
+- Keep EXACT same hair: style, color, length, texture, parting, fringe, volume
+- Hair is 100% identical to original image - NO changes allowed
+- This is absolutely imperative and non-negotiable
+
+**CLOTHING CHANGE RULES (if requested):**
+- Change clothing ONLY within the existing visible area of the original image
+- If original shows only upper body, change ONLY upper body clothing (shirt, top, jacket)
+- DO NOT expand the frame to show pants, full body, or lower clothing
+- If "청바지" (jeans) is requested but original shows only upper body, IGNORE the jeans part
+- MAINTAIN exact same visible clothing area boundaries
+- Transform clothing within existing crop only - NO frame expansion
+
+**BACKGROUND AND POSE:**
+- Keep identical background and lighting
+- Preserve exact same pose and body position
+- Maintain same facial angle and expression context
+
+REMINDER: Transform ONLY the face (eyes, nose, mouth, skin, facial structure) while keeping absolutely everything else identical to the original image.
+`;
 };
 
 // 2단계 방식: 옷만 변환 (심플) - 🔥 export 추가
