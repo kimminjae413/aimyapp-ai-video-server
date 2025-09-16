@@ -205,31 +205,29 @@ export const transformFaceWithFirebase = async (
     console.log('Firebase용 PNG 변환 중...');
     const pngBase64 = await PNGConverter.convertToPNGForOpenAI(resizedImage.base64);
     
-    // 4. gpt-image-1 최적화 프롬프트 (비율 + 피부톤 유지)
+    // 4. gpt-image-1 피부톤 정밀 유지 프롬프트
     const optimizedPrompt = `
-Original image composition and proportions maintained exactly. Only replace the face area (forehead, eyes, nose, mouth, chin, cheeks) while preserving hair style, hair color, hair length, hair texture, hair position, and ORIGINAL SKIN TONE precisely. Keep same facial outline, same head size, same shoulder line, same clothing, same background, same lighting, and same camera angle.
+Replace face while preserving exact same skin tone, complexion, and skin color as original reference. Maintain natural fair skin with subtle rosy blush and healthy glow. Keep same skin texture, same lighting conditions, same color temperature, and same skin undertones. Do not introduce yellowish cast to skin. Preserve all other elements including hair style, clothing, background, and proportions unchanged.
 
-${facePrompt} - change only facial features, expression, and identity while maintaining EXACT SAME SKIN TONE and all other elements unchanged.
+${facePrompt} - change only facial features, expression, and identity.
 
-CRITICAL REQUIREMENTS:
+SKIN TONE PRECISION REQUIREMENTS:
+- Exact same skin tone and complexion as original
+- Preserve original skin color balance and accuracy
+- Maintain same natural skin texture and appearance
+- Same rosy blush and healthy glow without artificial warming
+- No alteration to skin warmth or undertone - keep cool-neutral balance
+- No yellowish cast - maintain original color temperature
+- Keep same lighting color temperature and contrast levels
+- Preserve same skin luminosity and saturation
+
+COMPOSITION PRESERVATION:
+- Original image composition and proportions maintained exactly
+- Same facial outline, head size, shoulder line
+- Keep same clothing, background, lighting, camera angle
 - Exact same proportions and aspect ratio
-- PRESERVE ORIGINAL SKIN TONE exactly (no yellow/warm tone changes)
-- Maintain natural skin color temperature and undertones from original
-- Keep same skin brightness and saturation levels
-- Preserve same facial outline and head-to-hair ratio
-- Maintain all other elements unchanged
-- Same head size and position
-- Same hair style and position absolutely identical
-- Keep identical V-line face shape geometry
+- Same head size and position absolutely identical
 - NO stretching, compression, or dimensional changes
-- Preserve exact image dimensions and composition
-
-SKIN TONE PRESERVATION PRIORITY:
-- Original skin color temperature must remain identical
-- No warming or cooling of skin tones
-- Preserve natural undertones (pink, neutral, cool)
-- Maintain same skin luminosity and saturation
-- Keep natural skin texture and appearance
 
 HAIR PRESERVATION ABSOLUTE PRIORITY:
 - Hair style, color, length, texture, parting, fringe, volume 100% identical
