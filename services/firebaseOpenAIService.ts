@@ -205,36 +205,26 @@ export const transformFaceWithFirebase = async (
     console.log('Firebase용 PNG 변환 중...');
     const pngBase64 = await PNGConverter.convertToPNGForOpenAI(resizedImage.base64);
     
-    // 4. 개선된 프롬프트 (비율 보존 강화)
+    // 4. gpt-image-1 최적화 프롬프트 (비율 유지 전문)
     const optimizedPrompt = `
-ABSOLUTE HIGHEST PRIORITY - COMPLETE HAIR PRESERVATION:
-- MUST keep EXACT same hair: style, color, length, texture, parting, fringe, volume
-- Hair is 100% identical to original image - NO changes allowed
-- This is CRITICAL ABSOLUTE requirement above all else
+Original image composition and proportions maintained exactly. Only replace the face area (forehead, eyes, nose, mouth, chin, cheeks) while preserving hair style, hair color, hair length, hair texture, and hair position precisely. Keep same facial outline, same head size, same shoulder line, same clothing, same background, same lighting, and same camera angle.
 
-SECONDARY OBJECTIVE - COMPLETE FACE TRANSFORMATION:
-${facePrompt}
-- Replace ALL facial features completely (eyes, nose, mouth, cheeks, jawline)
-- Change face shape, skin tone, facial structure entirely
-- Create completely different person with SAME EXACT HAIR
-- Bold dramatic facial changes encouraged
+${facePrompt} - change only facial features, expression, and identity while maintaining all other elements unchanged.
 
-CRITICAL PROPORTION PRESERVATION:
-- MAINTAIN EXACT facial width-to-height ratio and proportions
-- PRESERVE original face shape geometry (V-line, oval, etc.) WITHOUT distortion
-- DO NOT stretch, compress, or alter face dimensions horizontally or vertically
-- Keep identical facial proportions and head-to-body ratio
-- Maintain precise aspect ratio of original image
-- NO scaling or dimensional changes to any part of the image
-
-TECHNICAL SPECIFICATIONS:
-- Maintain exact pose, angle, and background from original
-- Professional photorealistic skin texture and lighting
-- Seamless integration between new face and preserved hair
-- High quality detailed result (Firebase 9-minute processing)
+CRITICAL REQUIREMENTS:
+- Exact same proportions and aspect ratio
+- Preserve same facial outline and head-to-hair ratio
+- Maintain all other elements unchanged
+- Same head size and position
+- Same hair style and position absolutely identical
+- Keep identical V-line face shape geometry
+- NO stretching, compression, or dimensional changes
 - Preserve exact image dimensions and composition
 
-REMINDER: Hair preservation and facial proportion accuracy are THE MOST CRITICAL priorities. Face features can be completely different, but hair and proportions MUST be identical.
+HAIR PRESERVATION ABSOLUTE PRIORITY:
+- Hair style, color, length, texture, parting, fringe, volume 100% identical
+- Hair position and flow exactly the same
+- Seamless integration between new face and preserved hair
     `.trim();
 
     // 프롬프트 길이 제한 (Firebase는 더 긴 프롬프트 허용 가능)
@@ -300,14 +290,11 @@ REMINDER: Hair preservation and facial proportion accuracy are THE MOST CRITICAL
     if (data.data && data.data[0] && data.data[0].b64_json) {
       const resultBase64 = data.data[0].b64_json;
       
-      console.log('🎨 Firebase 개선된 종횡비 보정 시작...');
+      console.log('🎨 Firebase 결과 원본 유지 (종횡비 보정 건너뛰기)');
       
-      // 6. 개선된 종횡비 보정 (비율 왜곡 최소화)
-      const correctedBase64 = await correctAspectRatio(
-        resultBase64,
-        originalDimensions.width,
-        originalDimensions.height
-      );
+      // 6. 종횡비 보정 건너뛰기 - OpenAI gpt-image-1 결과 그대로 사용
+      // gpt-image-1은 "auto" 비율로 원본과 동일한 비율을 유지하므로 추가 보정 불필요
+      const correctedBase64 = resultBase64;
       
       if (onProgress) {
         onProgress('Firebase 변환 완료!');
@@ -316,8 +303,8 @@ REMINDER: Hair preservation and facial proportion accuracy are THE MOST CRITICAL
       console.log('✅ Firebase OpenAI 변환 완료:', {
         총소요시간: Math.round(responseTime/1000) + '초',
         결과크기: Math.round(correctedBase64.length / 1024) + 'KB',
-        처리방식: 'Firebase Functions v2 + gpt-image-1 (비율 보존 강화)',
-        품질: '최고 품질 (9분 타임아웃 + 비율 왜곡 방지)'
+        처리방식: 'Firebase Functions v2 + gpt-image-1 (비율 자동 유지)',
+        품질: 'gpt-image-1 원본 비율 보존'
       });
 
       return {
