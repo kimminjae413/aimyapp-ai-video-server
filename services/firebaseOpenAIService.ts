@@ -1,4 +1,4 @@
-// services/firebaseOpenAIService.ts - Firebase Functions 직접 호출 최종 완성판
+// services/firebaseOpenAIService.ts - 비율 왜곡 방지 최종 버전
 import { PNGConverter } from '../utils/pngConverter';
 import type { ImageFile } from '../types';
 
@@ -75,7 +75,7 @@ const resizeImageForFirebase = (originalImage: ImageFile): Promise<ImageFile> =>
 };
 
 /**
- * 종횡비 보정 (Firebase 결과물을 원본 비율로 복원)
+ * 개선된 종횡비 보정 - 비율 왜곡 최소화
  */
 const correctAspectRatio = (
     resultImageBase64: string, 
@@ -95,36 +95,74 @@ const correctAspectRatio = (
                 console.log('Firebase 결과 종횡비 분석:', {
                     원본: `${originalWidth}x${originalHeight} (${originalRatio.toFixed(2)})`,
                     Firebase결과: `${img.width}x${img.height} (${currentRatio.toFixed(2)})`,
-                    보정필요: Math.abs(originalRatio - currentRatio) > 0.1
+                    차이: Math.abs(originalRatio - currentRatio).toFixed(3),
+                    보정임계값: '0.05'
                 });
                 
-                // 종횡비가 다르면 보정
-                if (Math.abs(originalRatio - currentRatio) > 0.1) {
+                // 🔧 비율 차이 임계값을 더 엄격하게 설정 (0.1 → 0.05)
+                // 작은 차이도 보정하되, 더 정교하게 처리
+                if (Math.abs(originalRatio - currentRatio) > 0.05) {
+                    // 🎯 개선된 보정 로직: 비율 왜곡 최소화
+                    
+                    // 원본 비율을 유지하면서 현재 이미지 크기 범위 내에서 최대 크기 계산
                     let targetWidth, targetHeight;
                     
-                    if (originalRatio > 1) {
-                        // 가로가 더 긴 경우
-                        targetWidth = Math.max(img.width, img.height);
-                        targetHeight = Math.round(targetWidth / originalRatio);
+                    if (originalRatio > currentRatio) {
+                        // 원본이 더 가로로 길쭉함 - 가로 기준으로 맞춤
+                        targetWidth = img.width;
+                        targetHeight = Math.round(img.width / originalRatio);
+                        
+                        // 세로가 너무 작아지면 세로 기준으로 재계산
+                        if (targetHeight < img.height * 0.8) {
+                            targetHeight = Math.round(img.height * 0.9); // 90%로 제한
+                            targetWidth = Math.round(targetHeight * originalRatio);
+                        }
                     } else {
-                        // 세로가 더 긴 경우
-                        targetHeight = Math.max(img.width, img.height);
-                        targetWidth = Math.round(targetHeight * originalRatio);
+                        // 원본이 더 세로로 길쭉함 - 세로 기준으로 맞춤
+                        targetHeight = img.height;
+                        targetWidth = Math.round(img.height * originalRatio);
+                        
+                        // 가로가 너무 작아지면 가로 기준으로 재계산
+                        if (targetWidth < img.width * 0.8) {
+                            targetWidth = Math.round(img.width * 0.9); // 90%로 제한
+                            targetHeight = Math.round(targetWidth / originalRatio);
+                        }
                     }
                     
-                    canvas.width = targetWidth;
-                    canvas.height = targetHeight;
-                    console.log('🔧 Firebase 종횡비 보정:', `${targetWidth}x${targetHeight}`);
+                    // 최종 크기 검증 - 너무 극단적인 변화 방지
+                    const widthRatio = targetWidth / img.width;
+                    const heightRatio = targetHeight / img.height;
+                    
+                    if (widthRatio < 0.7 || widthRatio > 1.3 || heightRatio < 0.7 || heightRatio > 1.3) {
+                        console.log('⚠️ 극단적 비율 변화 감지, 보정 건너뜀');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                    } else {
+                        canvas.width = targetWidth;
+                        canvas.height = targetHeight;
+                        console.log('🔧 Firebase 안전한 종횡비 보정:', `${targetWidth}x${targetHeight} (변화율: ${(widthRatio*100).toFixed(1)}%x${(heightRatio*100).toFixed(1)}%)`);
+                    }
                 } else {
                     canvas.width = img.width;
                     canvas.height = img.height;
-                    console.log('✅ Firebase 종횡비 보정 불필요');
+                    console.log('✅ Firebase 종횡비 보정 불필요 (차이 < 0.05)');
                 }
                 
-                // 최고 품질 렌더링
+                // 최고 품질 렌더링 - 이미지 품질 손실 최소화
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // 중앙 정렬로 그리기 (가능한 한 원본 유지)
+                const offsetX = (canvas.width - img.width) / 2;
+                const offsetY = (canvas.height - img.height) / 2;
+                
+                if (canvas.width === img.width && canvas.height === img.height) {
+                    // 크기 변화 없음 - 그대로 복사
+                    ctx.drawImage(img, 0, 0);
+                } else {
+                    // 크기 조정 필요 - 고품질 스케일링
+                    ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
+                }
                 
                 const correctedDataUrl = canvas.toDataURL('image/png', 1.0);
                 const correctedBase64 = correctedDataUrl.split(',')[1];
@@ -167,7 +205,7 @@ export const transformFaceWithFirebase = async (
     console.log('Firebase용 PNG 변환 중...');
     const pngBase64 = await PNGConverter.convertToPNGForOpenAI(resizedImage.base64);
     
-    // 4. 프롬프트 최적화 (헤어 보존 최우선 + Firebase 9분 활용)
+    // 4. 개선된 프롬프트 (비율 보존 강화)
     const optimizedPrompt = `
 ABSOLUTE HIGHEST PRIORITY - COMPLETE HAIR PRESERVATION:
 - MUST keep EXACT same hair: style, color, length, texture, parting, fringe, volume
@@ -181,17 +219,22 @@ ${facePrompt}
 - Create completely different person with SAME EXACT HAIR
 - Bold dramatic facial changes encouraged
 
+CRITICAL PROPORTION PRESERVATION:
+- MAINTAIN EXACT facial width-to-height ratio and proportions
+- PRESERVE original face shape geometry (V-line, oval, etc.) WITHOUT distortion
+- DO NOT stretch, compress, or alter face dimensions horizontally or vertically
+- Keep identical facial proportions and head-to-body ratio
+- Maintain precise aspect ratio of original image
+- NO scaling or dimensional changes to any part of the image
+
 TECHNICAL SPECIFICATIONS:
 - Maintain exact pose, angle, and background from original
 - Professional photorealistic skin texture and lighting
 - Seamless integration between new face and preserved hair
 - High quality detailed result (Firebase 9-minute processing)
-- PRESERVE exact facial width-to-height ratio and proportions
-- DO NOT stretch or compress face horizontally or vertically
-- MAINTAIN original face shape geometry (V-line, oval, etc.)
-- Keep identical facial dimensions without distortion
+- Preserve exact image dimensions and composition
 
-REMINDER: Hair preservation is THE MOST CRITICAL priority. Face can be completely different, but hair MUST be identical.
+REMINDER: Hair preservation and facial proportion accuracy are THE MOST CRITICAL priorities. Face features can be completely different, but hair and proportions MUST be identical.
     `.trim();
 
     // 프롬프트 길이 제한 (Firebase는 더 긴 프롬프트 허용 가능)
@@ -209,7 +252,7 @@ REMINDER: Hair preservation is THE MOST CRITICAL priority. Face can be completel
     });
 
     if (onProgress) {
-      onProgress('Firebase에서 OpenAI 처리 중... (최대 9분, 헤어 완전 보존)');
+      onProgress('Firebase에서 OpenAI 처리 중... (최대 9분, 비율 보존 최우선)');
     }
 
     console.log('🔥 Firebase Functions 호출 시작...');
@@ -257,9 +300,9 @@ REMINDER: Hair preservation is THE MOST CRITICAL priority. Face can be completel
     if (data.data && data.data[0] && data.data[0].b64_json) {
       const resultBase64 = data.data[0].b64_json;
       
-      console.log('🎨 Firebase 결과 종횡비 보정 시작...');
+      console.log('🎨 Firebase 개선된 종횡비 보정 시작...');
       
-      // 6. 종횡비 보정 (Firebase 결과를 원본 비율로)
+      // 6. 개선된 종횡비 보정 (비율 왜곡 최소화)
       const correctedBase64 = await correctAspectRatio(
         resultBase64,
         originalDimensions.width,
@@ -273,8 +316,8 @@ REMINDER: Hair preservation is THE MOST CRITICAL priority. Face can be completel
       console.log('✅ Firebase OpenAI 변환 완료:', {
         총소요시간: Math.round(responseTime/1000) + '초',
         결과크기: Math.round(correctedBase64.length / 1024) + 'KB',
-        처리방식: 'Firebase Functions v2 + gpt-image-1',
-        품질: '최고 품질 (9분 타임아웃 활용)'
+        처리방식: 'Firebase Functions v2 + gpt-image-1 (비율 보존 강화)',
+        품질: '최고 품질 (9분 타임아웃 + 비율 왜곡 방지)'
       });
 
       return {
@@ -354,11 +397,19 @@ export const testFirebaseConnection = async (): Promise<boolean> => {
  */
 export const getFirebaseServiceStatus = () => {
   return {
-    version: '1.0-FIREBASE-FINAL-COMPLETE',
-    method: 'Firebase Functions 직접 호출',
+    version: '2.0-FIREBASE-RATIO-PRESERVATION',
+    method: 'Firebase Functions 직접 호출 + 비율 왜곡 방지',
     timeout: '9분 (540초)',
     memory: '2GB (Firebase Functions v2)',
     url: FIREBASE_FUNCTION_URL,
+    improvements: [
+      '🔧 비율 왜곡 방지 로직 강화',
+      '📏 엄격한 종횡비 보정 (임계값 0.05)',
+      '🛡️ 극단적 크기 변화 방지 (±30% 제한)',
+      '🎯 V라인 얼굴형 보존 최우선',
+      '📐 원본 비율 정밀 유지',
+      '💇 헤어 길이 완벽 보존'
+    ],
     advantages: [
       '🔥 9분 타임아웃 (vs Netlify 26초)',
       '💾 2GB 메모리 (vs Netlify 1GB)',
@@ -366,7 +417,7 @@ export const getFirebaseServiceStatus = () => {
       '💇 헤어 보존 ABSOLUTE HIGHEST PRIORITY',
       '📸 고품질 이미지 처리 (768~1792px)',
       '🎨 PNG 자동 변환 + 최적화',
-      '📐 종횡비 자동 보정',
+      '📐 개선된 종횡비 보정',
       '📊 실시간 진행 상황 추적',
       '📝 1200자 프롬프트 지원',
       '⚡ Firebase Functions v2 성능'
@@ -374,7 +425,7 @@ export const getFirebaseServiceStatus = () => {
     comparison: {
       netlify: '26초 타임아웃, 1GB 메모리',
       firebase: '540초 타임아웃, 2GB 메모리',
-      improvement: '20배 더 긴 처리 시간, 2배 더 많은 메모리'
+      improvement: '20배 더 긴 처리 시간, 2배 더 많은 메모리, 비율 왜곡 방지'
     }
   };
 };
