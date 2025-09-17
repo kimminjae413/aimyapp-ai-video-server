@@ -19,6 +19,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
   const [history, setHistory] = useState<GenerationResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
+  const [downloadStatuses, setDownloadStatuses] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (isOpen && userId) {
@@ -46,20 +48,81 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
   };
 
   const handleDownload = async (item: GenerationResult) => {
+    const itemId = item._id || `${item.userId}-${item.createdAt}`;
+    
+    if (downloadingIds.has(itemId)) {
+      return; // 이미 다운로드 중
+    }
+
     try {
+      setDownloadingIds(prev => new Set(prev).add(itemId));
+      setDownloadStatuses(prev => new Map(prev).set(itemId, '다운로드 중...'));
+
       if (item.type === 'image') {
-        await downloadHelper.downloadImage(
-          item.resultUrl, 
-          `faceswap-${item.createdAt.slice(0, 10)}.jpg`
-        );
-      } else {
-        await downloadHelper.downloadVideo(
-          item.resultUrl, 
-          `video-${item.createdAt.slice(0, 10)}.mp4`
-        );
+        console.log('🖼️ 이미지 다운로드 시작:', item.resultUrl);
+        
+        // 파일명 생성
+        const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
+        const filename = `faceswap-${timestamp}-${itemId.slice(-6)}.jpg`;
+        
+        // downloadHelper를 사용하여 이미지 다운로드
+        const result = await downloadHelper.downloadImage(item.resultUrl, filename);
+        
+        if (result.success) {
+          setDownloadStatuses(prev => new Map(prev).set(itemId, '✅ 저장 완료!'));
+          
+          // iOS에서 추가 안내가 필요한 경우
+          if (result.method === 'new-window' && downloadHelper.isIOS()) {
+            setTimeout(() => {
+              setDownloadStatuses(prev => new Map(prev).set(itemId, '💡 이미지를 길게 터치하여 저장하세요'));
+            }, 2000);
+          }
+        } else {
+          setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ 다운로드 실패: ${result.message || 'Unknown error'}`));
+        }
+        
+      } else if (item.type === 'video') {
+        console.log('🎥 비디오 다운로드 시작:', item.resultUrl);
+        
+        // 파일명 생성
+        const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
+        const filename = `video-${timestamp}-${itemId.slice(-6)}.mp4`;
+        
+        // downloadHelper를 사용하여 비디오 다운로드
+        const result = await downloadHelper.downloadVideo(item.resultUrl, filename);
+        
+        if (result.success) {
+          setDownloadStatuses(prev => new Map(prev).set(itemId, '✅ 저장 완료!'));
+          
+          // iOS에서 추가 안내가 필요한 경우
+          if (result.method === 'new-window-video' && downloadHelper.isIOS()) {
+            setTimeout(() => {
+              setDownloadStatuses(prev => new Map(prev).set(itemId, '💡 비디오를 길게 터치하여 저장하세요'));
+            }, 2000);
+          }
+        } else {
+          setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ 다운로드 실패: ${result.message || 'Unknown error'}`));
+        }
       }
+      
     } catch (error) {
-      console.error('Download failed:', error);
+      console.error('다운로드 중 오류:', error);
+      setDownloadStatuses(prev => new Map(prev).set(itemId, '❌ 다운로드 오류'));
+    } finally {
+      setDownloadingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(itemId);
+        return newSet;
+      });
+      
+      // 5초 후 상태 메시지 클리어
+      setTimeout(() => {
+        setDownloadStatuses(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(itemId);
+          return newMap;
+        });
+      }, 5000);
     }
   };
 
@@ -119,91 +182,131 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {history.map((item) => (
-                <div
-                  key={item._id}
-                  className="bg-gray-700/50 border border-gray-600 rounded-xl overflow-hidden hover:border-gray-500 transition-colors"
-                >
-                  {/* Thumbnail */}
-                  <div className="relative aspect-square bg-gray-800">
-                    {item.type === 'image' ? (
-                      <img
-                        src={item.resultUrl}
-                        alt="Generated result"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.src = item.originalImageUrl; // 결과 이미지 로드 실패 시 원본 표시
-                        }}
-                      />
-                    ) : (
-                      <div className="relative w-full h-full">
-                        <video
+              {history.map((item) => {
+                const itemId = item._id || `${item.userId}-${item.createdAt}`;
+                const isDownloading = downloadingIds.has(itemId);
+                const downloadStatus = downloadStatuses.get(itemId);
+                
+                return (
+                  <div
+                    key={itemId}
+                    className="bg-gray-700/50 border border-gray-600 rounded-xl overflow-hidden hover:border-gray-500 transition-colors"
+                  >
+                    {/* Thumbnail */}
+                    <div className="relative aspect-square bg-gray-800">
+                      {item.type === 'image' ? (
+                        <img
                           src={item.resultUrl}
+                          alt="Generated result"
                           className="w-full h-full object-cover"
-                          muted
-                          loop
-                          onMouseEnter={(e) => (e.target as HTMLVideoElement).play()}
-                          onMouseLeave={(e) => (e.target as HTMLVideoElement).pause()}
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = item.originalImageUrl; // 결과 이미지 로드 실패 시 원본 표시
+                          }}
                         />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-12 h-12 bg-black/50 rounded-full flex items-center justify-center">
-                            <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M8 5v14l11-7z"/>
-                            </svg>
+                      ) : (
+                        <div className="relative w-full h-full">
+                          <video
+                            src={item.resultUrl}
+                            className="w-full h-full object-cover"
+                            muted
+                            loop
+                            onMouseEnter={(e) => (e.target as HTMLVideoElement).play()}
+                            onMouseLeave={(e) => (e.target as HTMLVideoElement).pause()}
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="w-12 h-12 bg-black/50 rounded-full flex items-center justify-center">
+                              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8 5v14l11-7z"/>
+                              </svg>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
-                    
-                    {/* Download button */}
-                    <button
-                      onClick={() => handleDownload(item)}
-                      className="absolute top-2 right-2 p-2 bg-black/50 backdrop-blur-sm rounded-full text-white hover:bg-black/70 transition-colors"
-                      title="다운로드"
-                    >
-                      <DownloadIcon className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {/* Info */}
-                  <div className="p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                        item.type === 'image' 
-                          ? 'bg-pink-500/20 text-pink-300' 
-                          : 'bg-blue-500/20 text-blue-300'
-                      }`}>
-                        {item.type === 'image' ? '얼굴변환' : '영상변환'}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {formatDate(item.createdAt)}
-                      </span>
+                      )}
+                      
+                      {/* Download button with status */}
+                      <button
+                        onClick={() => handleDownload(item)}
+                        disabled={isDownloading}
+                        className={`absolute top-2 right-2 p-2 backdrop-blur-sm rounded-full text-white transition-colors ${
+                          isDownloading
+                            ? 'bg-blue-500/80 cursor-wait'
+                            : downloadStatus?.includes('✅')
+                              ? 'bg-green-500/80'
+                              : downloadStatus?.includes('❌')
+                                ? 'bg-red-500/80'
+                                : 'bg-black/50 hover:bg-black/70'
+                        }`}
+                        title={downloadStatus || "다운로드"}
+                      >
+                        {isDownloading ? (
+                          <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        ) : downloadStatus?.includes('✅') ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <DownloadIcon className="w-4 h-4" />
+                        )}
+                      </button>
+                      
+                      {/* Download status overlay */}
+                      {downloadStatus && (
+                        <div className={`absolute bottom-2 left-2 right-2 px-2 py-1 rounded text-xs text-center font-medium backdrop-blur-sm ${
+                          downloadStatus.includes('✅')
+                            ? 'bg-green-600/90 text-green-100'
+                            : downloadStatus.includes('❌')
+                              ? 'bg-red-600/90 text-red-100'
+                              : downloadStatus.includes('💡')
+                                ? 'bg-yellow-600/90 text-yellow-100'
+                                : 'bg-blue-600/90 text-blue-100'
+                        }`}>
+                          {downloadStatus}
+                        </div>
+                      )}
                     </div>
-                    
-                    {item.facePrompt && (
-                      <p className="text-xs text-gray-400 mb-1 truncate">
-                        {item.facePrompt.length > 30 
-                          ? `${item.facePrompt.slice(0, 30)}...` 
-                          : item.facePrompt
-                        }
-                      </p>
-                    )}
-                    
-                    {item.type === 'video' && item.videoDuration && (
-                      <p className="text-xs text-gray-500">
-                        {item.videoDuration}초 영상 • {item.creditsUsed}회 차감
-                      </p>
-                    )}
-                    
-                    {item.type === 'image' && (
-                      <p className="text-xs text-gray-500">
-                        {item.creditsUsed}회 차감
-                      </p>
-                    )}
+
+                    {/* Info */}
+                    <div className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                          item.type === 'image' 
+                            ? 'bg-pink-500/20 text-pink-300' 
+                            : 'bg-blue-500/20 text-blue-300'
+                        }`}>
+                          {item.type === 'image' ? '얼굴변환' : '영상변환'}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {formatDate(item.createdAt)}
+                        </span>
+                      </div>
+                      
+                      {item.facePrompt && (
+                        <p className="text-xs text-gray-400 mb-1 truncate">
+                          {item.facePrompt.length > 30 
+                            ? `${item.facePrompt.slice(0, 30)}...` 
+                            : item.facePrompt
+                          }
+                        </p>
+                      )}
+                      
+                      {item.type === 'video' && item.videoDuration && (
+                        <p className="text-xs text-gray-500">
+                          {item.videoDuration}초 영상 • {item.creditsUsed}회 차감
+                        </p>
+                      )}
+                      
+                      {item.type === 'image' && (
+                        <p className="text-xs text-gray-500">
+                          {item.creditsUsed}회 차감
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -213,6 +316,17 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           <p className="text-xs text-gray-500 text-center">
             생성된 작품은 3일 후 자동으로 삭제됩니다. 필요한 작품은 다운로드해서 보관하세요.
           </p>
+          
+          {/* 환경별 다운로드 가이드 */}
+          <div className="mt-2 text-xs text-gray-400 text-center">
+            {downloadHelper.isIOS() ? (
+              <span>📱 iOS: 다운로드 → 이미지/비디오 길게 터치 → 저장</span>
+            ) : downloadHelper.isAndroid() ? (
+              <span>🤖 Android: 다운로드 → 갤러리에서 확인</span>
+            ) : (
+              <span>💻 PC: 다운로드 → 다운로드 폴더에서 확인</span>
+            )}
+          </div>
         </div>
       </div>
     </div>
