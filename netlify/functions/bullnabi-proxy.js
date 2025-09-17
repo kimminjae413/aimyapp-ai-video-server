@@ -248,12 +248,14 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
       };
     }
     
-    // 성공 응답
-    if (jsonData.code === '1' || jsonData.code === 1) {
+    // 🔧 성공 응답 조건 개선 - code 필드 없어도 data나 recordsTotal 있으면 성공으로 판단
+    if (jsonData.code === '1' || jsonData.code === 1 || 
+        jsonData.data || jsonData.recordsTotal > 0) {
       console.log('[User Token] 성공:', {
         action,
         dataCount: jsonData.data ? jsonData.data.length : 0,
-        recordsTotal: jsonData.recordsTotal
+        recordsTotal: jsonData.recordsTotal,
+        hasCode: !!jsonData.code
       });
       
       return {
@@ -263,7 +265,9 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
           success: true,
           data: jsonData.data,
           recordsTotal: jsonData.recordsTotal,
-          code: jsonData.code
+          recordsFiltered: jsonData.recordsFiltered,
+          metaVersion: jsonData.metaVersion,
+          code: jsonData.code || 'success'
         })
       };
     }
