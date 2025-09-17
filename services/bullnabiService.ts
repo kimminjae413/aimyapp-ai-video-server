@@ -1,55 +1,171 @@
-// services/bullnabiService.ts - 최종 최적화 버전
+// services/bullnabiService.ts - 동적 토큰 시스템 버전
 import type { UserCredits, GenerationResult } from '../types';
 
 const API_BASE_URL = '/.netlify/functions/bullnabi-proxy';
 
 interface BullnabiResponse {
-  code: string;
-  message: string;
+  success: boolean;
+  code?: string;
+  message?: string;
   data?: any;
   recordsTotal?: number;
   recordsFiltered?: number;
 }
 
+interface TokenCache {
+  [userId: string]: {
+    token: string;
+    expiresAt: number;
+  };
+}
+
+// 토큰 캐시 (메모리 내 저장)
+const tokenCache: TokenCache = {};
+
 /**
- * 사용자 크레딧 정보 조회
+ * 사용자 토큰 가져오기 (캐시 활용)
  */
-export const getUserCredits = async (userId: string): Promise<UserCredits | null> => {
+async function getUserToken(userId: string): Promise<string | null> {
   try {
+    // 캐시된 토큰 확인
+    const cached = tokenCache[userId];
+    if (cached && Date.now() < cached.expiresAt) {
+      console.log('🔄 캐시된 토큰 사용:', userId);
+      return cached.token;
+    }
+
+    // 새 토큰 발급
+    console.log('🔑 새 토큰 발급 요청:', userId);
     const response = await fetch(API_BASE_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'aggregate',
-        metaCode: '_users',
-        collectionName: '_users',
-        documentJson: {
-          "pipeline": {
-            "$match": { 
-              "_id": { 
-                "$eq": { 
-                  "$oid": userId
-                } 
-              } 
-            },
-            "$limit": 1
-          }
-        }
-      }),
+        action: 'getUserToken',
+        userId: userId
+      })
     });
 
     if (!response.ok) {
-      console.error('Failed to fetch user credits:', response.status);
+      console.error('토큰 발급 실패:', response.status);
       return null;
     }
 
-    const data: BullnabiResponse = await response.json();
-    console.log('User credits response:', data);
+    const data = await response.json();
+    if (!data.success || !data.token) {
+      console.error('토큰 발급 응답 오류:', data);
+      return null;
+    }
+
+    // 캐시에 저장 (50분 후 만료, 실제 토큰은 1시간)
+    tokenCache[userId] = {
+      token: data.token,
+      expiresAt: Date.now() + (50 * 60 * 1000)
+    };
+
+    console.log('✅ 새 토큰 발급 완료:', userId);
+    return data.token;
+
+  } catch (error) {
+    console.error('토큰 발급 중 오류:', error);
+    return null;
+  }
+}
+
+/**
+ * 동적 토큰으로 API 호출
+ */
+async function callWithDynamicToken(
+  userId: string,
+  action: string,
+  data?: any
+): Promise<BullnabiResponse | null> {
+  try {
+    const token = await getUserToken(userId);
+    if (!token) {
+      console.error('토큰을 가져올 수 없음:', userId);
+      return null;
+    }
+
+    const response = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        token,
+        userId,
+        data
+      })
+    });
+
+    if (!response.ok) {
+      console.error(`${action} 호출 실패:`, response.status);
+      return null;
+    }
+
+    const result = await response.json();
     
-    if (data.data && data.data.length > 0) {
-      const user = data.data[0];
+    // 토큰 만료 시 캐시 클리어 후 재시도
+    if (!result.success && result.needRefresh) {
+      console.log('토큰 만료, 캐시 클리어 후 재시도:', userId);
+      delete tokenCache[userId];
+      return await callWithDynamicToken(userId, action, data);
+    }
+
+    return result;
+
+  } catch (error) {
+    console.error(`${action} 호출 중 오류:`, error);
+    return null;
+  }
+}
+
+/**
+ * 기존 방식 (폴백용) - 관리자 토큰 사용
+ */
+async function callWithAdminToken(
+  action: string,
+  metaCode: string,
+  collectionName: string,
+  documentJson: any
+): Promise<BullnabiResponse | null> {
+  try {
+    const response = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        metaCode,
+        collectionName,
+        documentJson
+      })
+    });
+
+    if (!response.ok) {
+      console.error(`${action} (관리자 토큰) 호출 실패:`, response.status);
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error(`${action} (관리자 토큰) 호출 중 오류:`, error);
+    return null;
+  }
+}
+
+/**
+ * 사용자 크레딧 정보 조회 (동적 토큰)
+ */
+export const getUserCredits = async (userId: string): Promise<UserCredits | null> => {
+  try {
+    console.log('🔍 사용자 크레딧 조회:', userId);
+
+    // 1순위: 동적 토큰 시스템
+    const result = await callWithDynamicToken(userId, 'getUserData');
+    
+    if (result?.success && result.data && result.data.length > 0) {
+      const user = result.data[0];
+      console.log('✅ 동적 토큰으로 크레딧 조회 성공');
+      
       return {
         userId: userId,
         totalCredits: user.remainCount || 0,
@@ -59,16 +175,45 @@ export const getUserCredits = async (userId: string): Promise<UserCredits | null
       };
     }
 
-    console.warn('No user data found for ID:', userId);
+    console.log('⚠️ 동적 토큰 실패, 관리자 토큰으로 폴백');
+
+    // 2순위: 기존 관리자 토큰 시스템 (폴백)
+    const fallbackResult = await callWithAdminToken(
+      'aggregate',
+      '_users',
+      '_users',
+      {
+        "pipeline": {
+          "$match": { "_id": { "$eq": { "$oid": userId } } },
+          "$limit": 1
+        }
+      }
+    );
+
+    if (fallbackResult?.data && fallbackResult.data.length > 0) {
+      const user = fallbackResult.data[0];
+      console.log('✅ 관리자 토큰으로 크레딧 조회 성공');
+      
+      return {
+        userId: userId,
+        totalCredits: user.remainCount || 0,
+        remainingCredits: user.remainCount || 0,
+        nickname: user.nickname || user.name || '',
+        email: user.email || ''
+      };
+    }
+
+    console.warn('❌ 모든 방식으로 사용자 데이터를 찾을 수 없음:', userId);
     return null;
+
   } catch (error) {
-    console.error('Error fetching user credits:', error);
+    console.error('사용자 크레딧 조회 중 오류:', error);
     return null;
   }
 };
 
 /**
- * 크레딧 사용 기록 추가 (히스토리)
+ * 크레딧 사용 기록 추가 (동적 토큰)
  */
 export const useCredits = async (
   userId: string, 
@@ -76,72 +221,70 @@ export const useCredits = async (
   count: number
 ): Promise<boolean> => {
   try {
-    // 1. 먼저 현재 크레딧 확인
+    // 1. 현재 크레딧 확인
     const currentCredits = await getUserCredits(userId);
     if (!currentCredits || currentCredits.remainingCredits < Math.abs(count)) {
-      console.error('Insufficient credits');
+      console.error('크레딧 부족');
       return false;
     }
 
-    // 2. 히스토리 추가
-    const historyResponse = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'create',
-        metaCode: '_users',
-        collectionName: 'aiTicketHistory',
-        documentJson: {
-          userJoin: { "$oid": userId },
-          uses: uses,
-          count: -Math.abs(count), // 음수로 저장 (차감)
-          _createTime: new Date().toISOString()
-        }
-      }),
-    });
+    // 2. 히스토리 추가 (동적 토큰 시도)
+    const historyData = {
+      userJoin: { "$oid": userId },
+      uses: uses,
+      count: -Math.abs(count),
+      _createTime: new Date().toISOString()
+    };
 
-    if (!historyResponse.ok) {
-      console.error('Failed to create history:', historyResponse.status);
-      return false;
-    }
-
-    const historyData: BullnabiResponse = await historyResponse.json();
+    let historyResult = await callWithDynamicToken(userId, 'createCreditHistory', historyData);
     
-    // 3. remainCount 업데이트
+    // 동적 토큰 실패시 관리자 토큰으로 폴백
+    if (!historyResult?.success) {
+      console.log('히스토리 추가 - 관리자 토큰으로 폴백');
+      historyResult = await callWithAdminToken(
+        'create',
+        '_users',
+        'aiTicketHistory',
+        historyData
+      );
+    }
+
+    if (!historyResult?.success && historyResult?.code !== '1' && historyResult?.code !== 1) {
+      console.error('히스토리 추가 실패');
+      return false;
+    }
+
+    // 3. remainCount 업데이트 (동적 토큰 시도)
     const newRemainCount = currentCredits.remainingCredits - Math.abs(count);
-    const updateResponse = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'update',
-        metaCode: '_users',
-        collectionName: '_users',
-        documentJson: {
+    const updateData = { newCount: newRemainCount };
+
+    let updateResult = await callWithDynamicToken(userId, 'updateUserCredits', updateData);
+    
+    // 동적 토큰 실패시 관리자 토큰으로 폴백
+    if (!updateResult?.success) {
+      console.log('크레딧 업데이트 - 관리자 토큰으로 폴백');
+      updateResult = await callWithAdminToken(
+        'update',
+        '_users',
+        '_users',
+        {
           "_id": { "$oid": userId },
           "remainCount": newRemainCount
         }
-      }),
-    });
-
-    if (!updateResponse.ok) {
-      console.error('Failed to update remainCount:', updateResponse.status);
-      // 히스토리는 추가되었지만 remainCount 업데이트 실패
-      // 복구 로직 필요할 수 있음
+      );
     }
-    
+
+    console.log('✅ 크레딧 사용 완료:', { userId, uses, count, newRemainCount });
     return true;
+
   } catch (error) {
-    console.error('Error using credits:', error);
+    console.error('크레딧 사용 중 오류:', error);
     return false;
   }
 };
 
 /**
- * 크레딧 복구 (실패 시)
+ * 크레딧 복구 (동적 토큰)
  */
 export const restoreCredits = async (
   userId: string,
@@ -149,104 +292,62 @@ export const restoreCredits = async (
   count: number
 ): Promise<boolean> => {
   try {
-    // 1. 현재 크레딧 조회
     const currentCredits = await getUserCredits(userId);
     if (!currentCredits) {
-      console.error('Failed to get current credits for restore');
+      console.error('복구를 위한 현재 크레딧 조회 실패');
       return false;
     }
 
-    // 2. 복구용 히스토리 추가 (양수로)
-    const response = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'create',
-        metaCode: '_users',
-        collectionName: 'aiTicketHistory',
-        documentJson: {
-          userJoin: { "$oid": userId },
-          uses: `${uses}_restore`, // 복구 구분을 위해
-          count: Math.abs(count), // 양수로 저장 (복구)
-          _createTime: new Date().toISOString(),
-          note: '생성 실패로 인한 크레딧 복구'
-        }
-      }),
-    });
+    // 복구용 히스토리 추가 (동적 토큰 시도)
+    const restoreData = {
+      userJoin: { "$oid": userId },
+      uses: `${uses}_restore`,
+      count: Math.abs(count),
+      _createTime: new Date().toISOString(),
+      note: '생성 실패로 인한 크레딧 복구'
+    };
 
-    if (!response.ok) {
-      console.error('Failed to restore credits:', response.status);
-      return false;
+    let result = await callWithDynamicToken(userId, 'createCreditHistory', restoreData);
+    
+    if (!result?.success) {
+      console.log('크레딧 복구 - 관리자 토큰으로 폴백');
+      result = await callWithAdminToken(
+        'create',
+        '_users',
+        'aiTicketHistory',
+        restoreData
+      );
     }
 
-    // 3. remainCount 업데이트
+    // remainCount 업데이트
     const newRemainCount = currentCredits.remainingCredits + Math.abs(count);
-    const updateResponse = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'update',
-        metaCode: '_users',
-        collectionName: '_users',
-        documentJson: {
+    const updateData = { newCount: newRemainCount };
+
+    let updateResult = await callWithDynamicToken(userId, 'updateUserCredits', updateData);
+    
+    if (!updateResult?.success) {
+      updateResult = await callWithAdminToken(
+        'update',
+        '_users',
+        '_users',
+        {
           "_id": { "$oid": userId },
           "remainCount": newRemainCount
         }
-      }),
-    });
+      );
+    }
 
-    return updateResponse.ok;
+    console.log('✅ 크레딧 복구 완료:', { userId, uses, count, newRemainCount });
+    return true;
+
   } catch (error) {
-    console.error('Error restoring credits:', error);
+    console.error('크레딧 복구 중 오류:', error);
     return false;
   }
 };
 
 /**
- * 사용 내역 조회
- */
-export const getCreditHistory = async (userId: string, limit: number = 10): Promise<any[]> => {
-  try {
-    const response = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'aggregate',
-        metaCode: '_users',
-        collectionName: 'aiTicketHistory',
-        documentJson: {
-          "pipeline": {
-            "$match": { 
-              "userJoin": { "$oid": userId }
-            },
-            "$sort": { "_createTime": -1 },
-            "$limit": limit
-          }
-        }
-      }),
-    });
-
-    if (!response.ok) {
-      console.error('Failed to fetch history:', response.status);
-      return [];
-    }
-
-    const data: BullnabiResponse = await response.json();
-    return data.data || [];
-  } catch (error) {
-    console.error('Error fetching history:', error);
-    return [];
-  }
-};
-
-/**
- * 생성 결과 저장 (최적화된 버전 - 네트워크 에러 방지)
+ * 생성 결과 저장 (동적 토큰 우선, 관리자 토큰 폴백)
  */
 export const saveGenerationResult = async (params: {
   userId: string;
@@ -261,168 +362,156 @@ export const saveGenerationResult = async (params: {
 }): Promise<boolean> => {
   try {
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // 3일 후
+    const expiresAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
-    // URL 크기 체크 및 축약 (네트워크 에러 방지)
     const truncateUrl = (url: string, maxLength: number = 100): string => {
       if (!url || url.length <= maxLength) return url || '';
       return url.substring(0, maxLength) + '...[truncated]';
     };
 
-    // 프롬프트 길이 제한
     const truncateText = (text: string, maxLength: number = 300): string => {
       if (!text || text.length <= maxLength) return text || '';
       return text.substring(0, maxLength) + '...';
     };
 
-    console.log('Saving generation result with optimized data...');
+    const documentData = {
+      userId: { "$oid": params.userId },
+      type: params.type,
+      originalImageUrl: truncateUrl(params.originalImageUrl, 150),
+      resultUrl: truncateUrl(params.resultUrl, 150),
+      prompt: truncateText(params.prompt || '', 200),
+      facePrompt: truncateText(params.facePrompt || '', 200),
+      clothingPrompt: truncateText(params.clothingPrompt || '', 200),
+      videoDuration: params.videoDuration || null,
+      creditsUsed: params.creditsUsed,
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      _createTime: now.toISOString(),
+      status: 'completed'
+    };
 
-    const response = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'create',
-        metaCode: '_users',
-        collectionName: 'aiGenerationHistory',
-        documentJson: {
-          userId: { "$oid": params.userId },
-          type: params.type,
-          // URL 축약으로 데이터 크기 줄이기 (네트워크 타임아웃 방지)
-          originalImageUrl: truncateUrl(params.originalImageUrl, 150),
-          resultUrl: truncateUrl(params.resultUrl, 150),
-          // 프롬프트 길이 제한
-          prompt: truncateText(params.prompt || '', 200),
-          facePrompt: truncateText(params.facePrompt || '', 200),
-          clothingPrompt: truncateText(params.clothingPrompt || '', 200),
-          videoDuration: params.videoDuration || null,
-          creditsUsed: params.creditsUsed,
-          createdAt: now.toISOString(),
-          expiresAt: expiresAt.toISOString(),
-          _createTime: now.toISOString(),
-          // 상태 기록
-          status: 'completed'
-        }
-      }),
-    });
+    console.log('생성 결과 저장 시작 (동적 토큰)...');
 
-    if (!response.ok) {
-      console.error('Failed to save generation result:', response.status);
-      return false;
-    }
-
-    const data = await response.json();
+    // 1순위: 동적 토큰
+    let result = await callWithDynamicToken(params.userId, 'saveGenerationResult', documentData);
     
-    if (data.code === '1' || data.code === 1) {
-      console.log('Generation result saved successfully');
+    if (result?.success) {
+      console.log('✅ 동적 토큰으로 생성 결과 저장 성공');
       return true;
-    } else {
-      console.warn('Unexpected save response:', data);
-      return false;
     }
-    
+
+    console.log('동적 토큰 실패, 관리자 토큰으로 폴백...');
+
+    // 2순위: 관리자 토큰 폴백
+    result = await callWithAdminToken(
+      'create',
+      '_users',
+      'aiGenerationHistory',
+      documentData
+    );
+
+    if (result?.code === '1' || result?.code === 1) {
+      console.log('✅ 관리자 토큰으로 생성 결과 저장 성공');
+      return true;
+    }
+
+    console.warn('⚠️ 생성 결과 저장 실패:', result);
+    return false;
+
   } catch (error) {
-    console.error('Error saving generation result:', error);
-    
-    // 네트워크 에러 타입 감지
-    if (error instanceof Error) {
-      const errorMessage = error.message.toLowerCase();
-      if (errorMessage.includes('terminated') || 
-          errorMessage.includes('fetch') || 
-          errorMessage.includes('network') ||
-          errorMessage.includes('timeout') ||
-          errorMessage.includes('aborted')) {
-        console.warn('Network error detected during save, skipping retry to prevent timeout');
-        return false;
-      }
-    }
-    
+    console.error('생성 결과 저장 중 오류:', error);
     return false;
   }
 };
 
 /**
- * 생성 내역 조회 (최근 3일) - 에러 처리 강화
+ * 생성 내역 조회 (동적 토큰 우선)
  */
 export const getGenerationHistory = async (userId: string, limit: number = 50): Promise<GenerationResult[]> => {
   try {
     const threeDaysAgo = new Date();
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
-    const response = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'aggregate',
-        metaCode: '_users',
-        collectionName: 'aiGenerationHistory',
-        documentJson: {
-          "pipeline": {
-            "$match": { 
-              "userId": { "$oid": userId },
-              "createdAt": { "$gte": threeDaysAgo.toISOString() }
-            },
-            "$sort": { "createdAt": -1 },
-            "$limit": limit
-          }
+    // 동적 토큰으로는 지원하지 않으므로 관리자 토큰 사용
+    const result = await callWithAdminToken(
+      'aggregate',
+      '_users',
+      'aiGenerationHistory',
+      {
+        "pipeline": {
+          "$match": { 
+            "userId": { "$oid": userId },
+            "createdAt": { "$gte": threeDaysAgo.toISOString() }
+          },
+          "$sort": { "createdAt": -1 },
+          "$limit": limit
         }
-      }),
-    });
+      }
+    );
 
-    if (!response.ok) {
-      console.error('Failed to fetch generation history:', response.status);
-      return [];
-    }
-
-    const data: BullnabiResponse = await response.json();
-    return data.data || [];
+    return result?.data || [];
   } catch (error) {
-    console.error('Error fetching generation history:', error);
+    console.error('생성 내역 조회 중 오류:', error);
     return [];
   }
 };
 
 /**
- * 만료된 생성 결과 정리 (3일 지난 데이터 삭제)
+ * 만료된 생성 결과 정리 (관리자 토큰 사용)
  */
 export const cleanupExpiredGenerations = async (userId: string): Promise<boolean> => {
   try {
     const now = new Date();
     
-    const response = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'delete',
-        metaCode: '_users',
-        collectionName: 'aiGenerationHistory',
-        documentJson: {
-          "userId": { "$oid": userId },
-          "expiresAt": { "$lt": now.toISOString() }
-        }
-      }),
-    });
+    const result = await callWithAdminToken(
+      'delete',
+      '_users',
+      'aiGenerationHistory',
+      {
+        "userId": { "$oid": userId },
+        "expiresAt": { "$lt": now.toISOString() }
+      }
+    );
 
-    if (!response.ok) {
-      console.error('Failed to cleanup expired generations:', response.status);
-      return false;
+    if (result?.code === '1' || result?.code === 1) {
+      console.log('✅ 만료된 생성 결과 정리 완료');
+      return true;
     }
 
-    console.log('Expired generations cleaned up successfully');
-    return true;
+    return false;
   } catch (error) {
-    console.error('Error cleaning up expired generations:', error);
+    console.error('만료된 생성 결과 정리 중 오류:', error);
     return false;
   }
 };
 
 /**
- * 간소화된 결과 저장 (네트워크 에러 시 대체용)
+ * 사용 내역 조회 (관리자 토큰 사용)
+ */
+export const getCreditHistory = async (userId: string, limit: number = 10): Promise<any[]> => {
+  try {
+    const result = await callWithAdminToken(
+      'aggregate',
+      '_users',
+      'aiTicketHistory',
+      {
+        "pipeline": {
+          "$match": { "userJoin": { "$oid": userId } },
+          "$sort": { "_createTime": -1 },
+          "$limit": limit
+        }
+      }
+    );
+
+    return result?.data || [];
+  } catch (error) {
+    console.error('사용 내역 조회 중 오류:', error);
+    return [];
+  }
+};
+
+/**
+ * 간소화된 결과 저장 (관리자 토큰 사용)
  */
 export const saveSimpleGenerationResult = async (
   userId: string, 
@@ -430,43 +519,61 @@ export const saveSimpleGenerationResult = async (
   creditsUsed: number
 ): Promise<boolean> => {
   try {
-    console.log('Saving simplified generation result...');
+    console.log('간소화된 생성 결과 저장...');
     
     const now = new Date();
     
-    const response = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'create',
-        metaCode: '_users',
-        collectionName: 'aiGenerationHistory',
-        documentJson: {
-          userId: { "$oid": userId },
-          type: type,
-          // 최소한의 정보만 저장
-          originalImageUrl: 'simplified_record',
-          resultUrl: 'simplified_record',
-          creditsUsed: creditsUsed,
-          createdAt: now.toISOString(),
-          _createTime: now.toISOString(),
-          status: 'simplified'
-        }
-      }),
-    });
+    const result = await callWithAdminToken(
+      'create',
+      '_users',
+      'aiGenerationHistory',
+      {
+        userId: { "$oid": userId },
+        type: type,
+        originalImageUrl: 'simplified_record',
+        resultUrl: 'simplified_record',
+        creditsUsed: creditsUsed,
+        createdAt: now.toISOString(),
+        _createTime: now.toISOString(),
+        status: 'simplified'
+      }
+    );
 
-    if (!response.ok) {
-      console.error('Failed to save simplified result:', response.status);
-      return false;
-    }
-
-    const data = await response.json();
-    return data.code === '1' || data.code === 1;
+    return result?.code === '1' || result?.code === 1;
     
   } catch (error) {
-    console.error('Error saving simplified result:', error);
+    console.error('간소화된 결과 저장 중 오류:', error);
     return false;
   }
+};
+
+/**
+ * 토큰 캐시 클리어 (디버깅용)
+ */
+export const clearTokenCache = (userId?: string) => {
+  if (userId) {
+    delete tokenCache[userId];
+    console.log('🗑️ 특정 사용자 토큰 캐시 클리어:', userId);
+  } else {
+    Object.keys(tokenCache).forEach(key => delete tokenCache[key]);
+    console.log('🗑️ 모든 토큰 캐시 클리어');
+  }
+};
+
+/**
+ * 서비스 상태 확인
+ */
+export const getServiceStatus = () => {
+  return {
+    version: '2.0-DYNAMIC-TOKEN',
+    tokenCacheSize: Object.keys(tokenCache).length,
+    cachedUsers: Object.keys(tokenCache),
+    features: [
+      '🔑 동적 사용자 토큰 발급',
+      '💾 토큰 메모리 캐싱 (50분)',
+      '🔄 토큰 만료시 자동 갱신',
+      '🛡️ 관리자 토큰 폴백 시스템',
+      '⚡ 이중 안전망 구조'
+    ]
+  };
 };
