@@ -1,4 +1,4 @@
-// netlify/functions/bullnabi-proxy.js - 기존 코드 + 동적 토큰 지원 추가
+// netlify/functions/bullnabi-proxy.js - 디버깅 강화 버전
 
 exports.handler = async (event, context) => {
   const headers = {
@@ -23,6 +23,12 @@ exports.handler = async (event, context) => {
   
   try {
     const requestBody = JSON.parse(event.body);
+    console.log('[Bullnabi Proxy] 요청 받음:', { 
+      action: requestBody.action,
+      hasToken: !!requestBody.token,
+      userId: requestBody.userId 
+    });
+    
     const { action, metaCode, collectionName, documentJson, token, userId, data, query } = requestBody;
     
     // 🆕 동적 토큰 시스템: 사용자 토큰 발급
@@ -42,20 +48,6 @@ exports.handler = async (event, context) => {
   } catch (error) {
     console.error('[Bullnabi Proxy] Fatal error:', error);
     
-    // 네트워크 에러 처리
-    if (error.message.includes('fetch')) {
-      return {
-        statusCode: 503,
-        headers,
-        body: JSON.stringify({
-          code: "-1",
-          message: "Service unavailable",
-          error: "Cannot connect to Bullnabi server"
-        })
-      };
-    }
-    
-    // 기타 에러
     return {
       statusCode: 500,
       headers,
@@ -76,6 +68,7 @@ async function handleGetUserToken(userId, headers) {
     const adminToken = process.env.BULLNABI_TOKEN;
     
     if (!adminToken) {
+      console.error('[Dynamic Token] BULLNABI_TOKEN 없음');
       return {
         statusCode: 500,
         headers,
@@ -87,9 +80,9 @@ async function handleGetUserToken(userId, headers) {
     }
     
     console.log('[Dynamic Token] 사용자 토큰 발급 요청:', userId);
+    console.log('[Dynamic Token] 관리자 토큰 사용:', adminToken.substring(0, 20) + '...');
     
-    // 현재는 관리자 토큰을 반환 (실제 구현시 개별 토큰 발급)
-    // TODO: Bullnabi API에 사용자별 토큰 발급 기능이 추가되면 수정
+    // 현재는 관리자 토큰을 반환 (임시 방식)
     return {
       statusCode: 200,
       headers,
@@ -115,26 +108,34 @@ async function handleGetUserToken(userId, headers) {
 }
 
 /**
- * 🆕 사용자 토큰 기반 액션 처리 (동적 토큰 시스템)
+ * 🆕 사용자 토큰 기반 액션 처리 (디버깅 강화)
  */
 async function handleUserTokenAction(action, token, userId, data, headers) {
   try {
-    console.log('[User Token] 액션 처리:', { action, userId, hasToken: !!token });
+    console.log('[User Token] 액션 처리 시작:', { 
+      action, 
+      userId, 
+      hasToken: !!token,
+      tokenPreview: token ? token.substring(0, 20) + '...' : 'none'
+    });
     
     let apiUrl = 'https://drylink.ohmyapp.io/bnb';
     let formData = new URLSearchParams();
     
+    // 🔧 액션별 처리 개선
     switch (action) {
       case 'getUserData':
         apiUrl += '/aggregateForTableWithDocTimeline';
         formData.append('metaCode', '_users');
         formData.append('collectionName', '_users');
-        formData.append('documentJson', JSON.stringify({
+        const pipeline = {
           "pipeline": {
             "$match": { "_id": { "$eq": { "$oid": userId } } },
             "$limit": 1
           }
-        }));
+        };
+        formData.append('documentJson', JSON.stringify(pipeline));
+        console.log('[User Token] getUserData 파이프라인:', pipeline);
         break;
         
       case 'createCreditHistory':
@@ -142,16 +143,19 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
         formData.append('metaCode', '_users');
         formData.append('collectionName', 'aiTicketHistory');
         formData.append('documentJson', JSON.stringify(data));
+        console.log('[User Token] createCreditHistory 데이터:', data);
         break;
         
       case 'updateUserCredits':
         apiUrl += '/update';
         formData.append('metaCode', '_users');
         formData.append('collectionName', '_users');
-        formData.append('documentJson', JSON.stringify({
+        const updateDoc = {
           "_id": { "$oid": userId },
           "remainCount": data.newCount
-        }));
+        };
+        formData.append('documentJson', JSON.stringify(updateDoc));
+        console.log('[User Token] updateUserCredits 문서:', updateDoc);
         break;
         
       case 'saveGenerationResult':
@@ -159,40 +163,80 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
         formData.append('metaCode', '_users');
         formData.append('collectionName', 'aiGenerationHistory');
         formData.append('documentJson', JSON.stringify(data));
+        console.log('[User Token] saveGenerationResult 크기:', JSON.stringify(data).length);
         break;
         
       default:
+        console.error('[User Token] 알 수 없는 액션:', action);
         throw new Error(`Unknown user action: ${action}`);
     }
+    
+    console.log('[User Token] API 호출:', {
+      url: apiUrl,
+      formDataSize: formData.toString().length,
+      hasAuth: !!token
+    });
     
     // API 요청
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': token
+        'Authorization': token  // Bearer 이미 포함됨
       },
       body: formData.toString()
     });
     
     const responseText = await response.text();
     
-    console.log('[User Token] Response:', {
+    console.log('[User Token] 응답 받음:', {
       action,
       status: response.status,
+      statusText: response.statusText,
       length: responseText.length,
       preview: responseText.substring(0, 200)
     });
     
+    // 🔧 응답 처리 강화
+    if (!response.ok) {
+      console.error('[User Token] HTTP 에러:', response.status, response.statusText);
+      return {
+        statusCode: response.status,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          error: `HTTP ${response.status}: ${response.statusText}`,
+          rawResponse: responseText.substring(0, 500)
+        })
+      };
+    }
+    
     let jsonData;
     try {
       jsonData = JSON.parse(responseText);
+      console.log('[User Token] JSON 파싱 성공:', { 
+        code: jsonData.code, 
+        message: jsonData.message,
+        hasData: !!jsonData.data
+      });
     } catch (e) {
-      throw new Error('Invalid response format');
+      console.error('[User Token] JSON 파싱 실패:', e.message);
+      console.error('[User Token] Raw response:', responseText);
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          error: 'Invalid JSON response',
+          rawResponse: responseText.substring(0, 500)
+        })
+      };
     }
     
     // 토큰 만료 확인
-    if (jsonData.code === -110 || jsonData.code === '-110' || jsonData.message?.includes('만료된 토큰')) {
+    if (jsonData.code === -110 || jsonData.code === '-110' || 
+        (jsonData.message && jsonData.message.includes('만료된 토큰'))) {
+      console.warn('[User Token] 토큰 만료 감지:', jsonData.message);
       return {
         statusCode: 401,
         headers,
@@ -206,35 +250,52 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
     
     // 성공 응답
     if (jsonData.code === '1' || jsonData.code === 1) {
+      console.log('[User Token] 성공:', {
+        action,
+        dataCount: jsonData.data ? jsonData.data.length : 0,
+        recordsTotal: jsonData.recordsTotal
+      });
+      
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
           success: true,
           data: jsonData.data,
-          recordsTotal: jsonData.recordsTotal
+          recordsTotal: jsonData.recordsTotal,
+          code: jsonData.code
         })
       };
     }
     
     // 기타 에러
+    console.warn('[User Token] API 에러 응답:', {
+      code: jsonData.code,
+      message: jsonData.message
+    });
+    
     return {
       statusCode: 400,
       headers,
       body: JSON.stringify({
         success: false,
-        error: jsonData.message || 'Unknown error'
+        error: jsonData.message || 'API error',
+        code: jsonData.code,
+        rawData: jsonData
       })
     };
     
   } catch (error) {
     console.error('[User Token] 처리 실패:', error);
+    console.error('[User Token] Stack trace:', error.stack);
+    
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({
         success: false,
-        error: error.message
+        error: error.message,
+        stack: error.stack?.substring(0, 500)
       })
     };
   }
@@ -244,10 +305,9 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
  * 🔧 기존 관리자 토큰 시스템 (기존 코드 그대로 유지)
  */
 async function handleAdminTokenAction(action, metaCode, collectionName, documentJson, headers) {
-  // API URL 구성
+  // [기존 코드와 동일]
   let apiUrl = 'https://drylink.ohmyapp.io/bnb';
   
-  // 액션별 엔드포인트 설정
   switch (action) {
     case 'aggregate':
       apiUrl += '/aggregateForTableWithDocTimeline';
@@ -273,91 +333,50 @@ async function handleAdminTokenAction(action, metaCode, collectionName, document
       };
   }
   
-  // 토큰 설정 (환경변수만 사용)
   const token = process.env.BULLNABI_TOKEN;
-
   if (!token) {
-      return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({
-              code: "-1",
-              message: "BULLNABI_TOKEN not configured"
-          })
-      };
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        code: "-1",
+        message: "BULLNABI_TOKEN not configured"
+      })
+    };
   }
   
-  console.log('[Bullnabi Proxy] Request:', {
-    url: apiUrl,
-    action: action,
-    metaCode: metaCode,
-    collection: collectionName,
-    hasToken: !!token
-  });
-  
-  // FormData 생성
   const formData = new URLSearchParams();
-  
-  // metaCode 기본값: _users (community 대신)
   formData.append('metaCode', metaCode || '_users');
   formData.append('collectionName', collectionName);
   
-  // documentJson 처리
   if (typeof documentJson === 'string') {
     formData.append('documentJson', documentJson);
   } else {
     formData.append('documentJson', JSON.stringify(documentJson));
   }
   
-  // 헤더 설정
-  const fetchHeaders = {
-    'Content-Type': 'application/x-www-form-urlencoded',
-    'Authorization': token
-  };
-  
-  // API 요청
   const response = await fetch(apiUrl, {
     method: 'POST',
-    headers: fetchHeaders,
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': token
+    },
     body: formData.toString()
   });
   
   const responseText = await response.text();
   
-  console.log('[Bullnabi Proxy] Response:', {
-    status: response.status,
-    length: responseText.length,
-    preview: responseText.substring(0, 200)
-  });
-  
-  // 응답 처리
   let jsonData;
-  
-  // 빈 응답 처리
   if (!responseText || responseText.length === 0) {
-    console.warn('[Bullnabi Proxy] Empty response received');
     jsonData = {
       code: "0",
       message: "Empty response from server",
       data: []
     };
   } else {
-    // JSON 파싱 시도
     try {
       jsonData = JSON.parse(responseText);
-      
-      // 성공 응답 로깅
-      if (jsonData.code === "1" || jsonData.data || jsonData.recordsTotal) {
-        console.log('[Bullnabi Proxy] Success:', {
-          code: jsonData.code,
-          recordsTotal: jsonData.recordsTotal,
-          dataLength: jsonData.data ? jsonData.data.length : 0
-        });
-      }
     } catch (e) {
-      console.error('[Bullnabi Proxy] JSON parse error:', e.message);
-      
-      // HTML 응답인 경우 (에러 페이지 등)
       if (responseText.includes('<!DOCTYPE') || responseText.includes('<html')) {
         jsonData = {
           code: "0",
@@ -374,9 +393,8 @@ async function handleAdminTokenAction(action, metaCode, collectionName, document
     }
   }
   
-  // 응답 반환
   return {
-    statusCode: 200, // 항상 200 반환 (클라이언트에서 처리)
+    statusCode: 200,
     headers,
     body: JSON.stringify(jsonData)
   };
