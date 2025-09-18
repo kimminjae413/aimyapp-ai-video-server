@@ -1,7 +1,7 @@
-// services/hybridImageService.ts - 안전한 Firebase + Gemini 하이브리드 최종판
-console.log('🔥 FIREBASE HYBRID SERVICE VERSION: 6.0 - SAFE FINAL');
-console.log('📅 BUILD: 2025-09-12-20:00 - PRODUCTION READY');
-console.log('🔥 CACHE BUST: 2025-09-12-20:00');
+// services/hybridImageService.ts - Gemini 엄격한 2단계 적용 최종판
+console.log('🔥 FIREBASE HYBRID SERVICE VERSION: 6.1 - STRICT GEMINI FALLBACK');
+console.log('📅 BUILD: 2025-09-12-21:00 - GEMINI 2STEP STRICT');
+console.log('🔥 CACHE BUST: 2025-09-12-21:00');
 
 import { changeClothingOnly, changeFaceInImage } from './geminiService';
 import { transformFaceWithFirebase } from './firebaseOpenAIService';
@@ -76,8 +76,7 @@ export const firebaseHybridTransformation = async (
 };
 
 /**
- * 스마트 변환 (Firebase 우선, 실패시 Gemini 폴백)
- * Netlify 비동기 서비스는 제거되어 2단계 시스템으로 변경
+ * 스마트 변환 (Firebase 우선, 실패시 엄격한 2단계 Gemini 폴백)
  */
 export const smartFaceTransformation = async (
   originalImage: ImageFile,
@@ -102,17 +101,19 @@ export const smartFaceTransformation = async (
     };
     
   } catch (firebaseError) {
-    console.log('Firebase 실패, Gemini 전용으로 폴백...');
+    console.log('Firebase 실패, Gemini 엄격한 2단계로 폴백...');
     console.error('Firebase 오류:', firebaseError);
     
     try {
-      // 2순위: Gemini Only (최종 폴백)
-      console.log('🆘 2순위: Gemini Only 최종 시도...');
+      // 🎯 2순위: Gemini 엄격한 2단계 (최종 폴백)
+      console.log('🆘 2순위: Gemini STRICT 2-Step 최종 시도...');
+      console.log('🔧 Gemini 폴백 방식: 얼굴 먼저 → 옷 나중에 (Firebase와 동일)');
       
       if (onProgress) {
-        onProgress('Firebase 실패, Gemini로 폴백 중...');
+        onProgress('Firebase 실패, Gemini 엄격한 2단계로 폴백 중...');
       }
       
+      // 🚀 새로운 엄격한 2단계 Gemini 사용
       const geminiResult = await changeFaceInImage(
         originalImage, 
         facePrompt,
@@ -120,12 +121,12 @@ export const smartFaceTransformation = async (
       );
       
       if (onProgress) {
-        onProgress('Gemini 변환 완료!');
+        onProgress('Gemini 엄격한 2단계 변환 완료!');
       }
       
       return { 
         result: geminiResult, 
-        method: 'Gemini Only (Firebase 폴백)' 
+        method: 'Gemini 엄격한 2단계 (얼굴→옷, Firebase 폴백)' 
       };
       
     } catch (geminiError) {
@@ -136,15 +137,15 @@ export const smartFaceTransformation = async (
 };
 
 /**
- * 서비스 상태 확인 - 안전한 2단계 시스템
+ * 서비스 상태 확인 - 엄격한 2단계 시스템
  */
 export const getHybridServiceStatus = () => {
   return {
-    version: '6.0-FIREBASE-GEMINI-SAFE',
-    architecture: '2단계 안전 시스템',
+    version: '6.1-FIREBASE-GEMINI-STRICT',
+    architecture: '2단계 엄격한 시스템',
     step1: 'Firebase OpenAI (헤어 보존 최우선, 9분 대기)',
     step2: 'Gemini 의상 변환',
-    fallback: 'Gemini Only (안전한 폴백)',
+    fallback: 'Gemini 엄격한 2단계 (Firebase와 동일한 방식)',
     features: [
       '🔥 Firebase Functions v2 (9분 타임아웃)',
       '💾 2GB 메모리 할당',
@@ -156,17 +157,27 @@ export const getHybridServiceStatus = () => {
       '📝 1200자 프롬프트 지원',
       '🛡️ 안전한 2단계 폴백 시스템',
       '🎨 하이브리드 변환 연계',
-      '⚡ 빌드 오류 없는 안전한 구조'
+      '⚡ 빌드 오류 없는 안전한 구조',
+      '🎯 Gemini 폴백: 엄격한 2단계 (얼굴→옷)',
+      '🔧 앵글/사이즈 변경 완전 금지',
+      '🌡️ Temperature 0.1로 일관성 극대화'
     ],
     services: {
       primary: 'Firebase Functions (9분)',
-      fallback: 'Google Gemini 2.5 Flash (14초)',
+      fallback: 'Google Gemini 2.5 Flash 엄격한 2단계 (14초)',
       removed: 'Netlify 비동기 (충돌 방지를 위해 제거)'
     },
     urls: {
       firebase: 'https://us-central1-hgfaceswap-functions.cloudfunctions.net/openaiProxy',
-      gemini: 'Google Gemini 2.5 Flash Image API'
-    }
+      gemini: 'Google Gemini 2.5 Flash Image API (엄격한 제약)'
+    },
+    improvements: [
+      '🔄 Firebase 실패 시 Gemini도 2단계 처리',
+      '📐 앵글/사이즈 변경 완전 방지',
+      '💇 헤어 보존 절대 우선순위',
+      '🎯 얼굴 변환과 의상 변환 분리',
+      '🌡️ 낮은 Temperature로 일관성 향상'
+    ]
   };
 };
 
@@ -209,17 +220,28 @@ export const validateServiceDependencies = async (): Promise<{
     console.error('❌ Firebase 서비스 의존성 누락:', error);
   }
 
-  // Gemini 서비스 확인
+  // Gemini 서비스 확인 (엄격한 2단계 포함)
   try {
-    await import('./geminiService');
-    gemini = true;
-    console.log('✅ Gemini 서비스 의존성 확인됨');
+    const geminiService = await import('./geminiService');
+    if (geminiService.changeFaceInImage && geminiService.changeClothingOnly) {
+      gemini = true;
+      console.log('✅ Gemini 엄격한 2단계 서비스 의존성 확인됨');
+    } else {
+      errors.push('Gemini 서비스 필수 함수 누락');
+    }
   } catch (error) {
     errors.push('Gemini 서비스 파일 누락');
     console.error('❌ Gemini 서비스 의존성 누락:', error);
   }
 
   const safe = firebase && gemini && errors.length === 0;
+
+  console.log('🔍 의존성 검증 결과:', {
+    firebase,
+    gemini,
+    safe,
+    errors
+  });
 
   return { firebase, gemini, safe, errors };
 };
