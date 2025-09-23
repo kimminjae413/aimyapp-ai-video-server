@@ -1,4 +1,4 @@
-// services/hybridImageService.ts - 최종 완성 버전
+// services/hybridImageService.ts - 수정 버전
 import { changeFaceInImage } from './geminiService';
 import type { ImageFile } from '../types';
 
@@ -24,8 +24,8 @@ export const smartFaceTransformation = async (
   originalImage: ImageFile,
   facePrompt: string,
   clothingPrompt: string,
-  onProgress?: (status: string) => void,
-  referenceImage?: ImageFile | null
+  referenceImage?: ImageFile | null,
+  onProgress?: (status: string) => void
 ): Promise<{ result: ImageFile | null; method: string }> => {
   try {
     // 참고이미지가 있으면 VModel 시도
@@ -36,11 +36,12 @@ export const smartFaceTransformation = async (
       
       try {
         const vmodel = await loadVModelService();
-        if (vmodel && vmodel.swapFaceWithVModel) {
-          const result = await vmodel.swapFaceWithVModel(
-            referenceImage,  // 참고할 얼굴
-            originalImage,   // 원본 이미지
-            onProgress
+        // 올바른 함수명 사용
+        if (vmodel && vmodel.transformFaceWithVModel) {
+          const result = await vmodel.transformFaceWithVModel(
+            originalImage,   // 원본 이미지 (target)
+            referenceImage,  // 참고할 얼굴 (swap)
+            clothingPrompt
           );
           
           if (result) {
@@ -61,7 +62,7 @@ export const smartFaceTransformation = async (
     
     const result = await changeFaceInImage(
       originalImage, 
-      facePrompt,
+      referenceImage ? '참조이미지를 바탕으로 자연스러운 얼굴로 변환' : facePrompt,
       clothingPrompt
     );
     
@@ -94,7 +95,7 @@ export const checkVModelAvailability = async (): Promise<boolean> => {
  * Firebase 연결 상태 확인 (호환성 유지)
  */
 export const checkFirebaseAvailability = async (): Promise<boolean> => {
-  return false; // Firebase 제거했으므로 항상 false
+  return false;
 };
 
 /**
