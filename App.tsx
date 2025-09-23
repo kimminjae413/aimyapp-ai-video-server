@@ -83,12 +83,13 @@ const FaceSwapPage: React.FC<{
     setError(null);
 
     try {
-      // VModel 우선, Gemini 폴백 시스템
+      // 🔧 수정: 올바른 파라미터 순서로 호출
       const { result: resultImage } = await smartFaceTransformation(
-        originalImage, 
-        facePrompt, 
-        clothingPrompt,
-        referenceImage
+        originalImage,     // 원본 이미지
+        facePrompt,        // 얼굴 프롬프트
+        clothingPrompt,    // 의상 프롬프트
+        undefined,         // onProgress (사용 안함)
+        referenceImage     // 참고 이미지 (마지막 파라미터)
       );
       
       if (resultImage) {
@@ -110,6 +111,7 @@ const FaceSwapPage: React.FC<{
           const creditUsed = await useCredits(userId, 'image', 1);
           if (creditUsed) onCreditsUsed();
         } catch (saveError) {
+          console.warn('저장 실패:', saveError);
           // 저장 실패해도 사용자에게는 성공으로 표시
         }
         
@@ -126,6 +128,8 @@ const FaceSwapPage: React.FC<{
           errorMessage = message;
         } else if (message.includes('시간 초과')) {
           errorMessage = '처리 시간이 초과되었습니다. 더 작은 이미지로 시도해보세요.';
+        } else if (message.includes('VModel')) {
+          errorMessage = '이미지 변환 중 일시적 오류가 발생했습니다. 다시 시도해주세요.';
         } else {
           errorMessage = '이미지 변환에 실패했습니다. 다른 이미지로 시도해보세요.';
         }
