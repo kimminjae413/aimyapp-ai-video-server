@@ -6,7 +6,7 @@ import { ImageUploader } from './components/ImageUploader';
 import { Loader } from './components/Loader';
 import { ImageDisplay } from './components/ImageDisplay';
 import { ControlPanel } from './components/ControlPanel';
-// 간소화된 변환 서비스
+// VModel 우선 변환 서비스
 import { smartFaceTransformation } from './services/hybridImageService';
 import { getUserCredits, useCredits, saveGenerationResult } from './services/bullnabiService';
 import type { ImageFile, UserCredits } from './types';
@@ -19,7 +19,7 @@ interface GeneratedResults {
   videoUrl: string | null;
 }
 
-// FaceSwap 페이지 컴포넌트 (최종 버전)
+// FaceSwap 페이지 컴포넌트 (VModel 참조이미지 전용)
 const FaceSwapPage: React.FC<{ 
   onBack: () => void;
   userId: string | null;
@@ -29,11 +29,12 @@ const FaceSwapPage: React.FC<{
   onResultGenerated: (result: ImageFile | null) => void;
 }> = ({ onBack, userId, credits, onCreditsUsed, preservedResult, onResultGenerated }) => {
   const [originalImage, setOriginalImage] = useState<ImageFile | null>(null);
+  const [referenceImage, setReferenceImage] = useState<ImageFile | null>(null);
   const [generatedImage, setGeneratedImage] = useState<ImageFile | null>(preservedResult);
-  const [facePrompt, setFacePrompt] = useState<string>('');
   const [clothingPrompt, setClothingPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [transformationMethod, setTransformationMethod] = useState<string>('');
 
   // preservedResult가 있으면 복원
   useEffect(() => {
@@ -52,6 +53,7 @@ const FaceSwapPage: React.FC<{
       };
       setOriginalImage(newImageFile);
       setGeneratedImage(null);
+      setTransformationMethod('');
       onResultGenerated(null);
       setError(null);
     };
@@ -61,14 +63,30 @@ const FaceSwapPage: React.FC<{
     reader.readAsDataURL(file);
   };
 
-  // 참고이미지 파라미터를 받는 생성 버튼 클릭 핸들러
-  const handleGenerateClick = useCallback(async (referenceImage?: ImageFile | null) => {
+  const handleReferenceImageUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const newImageFile = {
+        base64: (reader.result as string).split(',')[1],
+        mimeType: file.type,
+        url: URL.createObjectURL(file),
+      };
+      setReferenceImage(newImageFile);
+      setError(null);
+    };
+    reader.onerror = () => {
+        setError('참조 이미지 파일을 읽는 데 실패했습니다.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // VModel 참조이미지 전용 생성 함수
+  const handleGenerateClick = useCallback(async () => {
     if (!originalImage) {
-      setError('얼굴 이미지를 업로드해주세요.');
+      setError('원본 이미지를 업로드해주세요.');
       return;
     }
     
-    // 참고이미지가 없으면 에러
     if (!referenceImage) {
       setError('참조 얼굴 이미지를 업로드해주세요.');
       return;
@@ -81,65 +99,95 @@ const FaceSwapPage: React.FC<{
     
     setIsLoading(true);
     setError(null);
+    setTransformationMethod('');
 
     try {
-      // 🔧 수정: 올바른 파라미터 순서로 호출
-      const { result: resultImage } = await smartFaceTransformation(
+      console.log('🎯 VModel 참조이미지 얼굴교체 시작...');
+      console.log('- 원본 이미지 크기:', originalImage.base64.length);
+      console.log('- 참조 이미지 크기:', referenceImage.base64.length);
+      console.log('- 의상 변경:', clothingPrompt || 'None');
+      
+      // VModel 우선 얼굴 변환 시스템
+      const { result: resultImage, method } = await smartFaceTransformation(
         originalImage,     // 원본 이미지
-        facePrompt,        // 얼굴 프롬프트
-        clothingPrompt,    // 의상 프롬프트
-        undefined,         // onProgress (사용 안함)
-        referenceImage     // 참고 이미지 (마지막 파라미터)
+        '',               // facePrompt (VModel에서는 사용 안함)
+        clothingPrompt,   // 의상 프롬프트 (선택사항)
+        referenceImage    // 참조 이미지 (VModel 핵심)
       );
+      
+      console.log(`✅ 얼굴교체 완료: ${method}`);
+      setTransformationMethod(method);
       
       if (resultImage) {
         setGeneratedImage(resultImage);
         onResultGenerated(resultImage);
         
-        // 결과 저장 및 크레딧 차감 (백그라운드)
+        console.log('🔍 생성 결과 저장 중...');
+        
+        // 결과 저장 (백그라운드)
         try {
-          await saveGenerationResult({
+          const saved = await saveGenerationResult({
             userId,
             type: 'image',
             originalImageUrl: originalImage.url,
             resultUrl: resultImage.url,
-            facePrompt: referenceImage ? '참고이미지 기반' : facePrompt,
+            facePrompt: '참조이미지 기반 VModel',
             clothingPrompt,
             creditsUsed: 1
           });
           
-          const creditUsed = await useCredits(userId, 'image', 1);
-          if (creditUsed) onCreditsUsed();
+          if (saved) {
+            console.log('✅ 생성 결과 저장 성공');
+          }
         } catch (saveError) {
-          console.warn('저장 실패:', saveError);
-          // 저장 실패해도 사용자에게는 성공으로 표시
+          console.warn('⚠️ 저장 실패:', saveError);
         }
         
+        // 크레딧 차감 (비동기)
+        setTimeout(async () => {
+          try {
+            const creditUsed = await useCredits(userId, 'image', 1);
+            if (creditUsed) {
+              onCreditsUsed();
+              console.log('✅ 크레딧 차감 완료');
+            }
+          } catch (creditError) {
+            console.error('❌ 크레딧 차감 실패:', creditError);
+          }
+        }, 100);
+        
       } else {
-        setError('이미지 생성에 실패했습니다. 다른 이미지나 설정을 시도해보세요.');
+        setError('이미지 생성에 실패했습니다. 다른 이미지로 시도해보세요.');
       }
       
     } catch (err) {
-      let errorMessage = '생성 중 오류가 발생했습니다.';
+      console.error('🚨 얼굴교체 오류:', err);
+      
+      let errorMessage = '얼굴교체 중 오류가 발생했습니다.';
       
       if (err instanceof Error) {
         const message = err.message;
-        if (message.includes('크레딧')) {
+        
+        if (message.includes('VModel')) {
+          errorMessage = 'VModel AI 처리 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        } else if (message.includes('Cloudinary')) {
+          errorMessage = '이미지 업로드 중 오류가 발생했습니다. 다른 이미지로 시도해보세요.';
+        } else if (message.includes('크레딧')) {
           errorMessage = message;
-        } else if (message.includes('시간 초과')) {
+        } else if (message.includes('timeout')) {
           errorMessage = '처리 시간이 초과되었습니다. 더 작은 이미지로 시도해보세요.';
-        } else if (message.includes('VModel')) {
-          errorMessage = '이미지 변환 중 일시적 오류가 발생했습니다. 다시 시도해주세요.';
         } else {
-          errorMessage = '이미지 변환에 실패했습니다. 다른 이미지로 시도해보세요.';
+          errorMessage = `처리 오류: ${message}`;
         }
       }
       
       setError(errorMessage);
+      setTransformationMethod('');
+      
     } finally {
       setIsLoading(false);
     }
-  }, [originalImage, facePrompt, clothingPrompt, userId, credits, onCreditsUsed, onResultGenerated]);
+  }, [originalImage, referenceImage, clothingPrompt, userId, credits, onCreditsUsed, onResultGenerated]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col items-center p-4 sm:p-6 lg:p-8">
@@ -163,23 +211,107 @@ const FaceSwapPage: React.FC<{
       
       <Header />
       
+      {/* VModel 변환 방법 표시 (성공시에만) */}
+      {transformationMethod && generatedImage && !isLoading && (
+        <div className="w-full max-w-7xl mb-4">
+          <div className={`border rounded-lg p-3 ${
+            transformationMethod.includes('VModel') 
+              ? 'bg-gradient-to-r from-green-600/20 to-blue-600/20 border-green-500/30' 
+              : 'bg-gradient-to-r from-blue-600/20 to-purple-600/20 border-blue-500/30'
+          }`}>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full animate-pulse ${
+                transformationMethod.includes('VModel') ? 'bg-green-400' : 'bg-blue-400'
+              }`}></div>
+              <span className="text-sm text-gray-300">
+                변환 완료: <span className={`font-semibold ${
+                  transformationMethod.includes('VModel') ? 'text-green-300' : 'text-blue-300'
+                }`}>{transformationMethod}</span>
+              </span>
+              {transformationMethod.includes('VModel') && (
+                <span className="text-xs text-green-400 ml-2">🎯 참조이미지 정확 적용</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      
       <main className="w-full max-w-7xl flex flex-col lg:flex-row gap-8 mt-4">
         <div className="lg:w-1/3 flex flex-col gap-6">
+          {/* 원본 이미지 업로드 */}
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col gap-6">
-            <h2 className="text-xl text-center pink-bold-title">1. 이미지 업로드</h2>
-            <ImageUploader title="원본 이미지" onImageUpload={handleImageUpload} imageUrl={originalImage?.url} />
+            <h2 className="text-xl text-center pink-bold-title">1. 원본 이미지 업로드</h2>
+            <ImageUploader title="교체될 얼굴 이미지" onImageUpload={handleImageUpload} imageUrl={originalImage?.url} />
           </div>
-          <ControlPanel
-            facePrompt={facePrompt}
-            setFacePrompt={setFacePrompt}
-            clothingPrompt={clothingPrompt}
-            setClothingPrompt={setClothingPrompt}
-            onGenerate={handleGenerateClick}
-            isLoading={isLoading}
-            disabled={!originalImage}
-            credits={credits}
-          />
+          
+          {/* 참조 이미지 업로드 */}
+          <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col gap-6">
+            <h2 className="text-xl text-center text-green-400 font-bold">2. 참조 얼굴 이미지 업로드</h2>
+            <ImageUploader title="이 얼굴로 교체됩니다" onImageUpload={handleReferenceImageUpload} imageUrl={referenceImage?.url} />
+            <p className="text-xs text-gray-400 text-center">
+              💡 선명하고 정면을 향한 얼굴 사진을 사용하면 더 좋은 결과를 얻을 수 있습니다
+            </p>
+          </div>
+          
+          {/* 의상 변경 (선택사항) */}
+          <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
+            <h2 className="text-xl text-center text-cyan-400 font-bold">3. 의상 변경 (선택사항)</h2>
+            <div className="mt-4">
+              <label className="block mb-2 text-sm font-medium text-gray-300">의상 스타일</label>
+              <select
+                value={clothingPrompt}
+                onChange={(e) => setClothingPrompt(e.target.value)}
+                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500 transition"
+              >
+                <option value="">변경하지 않음</option>
+                <option value="A sophisticated business suit">세련된 정장</option>
+                <option value="A casual hoodie and jeans">캐주얼 후드티</option>
+                <option value="A clean white t-shirt">깔끔한 흰 티셔츠</option>
+                <option value="A warm knit sweater">따뜻한 니트</option>
+                <option value="A professional office blouse">단정한 블라우스</option>
+                <option value="A simple elegant dress">심플한 원피스</option>
+              </select>
+            </div>
+            
+            {/* 크레딧 부족 경고 */}
+            {credits && credits.remainingCredits < 1 && (
+              <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mt-4">
+                <p className="text-sm text-red-400">
+                  크레딧이 부족합니다. 얼굴 변환에는 1개의 크레딧이 필요합니다.
+                </p>
+              </div>
+            )}
+            
+            {/* 생성 버튼 */}
+            <button
+              onClick={handleGenerateClick}
+              disabled={isLoading || !originalImage || !referenceImage || (credits && credits.remainingCredits < 1)}
+              className={`w-full mt-4 flex items-center justify-center px-6 py-3.5 text-base font-semibold text-white rounded-lg transition-all duration-300 ${
+                isLoading || !originalImage || !referenceImage || (credits && credits.remainingCredits < 1)
+                  ? 'bg-gray-600 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700'
+              }`}
+            >
+              {isLoading ? (
+                '처리 중... (VModel AI 사용)'
+              ) : !originalImage ? (
+                '원본 이미지를 업로드하세요'
+              ) : !referenceImage ? (
+                '참조 얼굴 이미지를 업로드하세요'
+              ) : credits && credits.remainingCredits < 1 ? (
+                '크레딧 부족 (1개 필요)'
+              ) : (
+                <>
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  얼굴 교체하기 (1회 차감)
+                </>
+              )}
+            </button>
+          </div>
         </div>
+        
         <div className="lg:w-2/3 flex flex-col relative min-h-[500px]">
             {isLoading && <Loader />}
             {error && (
@@ -188,8 +320,8 @@ const FaceSwapPage: React.FC<{
                     <h3 className="text-lg font-bold">오류 발생</h3>
                     <p className="text-sm mt-2">{error}</p>
                     <button
-                      onClick={() => handleGenerateClick()}
-                      disabled={!originalImage || isLoading}
+                      onClick={handleGenerateClick}
+                      disabled={!originalImage || !referenceImage || isLoading}
                       className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg transition-colors text-sm"
                     >
                       다시 시도
@@ -222,22 +354,24 @@ const App: React.FC = () => {
     videoUrl: null
   });
 
-  // URL에서 userId 가져오기 + VModel 연결 테스트
+  // URL에서 userId 가져오기 + 서비스 연결 테스트
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const userIdParam = urlParams.get('userId');
     
     if (userIdParam) {
       setUserId(userIdParam);
+      console.log('User ID from URL:', userIdParam);
     } else {
+      console.warn('No userId found in URL parameters');
       setIsLoadingCredits(false);
     }
 
-    // 초기화 시 서비스 연결 상태 확인
+    // 서비스 연결 상태 확인
     const checkServices = async () => {
       console.log('🚀 ===== 서비스 연결 테스트 시작 =====');
       
-      // VModel 연결 테스트
+      // 1. VModel AI 연결 테스트
       try {
         const { checkVModelAvailability } = await import('./services/hybridImageService');
         const vmodelConnected = await checkVModelAvailability();
@@ -247,11 +381,24 @@ const App: React.FC = () => {
           hasCloudinary: !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY),
           status: vmodelConnected ? '✅ 사용 가능' : '❌ 연결 실패'
         });
+        
+        // 🧪 VModel 공식 예시 테스트 추가
+        if (process.env.VMODEL_API_TOKEN) {
+          try {
+            const vmodelService = await import('./services/vmodelService');
+            if (vmodelService.testVModelWithOfficialExample) {
+              await vmodelService.testVModelWithOfficialExample();
+            }
+          } catch (testError) {
+            console.warn('⚠️ VModel 공식 예시 테스트 건너뜀:', testError);
+          }
+        }
+        
       } catch (vmodelError) {
         console.warn('⚠️ VModel 연결 테스트 실패:', vmodelError);
       }
       
-      // Gemini 상태 확인
+      // 2. Gemini AI 상태 확인 (폴백용)
       try {
         const { getServiceStatus } = await import('./services/geminiService');
         const geminiStatus = getServiceStatus();
@@ -279,6 +426,9 @@ const App: React.FC = () => {
       const userCredits = await getUserCredits(userId);
       if (userCredits) {
         setCredits(userCredits);
+        console.log('User credits updated:', userCredits);
+      } else {
+        console.warn('Failed to load user credits');
       }
     } catch (error) {
       console.error('Error loading credits:', error);
