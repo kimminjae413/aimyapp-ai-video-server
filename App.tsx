@@ -19,7 +19,7 @@ interface GeneratedResults {
   videoUrl: string | null;
 }
 
-// FaceSwap 페이지 컴포넌트 (깔끔 버전)
+// FaceSwap 페이지 컴포넌트 (최종 버전)
 const FaceSwapPage: React.FC<{ 
   onBack: () => void;
   userId: string | null;
@@ -61,14 +61,16 @@ const FaceSwapPage: React.FC<{
     reader.readAsDataURL(file);
   };
 
-  // 간소화된 생성 버튼 클릭 핸들러
-  const handleGenerateClick = useCallback(async () => {
+  // 참고이미지 파라미터를 받는 생성 버튼 클릭 핸들러
+  const handleGenerateClick = useCallback(async (referenceImage?: ImageFile | null) => {
     if (!originalImage) {
       setError('얼굴 이미지를 업로드해주세요.');
       return;
     }
-    if (!facePrompt) {
-      setError('변환하려는 얼굴 스타일을 선택해주세요.');
+    
+    // 참고이미지가 없고 facePrompt도 없으면 에러
+    if (!referenceImage && !facePrompt) {
+      setError('참고 얼굴 이미지를 업로드하거나 얼굴 스타일을 선택해주세요.');
       return;
     }
     
@@ -81,11 +83,12 @@ const FaceSwapPage: React.FC<{
     setError(null);
 
     try {
-      // 얼굴 변환 (사용자는 이 과정을 모름)
+      // VModel 우선, Gemini 폴백 시스템
       const { result: resultImage } = await smartFaceTransformation(
         originalImage, 
         facePrompt, 
-        clothingPrompt
+        clothingPrompt,
+        referenceImage
       );
       
       if (resultImage) {
@@ -99,7 +102,7 @@ const FaceSwapPage: React.FC<{
             type: 'image',
             originalImageUrl: originalImage.url,
             resultUrl: resultImage.url,
-            facePrompt,
+            facePrompt: referenceImage ? '참고이미지 기반' : facePrompt,
             clothingPrompt,
             creditsUsed: 1
           });
@@ -181,8 +184,8 @@ const FaceSwapPage: React.FC<{
                     <h3 className="text-lg font-bold">오류 발생</h3>
                     <p className="text-sm mt-2">{error}</p>
                     <button
-                      onClick={handleGenerateClick}
-                      disabled={!originalImage || !facePrompt || isLoading}
+                      onClick={() => handleGenerateClick()}
+                      disabled={!originalImage || isLoading}
                       className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg transition-colors text-sm"
                     >
                       다시 시도
@@ -215,7 +218,7 @@ const App: React.FC = () => {
     videoUrl: null
   });
 
-  // URL에서 userId 가져오기 (깔끔)
+  // URL에서 userId 가져오기
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const userIdParam = urlParams.get('userId');
