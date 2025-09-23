@@ -80,7 +80,7 @@ const FaceSwapPage: React.FC<{
     reader.readAsDataURL(file);
   };
 
-  // VModel 참조이미지 전용 생성 함수
+  // VModel 참조이미지 전용 생성 함수 (파라미터 순서 수정)
   const handleGenerateClick = useCallback(async () => {
     if (!originalImage) {
       setError('원본 이미지를 업로드해주세요.');
@@ -107,12 +107,15 @@ const FaceSwapPage: React.FC<{
       console.log('- 참조 이미지 크기:', referenceImage.base64.length);
       console.log('- 의상 변경:', clothingPrompt || 'None');
       
-      // VModel 우선 얼굴 변환 시스템
+      // 🔧 수정: hybridImageService.ts 함수 시그니처에 맞는 올바른 파라미터 순서
       const { result: resultImage, method } = await smartFaceTransformation(
-        originalImage,     // 원본 이미지
-        '',               // facePrompt (VModel에서는 사용 안함)
-        clothingPrompt,   // 의상 프롬프트 (선택사항)
-        referenceImage    // 참조 이미지 (VModel 핵심)
+        originalImage,        // 원본 이미지
+        '',                  // facePrompt (빈 문자열)
+        clothingPrompt,      // 의상 프롬프트
+        referenceImage,      // 참조 이미지 (4번째 파라미터)
+        (status: string) => { // onProgress 콜백 (5번째 파라미터)
+          console.log('진행 상황:', status);
+        }
       );
       
       console.log(`✅ 얼굴교체 완료: ${method}`);
@@ -176,6 +179,8 @@ const FaceSwapPage: React.FC<{
           errorMessage = message;
         } else if (message.includes('timeout')) {
           errorMessage = '처리 시간이 초과되었습니다. 더 작은 이미지로 시도해보세요.';
+        } else if (message.includes('함수')) {
+          errorMessage = '시스템 오류가 발생했습니다. 페이지를 새로고침 후 다시 시도해주세요.';
         } else {
           errorMessage = `처리 오류: ${message}`;
         }
@@ -293,7 +298,7 @@ const FaceSwapPage: React.FC<{
               }`}
             >
               {isLoading ? (
-                '처리 중... (VModel AI 사용)'
+                '처리 중... (AI 분석 중)'
               ) : !originalImage ? (
                 '원본 이미지를 업로드하세요'
               ) : !referenceImage ? (
@@ -367,7 +372,7 @@ const App: React.FC = () => {
       setIsLoadingCredits(false);
     }
 
-    // 서비스 연결 상태 확인
+    // 서비스 연결 상태 확인 (간소화)
     const checkServices = async () => {
       console.log('🚀 ===== 서비스 연결 테스트 시작 =====');
       
@@ -382,8 +387,8 @@ const App: React.FC = () => {
           status: vmodelConnected ? '✅ 사용 가능' : '❌ 연결 실패'
         });
         
-        // 🧪 VModel 공식 예시 테스트 추가
-        if (process.env.VMODEL_API_TOKEN) {
+        // VModel 공식 예시 테스트 (조건부)
+        if (process.env.VMODEL_API_TOKEN && vmodelConnected) {
           try {
             const vmodelService = await import('./services/vmodelService');
             if (vmodelService.testVModelWithOfficialExample) {
