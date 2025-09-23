@@ -70,6 +70,28 @@ export const smartFaceTransformation = async (
   }
 };
 
+/**
+ * VModel 연결 상태 확인
+ */
+export const checkVModelAvailability = async (): Promise<boolean> => {
+  try {
+    const vmodel = await loadVModelService();
+    if (!vmodel || !vmodel.testVModelConnection) {
+      return false;
+    }
+    return await vmodel.testVModelConnection();
+  } catch (error) {
+    return false;
+  }
+};
+
+/**
+ * Firebase 연결 상태 확인 (호환성 유지)
+ */
+export const checkFirebaseAvailability = async (): Promise<boolean> => {
+  return false; // Firebase 제거했으므로 항상 false
+};
+
 // 호환성 유지
 export const firebaseHybridTransformation = smartFaceTransformation;
 export const hybridFaceTransformation = smartFaceTransformation;
