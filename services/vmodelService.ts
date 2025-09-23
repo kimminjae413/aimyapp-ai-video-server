@@ -2,9 +2,9 @@
 import type { ImageFile } from '../types';
 import { uploadImageToCloudinary } from './imageHostingService';
 
-// VModel AI 설정
+// VModel AI 설정 (공식 문서 기준)
 const VMODEL_API_BASE = 'https://api.vmodel.ai/api/tasks/v1';
-const VMODEL_VERSION = 'a3c8d261fd14126eececf9812b52b40811e9ed557ccc5706452888cdeeebc0b6';
+const VMODEL_VERSION = 'd4f292d1ea72ac4e501e6ac7be938ce2a5c50c6852387b1b64dedee01e623029'; // 공식 문서 version
 
 interface VModelCreateResponse {
   code: number;
