@@ -216,26 +216,15 @@ const FaceSwapPage: React.FC<{
       
       <Header />
       
-      {/* VModel 변환 방법 표시 (성공시에만) */}
+     {/* 변환 완료 표시 (성공시에만) */}
       {transformationMethod && generatedImage && !isLoading && (
         <div className="w-full max-w-7xl mb-4">
-          <div className={`border rounded-lg p-3 ${
-            transformationMethod.includes('VModel') 
-              ? 'bg-gradient-to-r from-green-600/20 to-blue-600/20 border-green-500/30' 
-              : 'bg-gradient-to-r from-blue-600/20 to-purple-600/20 border-blue-500/30'
-          }`}>
+          <div className="bg-gradient-to-r from-green-600/20 to-blue-600/20 border-green-500/30 border rounded-lg p-3">
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full animate-pulse ${
-                transformationMethod.includes('VModel') ? 'bg-green-400' : 'bg-blue-400'
-              }`}></div>
+              <div className="w-2 h-2 rounded-full animate-pulse bg-green-400"></div>
               <span className="text-sm text-gray-300">
-                변환 완료: <span className={`font-semibold ${
-                  transformationMethod.includes('VModel') ? 'text-green-300' : 'text-blue-300'
-                }`}>{transformationMethod}</span>
+                <span className="font-semibold text-green-300">변환 완료!</span>
               </span>
-              {transformationMethod.includes('VModel') && (
-                <span className="text-xs text-green-400 ml-2">🎯 참조이미지 정확 적용</span>
-              )}
             </div>
           </div>
         </div>
