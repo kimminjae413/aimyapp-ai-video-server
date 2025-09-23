@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { SparklesIcon } from './icons/SparklesIcon';
-import type { UserCredits } from '../types';
+import { ImageUploader } from './ImageUploader';
+import type { UserCredits, ImageFile } from '../types';
 
 interface ControlPanelProps {
   facePrompt: string;
   setFacePrompt: (prompt: string) => void;
   clothingPrompt: string;
   setClothingPrompt: (prompt: string) => void;
-  onGenerate: () => void;
+  onGenerate: (referenceImage?: ImageFile | null) => void; // 🔄 수정: 참고이미지 파라미터 추가
   isLoading: boolean;
   disabled: boolean;
   credits: UserCredits | null;
@@ -104,6 +105,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     credits 
 }) => {
     const [isCustomFace, setIsCustomFace] = useState(false);
+    // 🆕 VModel 관련 상태들
+    const [useReferenceImage, setUseReferenceImage] = useState(true); // VModel 우선 사용
+    const [referenceImage, setReferenceImage] = useState<ImageFile | null>(null);
 
     const handleFaceSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
@@ -115,112 +119,283 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             setFacePrompt(value);
         }
     };
+
+    // 🆕 참고이미지 업로드 핸들러
+    const handleReferenceImageUpload = (file: File) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const newImageFile = {
+                base64: (reader.result as string).split(',')[1],
+                mimeType: file.type,
+                url: URL.createObjectURL(file),
+            };
+            setReferenceImage(newImageFile);
+        };
+        reader.onerror = () => {
+            console.error('참고 이미지 파일을 읽는 데 실패했습니다.');
+        };
+        reader.readAsDataURL(file);
+    };
+
+    // 🆕 변환 방식 변경 핸들러
+    const handleMethodChange = (useRef: boolean) => {
+        setUseReferenceImage(useRef);
+        if (!useRef) {
+            setReferenceImage(null);
+        }
+    };
+
+    // 🆕 생성 버튼 클릭 핸들러
+    const handleGenerateClick = () => {
+        // VModel 방식: 참고이미지 필요
+        if (useReferenceImage && !referenceImage) {
+            alert('참고할 얼굴 이미지를 업로드해주세요.');
+            return;
+        }
+        
+        // Gemini 방식: 텍스트 프롬프트 필요
+        if (!useReferenceImage && !facePrompt) {
+            alert('변환하려는 얼굴 스타일을 선택해주세요.');
+            return;
+        }
+
+        // 참고이미지를 onGenerate에 전달
+        onGenerate(useReferenceImage ? referenceImage : null);
+    };
     
     const hasEnoughCredits = credits ? credits.remainingCredits >= 1 : false;
     const isDisabled = isLoading || disabled || !hasEnoughCredits;
     
-  return (
-    <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col gap-6">
-        <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-                <h2 className="text-xl pink-bold-title">2. 얼굴 변환 설정</h2>
-                {credits && (
-                    <div className="flex items-center gap-2 bg-gray-700/50 px-3 py-1 rounded-lg">
-                        <span className="text-xs text-gray-400">남은:</span>
-                        <span className={`text-sm font-bold ${hasEnoughCredits ? 'text-cyan-400' : 'text-red-400'}`}>
-                            {credits.remainingCredits}
-                        </span>
-                    </div>
-                )}
-            </div>
-            <div className="space-y-4">
-                <div>
-                    <label className="block mb-2 text-sm font-medium text-gray-300">얼굴 스타일</label>
-                    <select
-                        onChange={handleFaceSelectChange}
-                        className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition"
-                        value={isCustomFace ? 'custom' : facePrompt}
-                    >
-                        <option value="">옵션을 선택하세요</option>
-                        <optgroup label="인물 (성별/나이)">
-                            {faceOptions.map(option => (
-                                <option 
-                                    key={option.value} 
-                                    value={option.value}
-                                    style={{
-                                        color: option.gender === 'male' ? '#60a5fa' : '#f472b6'
-                                    }}
-                                >
-                                    {option.label}
-                                </option>
-                            ))}
-                        </optgroup>
-                        <optgroup label="아트 스타일">
-                            {styleOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </optgroup>
-                        <optgroup label="표정">
-                            {expressionOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </optgroup>
-                        <option value="custom">직접 입력</option>
-                    </select>
-                    {isCustomFace && (
-                        <input
-                            type="text"
-                            value={facePrompt}
-                            onChange={(e) => setFacePrompt(e.target.value)}
-                            placeholder="예: 완전히 다른 40대 남성의 각진 얼굴, 짙은 눈썹, 깊은 눈 (인물 이름 불가)"
-                            className="w-full mt-2 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition"
-                        />
+    return (
+        <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col gap-6">
+            <div className="flex flex-col gap-6">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-xl pink-bold-title">2. 얼굴 변환 설정</h2>
+                    {credits && (
+                        <div className="flex items-center gap-2 bg-gray-700/50 px-3 py-1 rounded-lg">
+                            <span className="text-xs text-gray-400">남은:</span>
+                            <span className={`text-sm font-bold ${hasEnoughCredits ? 'text-cyan-400' : 'text-red-400'}`}>
+                                {credits.remainingCredits}
+                            </span>
+                        </div>
                     )}
                 </div>
-                <div>
-                    <label className="block mb-2 text-sm font-medium text-gray-300">의상 바꾸기</label>
-                    <select
-                        value={clothingPrompt}
-                        onChange={(e) => setClothingPrompt(e.target.value)}
-                        className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition"
-                    >
-                        <option value="">없음</option>
-                        <optgroup label="남성 의상">
-                            {clothingOptions.male.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </optgroup>
-                        <optgroup label="여성 의상">
-                            {clothingOptions.female.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </optgroup>
-                    </select>
+
+                {/* 🆕 변환 방식 선택 */}
+                <div className="space-y-4">
+                    <div>
+                        <label className="block mb-3 text-sm font-medium text-gray-300">변환 방식 선택</label>
+                        <div className="grid grid-cols-1 gap-3">
+                            {/* VModel 방식 */}
+                            <div 
+                                className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                                    useReferenceImage 
+                                        ? 'border-blue-500 bg-blue-500/10' 
+                                        : 'border-gray-600 bg-gray-700/30 hover:border-gray-500'
+                                }`}
+                                onClick={() => handleMethodChange(true)}
+                            >
+                                <div className="flex items-start gap-3">
+                                    <input
+                                        type="radio"
+                                        checked={useReferenceImage}
+                                        onChange={() => handleMethodChange(true)}
+                                        className="mt-1"
+                                    />
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <h3 className="font-medium text-white">🎯 참고 이미지 방식</h3>
+                                            <span className="text-xs bg-blue-600/80 text-blue-100 px-2 py-1 rounded-full">추천</span>
+                                            <span className="text-xs bg-green-600/80 text-green-100 px-2 py-1 rounded-full">$0.02</span>
+                                        </div>
+                                        <p className="text-sm text-gray-400 mb-2">
+                                            원하는 얼굴 사진을 업로드하면 VModel AI가 정확하게 교체해드립니다.
+                                        </p>
+                                        <div className="text-xs text-blue-300">
+                                            ✅ 높은 정확도 | ✅ 자연스러운 결과 | ✅ 빠른 처리 | ✅ 법적 안전
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Gemini 방식 */}
+                            <div 
+                                className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                                    !useReferenceImage 
+                                        ? 'border-purple-500 bg-purple-500/10' 
+                                        : 'border-gray-600 bg-gray-700/30 hover:border-gray-500'
+                                }`}
+                                onClick={() => handleMethodChange(false)}
+                            >
+                                <div className="flex items-start gap-3">
+                                    <input
+                                        type="radio"
+                                        checked={!useReferenceImage}
+                                        onChange={() => handleMethodChange(false)}
+                                        className="mt-1"
+                                    />
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <h3 className="font-medium text-white">📝 텍스트 설명 방식</h3>
+                                            <span className="text-xs bg-purple-600/80 text-purple-100 px-2 py-1 rounded-full">폴백</span>
+                                        </div>
+                                        <p className="text-sm text-gray-400 mb-2">
+                                            텍스트로 원하는 얼굴을 설명하면 Gemini AI가 생성해드립니다.
+                                        </p>
+                                        <div className="text-xs text-purple-300">
+                                            ✅ 이미지 불필요 | ⚠️ 결과 예측 어려움 | ⚠️ 느린 처리
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 🆕 VModel 참고 이미지 업로드 */}
+                    {useReferenceImage && (
+                        <div className="bg-blue-500/5 border border-blue-500/30 rounded-lg p-4">
+                            <div className="mb-4">
+                                <h4 className="text-sm font-medium text-blue-300 mb-2">📸 참고할 얼굴 이미지 업로드</h4>
+                                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-3 mb-3">
+                                    <p className="text-xs text-yellow-300 leading-relaxed">
+                                        <strong>⚠️ 개인정보보호 안내:</strong><br/>
+                                        본 서비스는 개인정보보호법에 따라 얼굴을 직접 생성하지 않습니다. 
+                                        사용자가 직접 참고하고 싶은 이미지를 업로드해주세요.
+                                        타인의 사진 사용 시 당사자 동의를 받으시기 바랍니다.
+                                    </p>
+                                </div>
+                                <ImageUploader
+                                    title="참고 얼굴 이미지"
+                                    onImageUpload={handleReferenceImageUpload}
+                                    imageUrl={referenceImage?.url}
+                                />
+                                <div className="mt-2 text-xs text-gray-400">
+                                    💡 팁: 정면을 보고 있는 선명한 얼굴 사진이 가장 좋은 결과를 만듭니다.
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 🔄 기존 Gemini 텍스트 프롬프트 (조건부 표시) */}
+                    {!useReferenceImage && (
+                        <div className="bg-purple-500/5 border border-purple-500/30 rounded-lg p-4">
+                            <div>
+                                <label className="block mb-2 text-sm font-medium text-purple-300">얼굴 스타일 (폴백용)</label>
+                                <select
+                                    onChange={handleFaceSelectChange}
+                                    className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-purple-500 focus:border-purple-500 transition"
+                                    value={isCustomFace ? 'custom' : facePrompt}
+                                >
+                                    <option value="">옵션을 선택하세요</option>
+                                    <optgroup label="인물 (성별/나이)">
+                                        {faceOptions.map(option => (
+                                            <option 
+                                                key={option.value} 
+                                                value={option.value}
+                                                style={{
+                                                    color: option.gender === 'male' ? '#60a5fa' : '#f472b6'
+                                                }}
+                                            >
+                                                {option.label}
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="아트 스타일">
+                                        {styleOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                    </optgroup>
+                                    <optgroup label="표정">
+                                        {expressionOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                    </optgroup>
+                                    <option value="custom">직접 입력</option>
+                                </select>
+                                {isCustomFace && (
+                                    <input
+                                        type="text"
+                                        value={facePrompt}
+                                        onChange={(e) => setFacePrompt(e.target.value)}
+                                        placeholder="예: 완전히 다른 40대 남성의 각진 얼굴, 짙은 눈썹, 깊은 눈 (인물 이름 불가)"
+                                        className="w-full mt-2 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-purple-500 focus:border-purple-500 transition"
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ✅ 기존 의상 변경 (그대로 유지) */}
+                    <div>
+                        <label className="block mb-2 text-sm font-medium text-gray-300">의상 바꾸기 (선택사항)</label>
+                        <select
+                            value={clothingPrompt}
+                            onChange={(e) => setClothingPrompt(e.target.value)}
+                            className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition"
+                        >
+                            <option value="">없음</option>
+                            <optgroup label="남성 의상">
+                                {clothingOptions.male.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </optgroup>
+                            <optgroup label="여성 의상">
+                                {clothingOptions.female.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </optgroup>
+                        </select>
+                        <div className="mt-1 text-xs text-gray-500">
+                            Gemini AI가 최종 단계에서 의상을 변경합니다.
+                        </div>
+                    </div>
+                </div>
+                
+                {/* ✅ 기존 크레딧 부족 경고 (그대로 유지) */}
+                {credits && !hasEnoughCredits && (
+                    <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3">
+                        <p className="text-sm text-red-400">
+                            크레딧이 부족합니다. 얼굴 변환에는 1개의 크레딧이 필요합니다.
+                        </p>
+                    </div>
+                )}
+                
+                {/* 🔄 기존 생성 버튼 (동적 텍스트 변경) */}
+                <button
+                    onClick={handleGenerateClick}
+                    disabled={isDisabled}
+                    className={`w-full flex items-center justify-center px-6 py-3.5 text-base font-semibold text-white rounded-lg focus:ring-4 focus:outline-none transition-all duration-300 ${
+                        isDisabled 
+                            ? 'bg-gray-600 cursor-not-allowed' 
+                            : useReferenceImage
+                                ? 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-800'
+                                : 'bg-purple-600 hover:bg-purple-700 focus:ring-purple-800'
+                    }`}
+                >
+                    {isLoading ? (
+                        '처리 중...'
+                    ) : !hasEnoughCredits ? (
+                        '크레딧 부족 (1개 필요)'
+                    ) : (
+                        <>
+                            <SparklesIcon className="w-5 h-5 mr-2" />
+                            {useReferenceImage ? 'VModel AI로 얼굴교체 (1회 차감)' : 'Gemini로 얼굴변환 (1회 차감)'}
+                        </>
+                    )}
+                </button>
+
+                {/* 🆕 처리 방식 설명 */}
+                <div className="bg-gray-700/30 border border-gray-600 rounded-lg p-3">
+                    <div className="text-xs text-gray-400 space-y-1">
+                        <div className="font-medium text-gray-300 mb-2">🔄 처리 과정:</div>
+                        {useReferenceImage ? (
+                            <>
+                                <div>1️⃣ <span className="text-blue-300">VModel AI</span>: 참고이미지 → 원본이미지 얼굴교체</div>
+                                <div>2️⃣ <span className="text-purple-300">Gemini AI</span>: 의상변경 (선택시)</div>
+                                <div className="text-green-300">✅ 예상 소요시간: 30초~1분</div>
+                            </>
+                        ) : (
+                            <>
+                                <div>1️⃣ <span className="text-purple-300">Gemini AI</span>: 텍스트 → 얼굴생성 및 교체</div>
+                                <div>2️⃣ <span className="text-purple-300">Gemini AI</span>: 의상변경 (선택시)</div>
+                                <div className="text-yellow-300">⚠️ 예상 소요시간: 1분~2분</div>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
-            
-            {/* 크레딧 부족 경고 */}
-            {credits && !hasEnoughCredits && (
-                <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3">
-                    <p className="text-sm text-red-400">
-                        크레딧이 부족합니다. 얼굴 변환에는 1개의 크레딧이 필요합니다.
-                    </p>
-                </div>
-            )}
-            
-            <button
-                onClick={onGenerate}
-                disabled={isDisabled}
-                className={`w-full flex items-center justify-center px-6 py-3.5 text-base font-semibold text-white rounded-lg focus:ring-4 focus:outline-none transition-all duration-300 ${
-                    isDisabled 
-                        ? 'bg-gray-600 cursor-not-allowed' 
-                        : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-800'
-                }`}
-            >
-                {isLoading ? (
-                    '처리 중...'
-                ) : !hasEnoughCredits ? (
-                    '크레딧 부족 (1개 필요)'
-                ) : (
-                    <>
-                    <SparklesIcon className="w-5 h-5 mr-2" />
-                    얼굴 변환하기 (1회 차감)
-                    </>
-                )}
-            </button>
         </div>
-    </div>
-  );
+    );
 };
