@@ -68,9 +68,9 @@ const FaceSwapPage: React.FC<{
       return;
     }
     
-    // 참고이미지가 없고 facePrompt도 없으면 에러
-    if (!referenceImage && !facePrompt) {
-      setError('참고 얼굴 이미지를 업로드하거나 얼굴 스타일을 선택해주세요.');
+    // 참고이미지가 없으면 에러
+    if (!referenceImage) {
+      setError('참조 얼굴 이미지를 업로드해주세요.');
       return;
     }
     
