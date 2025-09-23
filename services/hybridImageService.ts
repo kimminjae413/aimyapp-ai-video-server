@@ -1,14 +1,201 @@
-// services/hybridImageService.ts - Gemini 엄격한 2단계 적용 최종판
-console.log('🔥 FIREBASE HYBRID SERVICE VERSION: 6.1 - STRICT GEMINI FALLBACK');
-console.log('📅 BUILD: 2025-09-12-21:00 - GEMINI 2STEP STRICT');
-console.log('🔥 CACHE BUST: 2025-09-12-21:00');
+// services/hybridImageService.ts - VModel 우선 + Firebase/Gemini 폴백 최종판
+console.log('🚀 VMODEL HYBRID SERVICE VERSION: 8.0 - VMODEL PRIORITY WITH REFERENCE IMAGE');
+console.log('📅 BUILD: 2025-09-23 - VMODEL FIRST + FIREBASE/GEMINI FALLBACK');
+console.log('🔥 CACHE BUST: 2025-09-23-VMODEL');
 
 import { changeClothingOnly, changeFaceInImage } from './geminiService';
 import { transformFaceWithFirebase } from './firebaseOpenAIService';
 import type { ImageFile } from '../types';
 
+// 🆕 VModel 서비스 동적 import (선택적 로딩)
+let vmodelService: any = null;
+const loadVModelService = async () => {
+  if (!vmodelService) {
+    try {
+      vmodelService = await import('./vmodelService');
+      console.log('✅ VModel 서비스 로드 완료');
+      return vmodelService;
+    } catch (error) {
+      console.warn('⚠️ VModel 서비스 로드 실패:', error);
+      return null;
+    }
+  }
+  return vmodelService;
+};
+
 /**
- * Firebase + Gemini 하이브리드 변환 (9분 타임아웃)
+ * 🆕 VModel + Gemini 하이브리드 변환 (참고이미지 기반)
+ */
+export const vmodelHybridTransformation = async (
+  originalImage: ImageFile,
+  referenceImage: ImageFile | null, // 참고할 얼굴 이미지
+  facePrompt: string, // Gemini 폴백용 텍스트 프롬프트
+  clothingPrompt: string,
+  onProgress?: (status: string) => void
+): Promise<{ result: ImageFile | null; method: string }> => {
+  try {
+    console.log('🎯 VModel + Gemini 하이브리드 변환 시작');
+    console.log('- 참고 얼굴 이미지:', !!referenceImage);
+    console.log('- Face prompt (폴백용):', facePrompt);
+    console.log('- Clothing prompt:', clothingPrompt || 'None');
+    
+    let faceSwapResult: ImageFile | null = null;
+    let usedMethod = '';
+
+    // 1단계: 얼굴 교체/변환
+    if (referenceImage) {
+      try {
+        console.log('🔄 1순위: VModel AI 얼굴교체 시도...');
+        
+        if (onProgress) {
+          onProgress('VModel AI로 얼굴교체 중... (참고이미지 기반)');
+        }
+
+        // VModel 서비스 동적 로드
+        const vmodel = await loadVModelService();
+        if (!vmodel || !vmodel.swapFaceWithVModel) {
+          throw new Error('VModel 서비스를 사용할 수 없습니다.');
+        }
+
+        faceSwapResult = await vmodel.swapFaceWithVModel(
+          originalImage,
+          referenceImage,
+          onProgress
+        );
+        
+        usedMethod = 'VModel AI (참고이미지 → 원본이미지)';
+        console.log('✅ VModel AI 얼굴교체 성공');
+        
+      } catch (vmodelError) {
+        console.log('❌ VModel AI 실패, Firebase로 폴백...');
+        console.error('VModel 오류:', vmodelError);
+        
+        try {
+          if (onProgress) {
+            onProgress('VModel 실패, Firebase OpenAI로 폴백 중...');
+          }
+
+          // Firebase 폴백
+          faceSwapResult = await transformFaceWithFirebase(
+            originalImage,
+            facePrompt,
+            onProgress
+          );
+          
+          usedMethod = 'Firebase OpenAI (VModel 폴백)';
+          console.log('✅ Firebase 폴백 완료');
+          
+        } catch (firebaseError) {
+          console.log('❌ Firebase도 실패, Gemini 텍스트 프롬프트로 최종 폴백...');
+          console.error('Firebase 오류:', firebaseError);
+          
+          if (onProgress) {
+            onProgress('Firebase 실패, Gemini 텍스트 변환으로 최종 폴백 중...');
+          }
+
+          // Gemini 최종 폴백
+          faceSwapResult = await changeFaceInImage(
+            originalImage,
+            facePrompt,
+            '' // 의상은 나중에 별도 처리
+          );
+          
+          usedMethod = 'Gemini 텍스트 프롬프트 (VModel+Firebase 폴백)';
+          console.log('✅ Gemini 최종 폴백 완료');
+        }
+      }
+    } else {
+      // 참고이미지가 없으면 바로 Firebase 시도
+      console.log('📝 참고이미지 없음, Firebase OpenAI 시도...');
+      
+      try {
+        if (onProgress) {
+          onProgress('Firebase OpenAI로 텍스트 기반 얼굴변환 중...');
+        }
+
+        faceSwapResult = await transformFaceWithFirebase(
+          originalImage,
+          facePrompt,
+          onProgress
+        );
+        
+        usedMethod = 'Firebase OpenAI (텍스트 프롬프트)';
+        console.log('✅ Firebase 텍스트 변환 완료');
+        
+      } catch (firebaseError) {
+        console.log('❌ Firebase 실패, Gemini로 폴백...');
+        console.error('Firebase 오류:', firebaseError);
+        
+        if (onProgress) {
+          onProgress('Firebase 실패, Gemini 텍스트 변환으로 폴백 중...');
+        }
+
+        faceSwapResult = await changeFaceInImage(
+          originalImage,
+          facePrompt,
+          '' // 의상은 나중에 별도 처리
+        );
+        
+        usedMethod = 'Gemini 텍스트 프롬프트 (Firebase 폴백)';
+        console.log('✅ Gemini 폴백 완료');
+      }
+    }
+
+    if (!faceSwapResult) {
+      throw new Error('얼굴 변환/교체에 실패했습니다.');
+    }
+
+    // 2단계: 의상 변경 (선택사항)
+    if (clothingPrompt && clothingPrompt.trim() !== '') {
+      console.log('👕 2단계: Gemini 의상 변경...');
+      
+      if (onProgress) {
+        onProgress('의상 변경 처리 중...');
+      }
+
+      try {
+        const finalResult = await changeClothingOnly(faceSwapResult, clothingPrompt);
+        
+        if (finalResult) {
+          console.log('✅ 의상 변경 완료');
+          usedMethod += ' + Gemini 의상변경';
+          
+          if (onProgress) {
+            onProgress('모든 변환 완료!');
+          }
+          
+          return { 
+            result: finalResult, 
+            method: usedMethod 
+          };
+        } else {
+          console.warn('⚠️ 의상 변경 실패, 얼굴 변환 결과만 반환');
+          usedMethod += ' + 의상변경 실패';
+        }
+      } catch (clothingError) {
+        console.warn('⚠️ 의상 변경 중 오류:', clothingError);
+        usedMethod += ' + 의상변경 오류';
+      }
+    }
+
+    // 최종 결과 반환
+    if (onProgress) {
+      onProgress('변환 완료!');
+    }
+    
+    return { 
+      result: faceSwapResult, 
+      method: usedMethod 
+    };
+
+  } catch (error) {
+    console.error('❌ VModel 하이브리드 변환 실패:', error);
+    throw error;
+  }
+};
+
+/**
+ * ✅ 기존 Firebase + Gemini 하이브리드 변환 (호환성 유지)
  */
 export const firebaseHybridTransformation = async (
   originalImage: ImageFile,
@@ -76,14 +263,29 @@ export const firebaseHybridTransformation = async (
 };
 
 /**
- * 스마트 변환 (Firebase 우선, 실패시 엄격한 2단계 Gemini 폴백)
+ * 🔄 스마트 변환 (VModel 우선, 실패시 Firebase/Gemini 폴백) - 호환성 유지
  */
 export const smartFaceTransformation = async (
   originalImage: ImageFile,
   facePrompt: string,
   clothingPrompt: string,
-  onProgress?: (status: string) => void
+  onProgress?: (status: string) => void,
+  referenceImage?: ImageFile | null // 🆕 참고이미지 파라미터 추가
 ): Promise<{ result: ImageFile | null; method: string }> => {
+  
+  // 🆕 참고이미지가 있으면 VModel 하이브리드 사용
+  if (referenceImage) {
+    console.log('🎯 참고이미지 감지, VModel 하이브리드 시스템 사용');
+    return await vmodelHybridTransformation(
+      originalImage,
+      referenceImage,
+      facePrompt,
+      clothingPrompt,
+      onProgress
+    );
+  }
+
+  // ✅ 기존 Firebase → Gemini 폴백 시스템 (참고이미지 없을 때)
   try {
     // 1순위: Firebase + Gemini 하이브리드 (9분 타임아웃)
     console.log('🔥 1순위: Firebase Functions 시도...');
@@ -137,55 +339,23 @@ export const smartFaceTransformation = async (
 };
 
 /**
- * 서비스 상태 확인 - 엄격한 2단계 시스템
+ * 🆕 VModel 서비스 상태 확인
  */
-export const getHybridServiceStatus = () => {
-  return {
-    version: '6.1-FIREBASE-GEMINI-STRICT',
-    architecture: '2단계 엄격한 시스템',
-    step1: 'Firebase OpenAI (헤어 보존 최우선, 9분 대기)',
-    step2: 'Gemini 의상 변환',
-    fallback: 'Gemini 엄격한 2단계 (Firebase와 동일한 방식)',
-    features: [
-      '🔥 Firebase Functions v2 (9분 타임아웃)',
-      '💾 2GB 메모리 할당',
-      '🤖 OpenAI gpt-image-1 Edit API',
-      '💇 헤어 보존 HIGHEST PRIORITY',
-      '📸 PNG 자동 변환 + 리사이즈 (최대 1792px)',
-      '📐 종횡비 자동 보정',
-      '📊 실시간 진행 상황 추적',
-      '📝 1200자 프롬프트 지원',
-      '🛡️ 안전한 2단계 폴백 시스템',
-      '🎨 하이브리드 변환 연계',
-      '⚡ 빌드 오류 없는 안전한 구조',
-      '🎯 Gemini 폴백: 엄격한 2단계 (얼굴→옷)',
-      '🔧 앵글/사이즈 변경 완전 금지',
-      '🌡️ Temperature 0.1로 일관성 극대화'
-    ],
-    services: {
-      primary: 'Firebase Functions (9분)',
-      fallback: 'Google Gemini 2.5 Flash 엄격한 2단계 (14초)',
-      removed: 'Netlify 비동기 (충돌 방지를 위해 제거)'
-    },
-    urls: {
-      firebase: 'https://us-central1-hgfaceswap-functions.cloudfunctions.net/openaiProxy',
-      gemini: 'Google Gemini 2.5 Flash Image API (엄격한 제약)'
-    },
-    improvements: [
-      '🔄 Firebase 실패 시 Gemini도 2단계 처리',
-      '📐 앵글/사이즈 변경 완전 방지',
-      '💇 헤어 보존 절대 우선순위',
-      '🎯 얼굴 변환과 의상 변환 분리',
-      '🌡️ 낮은 Temperature로 일관성 향상'
-    ]
-  };
+export const checkVModelAvailability = async (): Promise<boolean> => {
+  try {
+    const vmodel = await loadVModelService();
+    if (!vmodel || !vmodel.testVModelConnection) {
+      return false;
+    }
+    return await vmodel.testVModelConnection();
+  } catch (error) {
+    console.error('VModel 연결 확인 실패:', error);
+    return false;
+  }
 };
 
-// 호환성 유지를 위한 별칭들
-export const hybridFaceTransformation = firebaseHybridTransformation;
-
 /**
- * Firebase 연결 상태 확인
+ * ✅ 기존 Firebase 연결 상태 확인 (유지)
  */
 export const checkFirebaseAvailability = async (): Promise<boolean> => {
   try {
@@ -198,17 +368,92 @@ export const checkFirebaseAvailability = async (): Promise<boolean> => {
 };
 
 /**
- * 안전성 검증 함수 - 모든 필요한 의존성이 있는지 확인
+ * 🔄 서비스 상태 확인 - VModel 우선 시스템
+ */
+export const getHybridServiceStatus = () => {
+  return {
+    version: '8.0-VMODEL-FIREBASE-GEMINI-HYBRID',
+    architecture: 'VModel 우선 + Firebase/Gemini 폴백',
+    workflow: {
+      vmodel: 'VModel AI 얼굴교체 (참고이미지 → 원본)',
+      firebase_fallback: 'Firebase OpenAI (VModel 실패시)',
+      gemini_fallback: 'Gemini 텍스트 프롬프트 (최종 폴백)',
+      clothing: 'Gemini 의상변경 (모든 경우)'
+    },
+    inputTypes: {
+      vmodel: '참고 얼굴 이미지 (jpg, png)',
+      firebase: '텍스트 프롬프트 (Firebase OpenAI)',
+      gemini: '텍스트 프롬프트 (Gemini)',
+      clothing: '의상 설명 텍스트'
+    },
+    features: [
+      '🎯 VModel AI 최우선 (고품질 얼굴교체)',
+      '📸 사용자 참고이미지 업로드',
+      '🛡️ 개인정보보호법 준수',
+      '🔥 Firebase Functions 폴백 (9분 타임아웃)',
+      '🔄 Gemini 최종 폴백',
+      '👕 Gemini 의상변경',
+      '⚡ 빠른 처리 속도',
+      '💰 비용 효율적',
+      '🎨 3단계 안전망'
+    ],
+    legalCompliance: [
+      '✅ 사용자 직접 이미지 업로드',
+      '✅ 얼굴 생성 없음 (교체만)',
+      '✅ 개인정보 자동 생성 방지',
+      '✅ 명확한 사용자 동의 절차'
+    ],
+    advantages: [
+      '🎯 전용 얼굴교체 AI (더 자연스러운 결과)',
+      '🔄 3단계 폴백 시스템 (VModel → Firebase → Gemini)',
+      '⚡ 더 빠른 처리 (VModel: 30초, Firebase: 9분, Gemini: 14초)',
+      '💵 예측 가능한 비용',
+      '🔒 법적 안전성',
+      '🎨 사용자 선택권 확대',
+      '📉 복잡성 감소'
+    ],
+    services: {
+      primary: 'VModel AI ($0.02/회)',
+      secondary: 'Firebase Functions (9분 타임아웃)',
+      tertiary: 'Google Gemini 2.5 Flash (14초)',
+      clothing: 'Gemini 의상변경 (공통)'
+    },
+    urls: {
+      vmodel: 'https://api.vmodel.ai/api/tasks/v1',
+      firebase: 'https://us-central1-hgfaceswap-functions.cloudfunctions.net/openaiProxy',
+      gemini: 'Google Gemini 2.5 Flash Image API'
+    }
+  };
+};
+
+/**
+ * 🔄 안전성 검증 함수 - VModel 포함 의존성 확인
  */
 export const validateServiceDependencies = async (): Promise<{
+  vmodel: boolean;
   firebase: boolean;
   gemini: boolean;
   safe: boolean;
   errors: string[];
 }> => {
   const errors: string[] = [];
+  let vmodel = false;
   let firebase = false;
   let gemini = false;
+
+  // VModel 서비스 확인
+  try {
+    const vmodelService = await loadVModelService();
+    if (vmodelService && vmodelService.swapFaceWithVModel) {
+      vmodel = true;
+      console.log('✅ VModel 서비스 의존성 확인됨');
+    } else {
+      errors.push('VModel 서비스 함수 누락');
+    }
+  } catch (error) {
+    errors.push('VModel 서비스 파일 누락');
+    console.warn('⚠️ VModel 서비스 의존성 누락 (선택사항):', error);
+  }
 
   // Firebase 서비스 확인
   try {
@@ -234,14 +479,19 @@ export const validateServiceDependencies = async (): Promise<{
     console.error('❌ Gemini 서비스 의존성 누락:', error);
   }
 
-  const safe = firebase && gemini && errors.length === 0;
+  // VModel은 선택사항이므로 Firebase나 Gemini 중 하나만 있어도 안전
+  const safe = (firebase || gemini) && errors.length <= 1; // VModel 오류는 허용
 
-  console.log('🔍 의존성 검증 결과:', {
+  console.log('🔍 VModel 하이브리드 의존성 검증 결과:', {
+    vmodel,
     firebase,
     gemini,
     safe,
     errors
   });
 
-  return { firebase, gemini, safe, errors };
+  return { vmodel, firebase, gemini, safe, errors };
 };
+
+// ✅ 호환성 유지를 위한 별칭들
+export const hybridFaceTransformation = firebaseHybridTransformation;
