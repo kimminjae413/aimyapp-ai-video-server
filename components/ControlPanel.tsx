@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { SparklesIcon } from './icons/SparklesIcon';
-import type { UserCredits } from '../types';
+import { ImageUploader } from './ImageUploader';
+import type { UserCredits, ImageFile } from '../types';
 
 interface ControlPanelProps {
   facePrompt: string;
   setFacePrompt: (prompt: string) => void;
   clothingPrompt: string;
   setClothingPrompt: (prompt: string) => void;
-  onGenerate: () => void;
+  onGenerate: (referenceImage?: ImageFile | null) => void;
   isLoading: boolean;
   disabled: boolean;
   credits: UserCredits | null;
@@ -104,6 +105,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     credits 
 }) => {
     const [isCustomFace, setIsCustomFace] = useState(false);
+    const [referenceImage, setReferenceImage] = useState<ImageFile | null>(null);
 
     const handleFaceSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
@@ -114,6 +116,26 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             setIsCustomFace(false);
             setFacePrompt(value);
         }
+    };
+
+    const handleReferenceImageUpload = (file: File) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const newImageFile = {
+                base64: (reader.result as string).split(',')[1],
+                mimeType: file.type,
+                url: URL.createObjectURL(file),
+            };
+            setReferenceImage(newImageFile);
+        };
+        reader.onerror = () => {
+            console.error('참고 이미지 파일을 읽는 데 실패했습니다.');
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleGenerateClick = () => {
+        onGenerate(referenceImage);
     };
     
     const hasEnoughCredits = credits ? credits.remainingCredits >= 1 : false;
@@ -133,10 +155,23 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         </div>
                     )}
                 </div>
+
+                {/* 참고 얼굴 이미지 업로드 */}
+                <div>
+                    <label className="block mb-2 text-sm font-medium text-gray-300">참고할 얼굴 이미지 (선택사항)</label>
+                    <ImageUploader
+                        title="참고 얼굴 이미지"
+                        onImageUpload={handleReferenceImageUpload}
+                        imageUrl={referenceImage?.url}
+                    />
+                    <p className="mt-2 text-xs text-gray-500">
+                        업로드하면 더 정확한 결과를 얻을 수 있습니다. 없으면 아래 텍스트 옵션을 사용합니다.
+                    </p>
+                </div>
                 
                 <div className="space-y-4">
                     <div>
-                        <label className="block mb-2 text-sm font-medium text-gray-300">얼굴 스타일</label>
+                        <label className="block mb-2 text-sm font-medium text-gray-300">얼굴 스타일 (참고이미지 없을 때)</label>
                         <select
                             onChange={handleFaceSelectChange}
                             className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition"
@@ -203,7 +238,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 )}
                 
                 <button
-                    onClick={onGenerate}
+                    onClick={handleGenerateClick}
                     disabled={isDisabled}
                     className={`w-full flex items-center justify-center px-6 py-3.5 text-base font-semibold text-white rounded-lg focus:ring-4 focus:outline-none transition-all duration-300 ${
                         isDisabled 
