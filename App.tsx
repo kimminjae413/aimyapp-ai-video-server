@@ -6,9 +6,9 @@ import { ImageUploader } from './components/ImageUploader';
 import { Loader } from './components/Loader';
 import { ImageDisplay } from './components/ImageDisplay';
 import { ControlPanel } from './components/ControlPanel';
-// 🔄 VModel 우선 하이브리드 서비스 사용 (VModel + Firebase + Gemini)
-import { smartFaceTransformation, checkVModelAvailability, checkFirebaseAvailability } from './services/hybridImageService';
-import { getUserCredits, useCredits, restoreCredits, saveGenerationResult } from './services/bullnabiService';
+// 간소화된 변환 서비스
+import { smartFaceTransformation } from './services/hybridImageService';
+import { getUserCredits, useCredits, saveGenerationResult } from './services/bullnabiService';
 import type { ImageFile, UserCredits } from './types';
 
 type PageType = 'main' | 'faceSwap' | 'videoSwap';
@@ -19,66 +19,7 @@ interface GeneratedResults {
   videoUrl: string | null;
 }
 
-// 🆕 VModel 연결 체크 함수
-const checkVModelConnection = async () => {
-  try {
-    console.log('🎯 Checking VModel AI connection...');
-    
-    const isConnected = await checkVModelAvailability();
-    
-    if (isConnected) {
-      console.log('✅ VModel AI: 연결 성공 - 고품질 얼굴교체 사용 가능');
-      console.log('✅ Cost: $0.02 per use');
-    } else {
-      console.log('❌ VModel AI: 연결 실패 - Firebase/Gemini 폴백 사용');
-    }
-    
-    return isConnected;
-  } catch (error) {
-    console.error('❌ VModel 연결 테스트 오류:', error);
-    return false;
-  }
-};
-
-// 🔄 Firebase Functions 연결 체크 함수 (기존 유지)
-const checkFirebaseConnection = async () => {
-  try {
-    console.log('🔥 Checking Firebase Functions connection...');
-    
-    const isConnected = await checkFirebaseAvailability();
-    
-    if (isConnected) {
-      console.log('✅ Firebase Functions: 연결 성공 - 9분 타임아웃 사용 가능');
-      console.log('✅ URL: https://us-central1-hgfaceswap-functions.cloudfunctions.net/openaiProxy');
-    } else {
-      console.log('❌ Firebase Functions: 연결 실패 - Gemini 폴백 사용');
-    }
-    
-    return isConnected;
-  } catch (error) {
-    console.error('❌ Firebase 연결 테스트 오류:', error);
-    return false;
-  }
-};
-
-// Gemini 서비스 상태 체크 (기존 유지)
-const checkGeminiStatus = async () => {
-  try {
-    const geminiConfig = {
-      model: 'gemini-2.5-flash-image-preview',
-      version: '4.0',
-      hasApiKey: !!process.env.GEMINI_API_KEY
-    };
-    
-    console.log('🔍 Gemini Service Status:', geminiConfig);
-    return geminiConfig;
-  } catch (error) {
-    console.error('❌ Gemini 상태 확인 실패:', error);
-    return null;
-  }
-};
-
-// 🔄 FaceSwap 페이지 컴포넌트 (VModel 지원 추가)
+// FaceSwap 페이지 컴포넌트 (깔끔 버전)
 const FaceSwapPage: React.FC<{ 
   onBack: () => void;
   userId: string | null;
@@ -93,8 +34,6 @@ const FaceSwapPage: React.FC<{
   const [clothingPrompt, setClothingPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  // 변환 방법 추적
-  const [transformationMethod, setTransformationMethod] = useState<string>('');
 
   // preservedResult가 있으면 복원
   useEffect(() => {
@@ -113,8 +52,7 @@ const FaceSwapPage: React.FC<{
       };
       setOriginalImage(newImageFile);
       setGeneratedImage(null);
-      setTransformationMethod(''); // 새 이미지 업로드시 초기화
-      onResultGenerated(null); // 새 이미지 업로드시에만 초기화
+      onResultGenerated(null);
       setError(null);
     };
     reader.onerror = () => {
@@ -123,135 +61,74 @@ const FaceSwapPage: React.FC<{
     reader.readAsDataURL(file);
   };
 
-  // 🔄 생성 버튼 클릭 핸들러 (참고이미지 지원 추가)
-  const handleGenerateClick = useCallback(async (referenceImage?: ImageFile | null) => {
+  // 간소화된 생성 버튼 클릭 핸들러
+  const handleGenerateClick = useCallback(async () => {
     if (!originalImage) {
       setError('얼굴 이미지를 업로드해주세요.');
       return;
     }
-    
-    // VModel 방식과 Gemini 방식 검증
-    if (!referenceImage && !facePrompt) {
-      setError('참고 얼굴 이미지를 업로드하거나 얼굴 스타일을 선택해주세요.');
+    if (!facePrompt) {
+      setError('변환하려는 얼굴 스타일을 선택해주세요.');
       return;
     }
     
-    // 크레딧 체크
-    if (!userId) {
-      setError('사용자 정보를 찾을 수 없습니다.');
-      return;
-    }
-    
-    if (!credits || credits.remainingCredits < 1) {
-      setError('크레딧이 부족합니다. (필요: 1개, 보유: ' + (credits?.remainingCredits || 0) + '개)');
+    if (!userId || !credits || credits.remainingCredits < 1) {
+      setError(`크레딧이 부족합니다. (필요: 1개, 보유: ${credits?.remainingCredits || 0}개)`);
       return;
     }
     
     setIsLoading(true);
     setError(null);
-    setTransformationMethod('');
 
     try {
-      console.log('🚀 Starting VModel hybrid face transformation...');
-      console.log('- Original image size:', originalImage.base64.length);
-      console.log('- Reference image:', !!referenceImage);
-      console.log('- Face prompt:', facePrompt);
-      console.log('- Clothing prompt:', clothingPrompt || 'None');
-      
-      // 🆕 VModel 우선 하이브리드 변환 시스템 사용 (VModel + Firebase + Gemini)
-      const { result: resultImage, method } = await smartFaceTransformation(
+      // 얼굴 변환 (사용자는 이 과정을 모름)
+      const { result: resultImage } = await smartFaceTransformation(
         originalImage, 
         facePrompt, 
-        clothingPrompt,
-        undefined, // onProgress 
-        referenceImage // 🆕 참고이미지 전달
+        clothingPrompt
       );
       
-      console.log(`✅ Transformation completed using: ${method}`);
-      setTransformationMethod(method);
-      
       if (resultImage) {
-        // 성공: 결과 저장 후 크레딧 차감
         setGeneratedImage(resultImage);
-        onResultGenerated(resultImage); // 상위 컴포넌트에도 저장
+        onResultGenerated(resultImage);
         
-        console.log('🔍 Saving generation result...');
-        
-        // 이미지 생성 결과 저장 (개선된 에러 처리)
+        // 결과 저장 및 크레딧 차감 (백그라운드)
         try {
-          if (originalImage && resultImage) {
-            const saved = await saveGenerationResult({
-              userId,
-              type: 'image',
-              originalImageUrl: originalImage.url,
-              resultUrl: resultImage.url,
-              facePrompt: referenceImage ? 'VModel 참고이미지 기반' : facePrompt, // 🆕 구분
-              clothingPrompt,
-              creditsUsed: 1
-            });
-            
-            if (saved) {
-              console.log('✅ Generation result saved successfully');
-            } else {
-              console.warn('⚠️ Generation result save failed');
-            }
-          }
+          await saveGenerationResult({
+            userId,
+            type: 'image',
+            originalImageUrl: originalImage.url,
+            resultUrl: resultImage.url,
+            facePrompt,
+            clothingPrompt,
+            creditsUsed: 1
+          });
+          
+          const creditUsed = await useCredits(userId, 'image', 1);
+          if (creditUsed) onCreditsUsed();
         } catch (saveError) {
-          console.error('❌ Error saving generation result:', saveError);
-          // 저장 실패해도 사용자에게는 성공으로 표시 (이미지는 생성됨)
+          // 저장 실패해도 사용자에게는 성공으로 표시
         }
-        
-        // 크레딧 차감은 비동기로 처리 (실패해도 재시도)
-        setTimeout(async () => {
-          try {
-            const creditUsed = await useCredits(userId, 'image', 1);
-            if (creditUsed) {
-              onCreditsUsed();
-              console.log('✅ Credit deducted successfully');
-            } else {
-              console.warn('⚠️ Credit deduction failed - attempting restore');
-              // 크레딧 차감 실패시 복구 시도는 하지 않음 (이미 이미지 생성 완료)
-            }
-          } catch (creditError) {
-            console.error('❌ Credit processing error:', creditError);
-          }
-        }, 100);
         
       } else {
         setError('이미지 생성에 실패했습니다. 다른 이미지나 설정을 시도해보세요.');
       }
       
     } catch (err) {
-      console.error('🚨 VModel hybrid face transformation error:', err);
-      
       let errorMessage = '생성 중 오류가 발생했습니다.';
       
       if (err instanceof Error) {
         const message = err.message;
-        
-        // 🆕 VModel 관련 에러 메시지 추가
-        if (message.includes('VModel')) {
-          errorMessage = 'VModel AI 처리 중 일시적 오류가 발생했습니다. Firebase/Gemini로 폴백을 시도합니다.';
-        } else if (message.includes('Firebase')) {
-          errorMessage = 'Firebase AI 처리 중 일시적 오류가 발생했습니다. Gemini로 폴백을 시도합니다.';
-        } else if (message.includes('OpenAI')) {
-          errorMessage = 'AI 처리 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
-        } else if (message.includes('이미지 호스팅')) {
-          errorMessage = '이미지 업로드 서비스에 일시적 문제가 있습니다. 잠시 후 다시 시도해주세요.';
-        } else if (message.includes('PNG')) {
-          errorMessage = '이미지 형식 처리 중 오류가 발생했습니다. 다른 이미지를 시도해보세요.';
-        } else if (message.includes('timeout')) {
+        if (message.includes('크레딧')) {
+          errorMessage = message;
+        } else if (message.includes('시간 초과')) {
           errorMessage = '처리 시간이 초과되었습니다. 더 작은 이미지로 시도해보세요.';
-        } else if (message.includes('크레딧')) {
-          errorMessage = message; // 크레딧 관련 메시지는 그대로 표시
         } else {
-          errorMessage = `처리 중 오류: ${message}`;
+          errorMessage = '이미지 변환에 실패했습니다. 다른 이미지로 시도해보세요.';
         }
       }
       
       setError(errorMessage);
-      setTransformationMethod('');
-      
     } finally {
       setIsLoading(false);
     }
@@ -279,60 +156,18 @@ const FaceSwapPage: React.FC<{
       
       <Header />
       
-      {/* 🔄 변환 방법 표시 (VModel 포함, 성공시에만) */}
-      {transformationMethod && generatedImage && !isLoading && (
-        <div className="w-full max-w-7xl mb-4">
-          <div className={`border rounded-lg p-3 ${
-            transformationMethod.includes('VModel') 
-              ? 'bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border-blue-500/30' 
-              : transformationMethod.includes('Firebase') 
-                ? 'bg-gradient-to-r from-orange-600/20 to-red-600/20 border-orange-500/30' 
-                : 'bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-purple-500/30'
-          }`}>
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full animate-pulse ${
-                transformationMethod.includes('VModel') 
-                  ? 'bg-cyan-400' 
-                  : transformationMethod.includes('Firebase') 
-                    ? 'bg-orange-400' 
-                    : 'bg-purple-400'
-              }`}></div>
-              <span className="text-sm text-gray-300">
-                변환 완료: <span className={`font-semibold ${
-                  transformationMethod.includes('VModel') 
-                    ? 'text-cyan-300' 
-                    : transformationMethod.includes('Firebase') 
-                      ? 'text-orange-300' 
-                      : 'text-purple-300'
-                }`}>{transformationMethod}</span>
-              </span>
-              {transformationMethod.includes('VModel') && (
-                <span className="text-xs text-cyan-400 ml-2">🎯 $0.02</span>
-              )}
-              {transformationMethod.includes('Firebase') && (
-                <span className="text-xs text-orange-400 ml-2">🔥 9분 타임아웃</span>
-              )}
-              {transformationMethod.includes('Gemini') && !transformationMethod.includes('Firebase') && (
-                <span className="text-xs text-purple-400 ml-2">📝 텍스트 기반</span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      
       <main className="w-full max-w-7xl flex flex-col lg:flex-row gap-8 mt-4">
         <div className="lg:w-1/3 flex flex-col gap-6">
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col gap-6">
             <h2 className="text-xl text-center pink-bold-title">1. 이미지 업로드</h2>
             <ImageUploader title="원본 이미지" onImageUpload={handleImageUpload} imageUrl={originalImage?.url} />
           </div>
-          {/* 🔄 ControlPanel에 참고이미지 콜백 전달 */}
           <ControlPanel
             facePrompt={facePrompt}
             setFacePrompt={setFacePrompt}
             clothingPrompt={clothingPrompt}
             setClothingPrompt={setClothingPrompt}
-            onGenerate={handleGenerateClick} // 이제 referenceImage 파라미터 받음
+            onGenerate={handleGenerateClick}
             isLoading={isLoading}
             disabled={!originalImage}
             credits={credits}
@@ -345,10 +180,9 @@ const FaceSwapPage: React.FC<{
                   <div className="text-center text-red-300 p-4">
                     <h3 className="text-lg font-bold">오류 발생</h3>
                     <p className="text-sm mt-2">{error}</p>
-                    {/* 재시도 버튼 */}
                     <button
-                      onClick={() => handleGenerateClick()}
-                      disabled={!originalImage || isLoading}
+                      onClick={handleGenerateClick}
+                      disabled={!originalImage || !facePrompt || isLoading}
                       className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg transition-colors text-sm"
                     >
                       다시 시도
@@ -381,35 +215,19 @@ const App: React.FC = () => {
     videoUrl: null
   });
 
-  // 🔄 URL에서 userId 가져오기 + VModel/Firebase/Gemini 초기 연결 체크
+  // URL에서 userId 가져오기 (깔끔)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const userIdParam = urlParams.get('userId');
     
     if (userIdParam) {
       setUserId(userIdParam);
-      console.log('User ID from URL:', userIdParam);
     } else {
-      console.warn('No userId found in URL parameters');
       setIsLoadingCredits(false);
     }
-
-    // 🆕 VModel + Firebase + Gemini 서비스 테스트
-    console.log('🚀 ===== AI 서비스 테스트 시작 =====');
-    
-    // 1. VModel AI 연결 테스트 (1순위)
-    checkVModelConnection();
-    
-    // 2. Firebase Functions 연결 테스트 (2순위)
-    checkFirebaseConnection();
-    
-    // 3. Gemini 서비스 상태 체크 (3순위)
-    checkGeminiStatus();
-    
-    console.log('🚀 ===== AI 서비스 테스트 완료 =====');
   }, []);
 
-  // 크레딧 정보 가져오기 (결과물 상태를 초기화하지 않음) - 기존과 동일
+  // 크레딧 정보 가져오기
   const fetchCredits = useCallback(async () => {
     if (!userId) return;
     
@@ -417,16 +235,13 @@ const App: React.FC = () => {
       const userCredits = await getUserCredits(userId);
       if (userCredits) {
         setCredits(userCredits);
-        console.log('User credits updated:', userCredits);
-      } else {
-        console.warn('Failed to load user credits');
       }
     } catch (error) {
       console.error('Error loading credits:', error);
     }
   }, [userId]);
 
-  // 초기 크레딧 로드 - 기존과 동일
+  // 초기 크레딧 로드
   useEffect(() => {
     if (userId) {
       const loadInitialCredits = async () => {
@@ -450,22 +265,19 @@ const App: React.FC = () => {
     setCurrentPage('main');
   };
 
-  // 크레딧 사용 후 새로고침
   const handleCreditsUsed = () => {
     fetchCredits();
   };
 
-  // FaceSwap 결과 저장
   const handleFaceSwapResult = (result: ImageFile | null) => {
     setGeneratedResults(prev => ({ ...prev, faceSwapImage: result }));
   };
 
-  // VideoSwap 결과 저장
   const handleVideoSwapResult = (result: string | null) => {
     setGeneratedResults(prev => ({ ...prev, videoUrl: result }));
   };
 
-  // 로딩 중일 때 - 기존과 동일
+  // 로딩 중일 때
   if (isLoadingCredits) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -477,7 +289,7 @@ const App: React.FC = () => {
     );
   }
 
-  // userId가 없을 때 - 기존과 동일
+  // userId가 없을 때
   if (!userId) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -490,7 +302,7 @@ const App: React.FC = () => {
     );
   }
 
-  // 페이지별 렌더링 - 기존과 동일
+  // 페이지별 렌더링
   switch (currentPage) {
     case 'main':
       return (
