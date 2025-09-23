@@ -222,7 +222,7 @@ const App: React.FC = () => {
     videoUrl: null
   });
 
-  // URL에서 userId 가져오기
+  // URL에서 userId 가져오기 + VModel 연결 테스트
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const userIdParam = urlParams.get('userId');
@@ -232,6 +232,43 @@ const App: React.FC = () => {
     } else {
       setIsLoadingCredits(false);
     }
+
+    // 초기화 시 서비스 연결 상태 확인
+    const checkServices = async () => {
+      console.log('🚀 ===== 서비스 연결 테스트 시작 =====');
+      
+      // VModel 연결 테스트
+      try {
+        const { checkVModelAvailability } = await import('./services/hybridImageService');
+        const vmodelConnected = await checkVModelAvailability();
+        console.log('🎯 VModel AI 연결 상태:', {
+          connected: vmodelConnected,
+          hasToken: !!process.env.VMODEL_API_TOKEN,
+          hasCloudinary: !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY),
+          status: vmodelConnected ? '✅ 사용 가능' : '❌ 연결 실패'
+        });
+      } catch (vmodelError) {
+        console.warn('⚠️ VModel 연결 테스트 실패:', vmodelError);
+      }
+      
+      // Gemini 상태 확인
+      try {
+        const { getServiceStatus } = await import('./services/geminiService');
+        const geminiStatus = getServiceStatus();
+        console.log('🔍 Gemini AI 상태:', {
+          model: geminiStatus.model,
+          version: geminiStatus.version,
+          hasApiKey: !!process.env.GEMINI_API_KEY,
+          status: '✅ 폴백 준비 완료'
+        });
+      } catch (geminiError) {
+        console.warn('⚠️ Gemini 상태 확인 실패:', geminiError);
+      }
+      
+      console.log('🚀 ===== 서비스 테스트 완료 =====');
+    };
+    
+    checkServices();
   }, []);
 
   // 크레딧 정보 가져오기
