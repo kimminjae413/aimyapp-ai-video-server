@@ -1,5 +1,5 @@
-// services/hybridImageService.ts - 수정 버전
-import { changeFaceInImage } from './geminiService';
+// services/hybridImageService.ts - VModel 얼굴교체 + Gemini 의상변경
+import { changeFaceInImage, changeClothingOnly } from './geminiService';
 import type { ImageFile } from '../types';
 
 // VModel 서비스 동적 import
@@ -18,7 +18,7 @@ const loadVModelService = async () => {
 };
 
 /**
- * 스마트 얼굴 변환 (VModel 우선, Gemini 폴백)
+ * 🔥 진짜 하이브리드: VModel 얼굴교체 → Gemini 의상변경
  */
 export const smartFaceTransformation = async (
   originalImage: ImageFile,
@@ -28,37 +28,61 @@ export const smartFaceTransformation = async (
   onProgress?: (status: string) => void
 ): Promise<{ result: ImageFile | null; method: string }> => {
   try {
-    // 참고이미지가 있으면 VModel 시도
+    let currentResult: ImageFile | null = null;
+    let method = '';
+
+    // 🎯 1단계: 얼굴 변경
     if (referenceImage) {
-      console.log('참고이미지 기반 VModel 변환 시도');
+      console.log('🔥 HYBRID Step 1: VModel 얼굴교체 시작');
       
-      if (onProgress) onProgress('AI가 얼굴을 분석하고 있습니다...');
+      if (onProgress) onProgress('VModel로 얼굴교체 중...');
       
       try {
         const vmodel = await loadVModelService();
-        // 올바른 함수명 사용
         if (vmodel && vmodel.transformFaceWithVModel) {
-          const result = await vmodel.transformFaceWithVModel(
+          const faceResult = await vmodel.transformFaceWithVModel(
             originalImage,   // 원본 이미지 (target)
             referenceImage,  // 참고할 얼굴 (swap)
             clothingPrompt
           );
           
-          if (result) {
-            console.log('VModel 변환 성공');
-            if (onProgress) onProgress('변환 완료!');
-            return { result, method: 'VModel AI 얼굴교체' };
+          if (faceResult) {
+            console.log('✅ VModel 얼굴교체 성공');
+            currentResult = faceResult;
+            method = 'VModel 얼굴교체';
+            
+            // 🎯 2단계: 의상변경 (선택적)
+            if (clothingPrompt && clothingPrompt.trim()) {
+              console.log('🔥 HYBRID Step 2: Gemini 의상변경 시작');
+              if (onProgress) onProgress('Gemini로 의상변경 중...');
+              
+              try {
+                const clothingResult = await changeClothingOnly(faceResult, clothingPrompt);
+                if (clothingResult) {
+                  console.log('✅ Gemini 의상변경 성공');
+                  currentResult = clothingResult;
+                  method = 'VModel 얼굴교체 + Gemini 의상변경';
+                } else {
+                  console.log('⚠️ Gemini 의상변경 실패, 얼굴교체 결과만 사용');
+                }
+              } catch (clothingError) {
+                console.log('⚠️ Gemini 의상변경 실패:', clothingError);
+                // 의상변경 실패해도 얼굴교체 결과는 유지
+              }
+            }
+            
+            if (onProgress) onProgress('하이브리드 변환 완료!');
+            return { result: currentResult, method };
           }
         }
       } catch (vmodelError) {
-        console.log('VModel 실패, Gemini로 폴백:', vmodelError);
-        // VModel 실패해도 사용자에게 알리지 않고 Gemini로 폴백
+        console.log('VModel 실패, Gemini 전체 변환으로 폴백:', vmodelError);
       }
     }
     
-    // Gemini 사용 (VModel 실패 시 또는 참고이미지 없을 때)
-    console.log('Gemini 변환 시작');
-    if (onProgress) onProgress('AI가 이미지를 처리하고 있습니다...');
+    // 🔄 폴백: Gemini 전체 변환
+    console.log('🔄 Gemini 전체 변환 시작 (VModel 실패 또는 참고이미지 없음)');
+    if (onProgress) onProgress('Gemini AI로 변환 중...');
     
     const result = await changeFaceInImage(
       originalImage, 
@@ -103,15 +127,17 @@ export const checkFirebaseAvailability = async (): Promise<boolean> => {
  */
 export const getHybridServiceStatus = () => {
   return {
-    version: '3.0-VMODEL-PRIORITY',
-    primary: 'VModel AI (참고이미지 기반)',
-    fallback: 'Gemini AI (텍스트 기반)',
-    userExperience: '깔끔한 메시지만 표시',
+    version: '4.0-TRUE-HYBRID',
+    workflow: 'VModel 얼굴교체 → Gemini 의상변경',
+    primary: 'VModel AI (참고이미지 기반 얼굴교체)',
+    secondary: 'Gemini AI (텍스트 기반 의상변경)',
+    fallback: 'Gemini AI (전체 변환)',
     features: [
-      'VModel: 참고이미지 → 원본이미지 얼굴교체',
-      'Gemini: 텍스트 설명 → 얼굴 변환',
-      '자동 폴백 시스템',
-      '사용자 친화적 메시지'
+      '🎯 VModel: 참고이미지 → 정밀 얼굴교체',
+      '👔 Gemini: 텍스트 → 의상변경',
+      '🔄 자동 폴백 시스템',
+      '🎨 2단계 하이브리드 처리',
+      '⚡ 최적화된 워크플로우'
     ]
   };
 };
