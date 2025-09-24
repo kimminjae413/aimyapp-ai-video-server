@@ -1,4 +1,4 @@
-// services/bullnabiService.ts - 토큰 자동 갱신 최종 버전
+// services/bullnabiService.ts - 무한루프 완전 해결 최종 버전
 import type { UserCredits, GenerationResult } from '../types';
 
 const API_BASE_URL = '/.netlify/functions/bullnabi-proxy';
@@ -11,6 +11,7 @@ interface BullnabiResponse {
   recordsTotal?: number;
   recordsFiltered?: number;
   needRefresh?: boolean;
+  tokenExpired?: boolean;
 }
 
 interface TokenCache {
@@ -73,7 +74,7 @@ async function getUserToken(userId: string): Promise<string | null> {
 }
 
 /**
- * 동적 토큰으로 API 호출 (자동 재시도 포함)
+ * 동적 토큰으로 API 호출 - 무한루프 완전 방지 버전
  */
 async function callWithDynamicToken(
   userId: string,
@@ -81,7 +82,7 @@ async function callWithDynamicToken(
   data?: any,
   retryCount: number = 0
 ): Promise<BullnabiResponse | null> {
-  const MAX_RETRIES = 2;
+  const MAX_RETRIES = 1; // 최대 1회만 재시도
   
   try {
     const token = await getUserToken(userId);
@@ -108,43 +109,42 @@ async function callWithDynamicToken(
 
     const result = await response.json();
     
-    // 토큰 만료 감지 시 자동 재시도
-    if (!result.success && (
-      result.needRefresh || 
-      result.error?.includes('만료') || 
-      result.error?.includes('토큰') ||
-      result.code === -110 ||
-      result.code === '-110'
-    )) {
-      if (retryCount < MAX_RETRIES) {
-        console.log(`🔄 토큰 만료 감지, 자동 갱신 후 재시도 (${retryCount + 1}/${MAX_RETRIES}):`, userId);
-        
-        // 캐시 클리어
-        delete tokenCache[userId];
-        
-        // 1초 대기 후 재시도
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // 재시도
-        return await callWithDynamicToken(userId, action, data, retryCount + 1);
+    // 🔥 핵심 수정 1: success가 true이면 토큰이 만료되어도 성공으로 처리
+    if (result.success) {
+      if (result.tokenExpired) {
+        console.log('✅ 토큰 만료되었지만 데이터 조회 성공:', userId);
       } else {
-        console.error('❌ 최대 재시도 횟수 초과, 토큰 갱신 실패:', userId);
-        return null;
+        console.log('✅ 정상적으로 데이터 조회 성공:', userId);
       }
+      return result;
     }
-
+    
+    // 🔥 핵심 수정 2: needRefresh가 false이면 재시도하지 않음 
+    if (!result.needRefresh) {
+      console.log('토큰 갱신 불필요 또는 다른 오류:', result.error);
+      return result;
+    }
+    
+    // 🔥 핵심 수정 3: needRefresh가 true여도 1회만 재시도
+    if (result.needRefresh && retryCount < MAX_RETRIES) {
+      console.log(`🔄 토큰 만료 감지, 자동 갱신 후 재시도 (${retryCount + 1}/${MAX_RETRIES}):`, userId);
+      
+      // 캐시 클리어
+      delete tokenCache[userId];
+      
+      // 1초 대기 후 재시도
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // 재시도
+      return await callWithDynamicToken(userId, action, data, retryCount + 1);
+    }
+    
+    // 최대 재시도 횟수 초과
+    console.log('❌ 최대 재시도 횟수 초과, 토큰 갱신 실패:', userId);
     return result;
 
   } catch (error) {
     console.error(`${action} 호출 중 오류:`, error);
-    
-    // 네트워크 오류 등에서도 재시도
-    if (retryCount < MAX_RETRIES) {
-      console.log(`🔄 네트워크 오류, 재시도 (${retryCount + 1}/${MAX_RETRIES}):`, error);
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
-      return await callWithDynamicToken(userId, action, data, retryCount + 1);
-    }
-    
     return null;
   }
 }
@@ -183,18 +183,23 @@ async function callWithAdminToken(
 }
 
 /**
- * 사용자 크레딧 정보 조회 (동적 토큰 우선)
+ * 사용자 크레딧 정보 조회 (토큰 만료 시에도 데이터 반환)
  */
 export const getUserCredits = async (userId: string): Promise<UserCredits | null> => {
   try {
     console.log('🔍 사용자 크레딧 조회:', userId);
 
-    // 1순위: 동적 토큰 시스템 (자동 재시도 포함)
+    // 1순위: 동적 토큰 시스템 (토큰 만료시에도 데이터가 있으면 성공)
     const result = await callWithDynamicToken(userId, 'getUserData');
     
     if (result?.success && result.data && result.data.length > 0) {
       const user = result.data[0];
-      console.log('✅ 동적 토큰으로 크레딧 조회 성공');
+      
+      if (result.tokenExpired) {
+        console.log('✅ 토큰 만료되었지만 동적 토큰으로 크레딧 조회 성공');
+      } else {
+        console.log('✅ 동적 토큰으로 크레딧 조회 성공');
+      }
       
       return {
         userId: userId,
@@ -258,7 +263,7 @@ export const useCredits = async (
       return false;
     }
 
-    // 2. 히스토리 추가 (동적 토큰 자동 재시도)
+    // 2. 히스토리 추가 (동적 토큰 1회만 재시도)
     const historyData = {
       userJoin: { "$oid": userId },
       uses: uses,
@@ -284,7 +289,7 @@ export const useCredits = async (
       return false;
     }
 
-    // 3. remainCount 업데이트 (동적 토큰 자동 재시도)
+    // 3. remainCount 업데이트 (동적 토큰 1회만 재시도)
     const newRemainCount = currentCredits.remainingCredits - Math.abs(count);
     const updateData = { newCount: newRemainCount };
 
@@ -328,7 +333,7 @@ export const restoreCredits = async (
       return false;
     }
 
-    // 복구용 히스토리 추가 (동적 토큰 자동 재시도)
+    // 복구용 히스토리 추가 (동적 토큰 1회만 재시도)
     const restoreData = {
       userJoin: { "$oid": userId },
       uses: `${uses}_restore`,
@@ -422,7 +427,7 @@ export const saveGenerationResult = async (params: {
 
     console.log('생성 결과 저장 시작 (동적 토큰)...');
 
-    // 1순위: 동적 토큰 (자동 재시도 포함)
+    // 1순위: 동적 토큰 (1회만 재시도)
     let result = await callWithDynamicToken(params.userId, 'saveGenerationResult', documentData);
     
     if (result?.success) {
@@ -557,17 +562,17 @@ export const clearTokenCache = (userId?: string) => {
  */
 export const getServiceStatus = () => {
   return {
-    version: '3.0-AUTO-TOKEN-REFRESH',
+    version: '4.0-TOKEN-EXPIRED-DATA-RETURN',
     tokenCacheSize: Object.keys(tokenCache).length,
     cachedUsers: Object.keys(tokenCache),
     features: [
       '🔑 동적 사용자 토큰 발급',
       '💾 토큰 메모리 캐싱 (50분)',
-      '🔄 토큰 만료시 자동 갱신 (최대 2회 재시도)',
+      '✅ 토큰 만료시에도 데이터가 있으면 성공 처리',
+      '🚫 무한루프 완전 방지 (최대 1회 재시도)',
       '🛡️ 관리자 토큰 폴백 시스템',
       '⚡ 이중 안전망 구조',
-      '🚀 네트워크 오류 자동 재시도',
-      '⏱️ 1초 대기 후 재시도 로직'
+      '🎯 needRefresh false 시 재시도 안함'
     ]
   };
 };
