@@ -1,4 +1,4 @@
-// services/bullnabiService.ts - 동적 토큰 시스템 버전
+// services/bullnabiService.ts - 토큰 자동 갱신 최종 버전
 import type { UserCredits, GenerationResult } from '../types';
 
 const API_BASE_URL = '/.netlify/functions/bullnabi-proxy';
@@ -10,6 +10,7 @@ interface BullnabiResponse {
   data?: any;
   recordsTotal?: number;
   recordsFiltered?: number;
+  needRefresh?: boolean;
 }
 
 interface TokenCache {
@@ -72,13 +73,16 @@ async function getUserToken(userId: string): Promise<string | null> {
 }
 
 /**
- * 동적 토큰으로 API 호출
+ * 동적 토큰으로 API 호출 (자동 재시도 포함)
  */
 async function callWithDynamicToken(
   userId: string,
   action: string,
-  data?: any
+  data?: any,
+  retryCount: number = 0
 ): Promise<BullnabiResponse | null> {
+  const MAX_RETRIES = 2;
+  
   try {
     const token = await getUserToken(userId);
     if (!token) {
@@ -104,17 +108,43 @@ async function callWithDynamicToken(
 
     const result = await response.json();
     
-    // 토큰 만료 시 캐시 클리어 후 재시도
-    if (!result.success && result.needRefresh) {
-      console.log('토큰 만료, 캐시 클리어 후 재시도:', userId);
-      delete tokenCache[userId];
-      return await callWithDynamicToken(userId, action, data);
+    // 토큰 만료 감지 시 자동 재시도
+    if (!result.success && (
+      result.needRefresh || 
+      result.error?.includes('만료') || 
+      result.error?.includes('토큰') ||
+      result.code === -110 ||
+      result.code === '-110'
+    )) {
+      if (retryCount < MAX_RETRIES) {
+        console.log(`🔄 토큰 만료 감지, 자동 갱신 후 재시도 (${retryCount + 1}/${MAX_RETRIES}):`, userId);
+        
+        // 캐시 클리어
+        delete tokenCache[userId];
+        
+        // 1초 대기 후 재시도
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // 재시도
+        return await callWithDynamicToken(userId, action, data, retryCount + 1);
+      } else {
+        console.error('❌ 최대 재시도 횟수 초과, 토큰 갱신 실패:', userId);
+        return null;
+      }
     }
 
     return result;
 
   } catch (error) {
     console.error(`${action} 호출 중 오류:`, error);
+    
+    // 네트워크 오류 등에서도 재시도
+    if (retryCount < MAX_RETRIES) {
+      console.log(`🔄 네트워크 오류, 재시도 (${retryCount + 1}/${MAX_RETRIES}):`, error);
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+      return await callWithDynamicToken(userId, action, data, retryCount + 1);
+    }
+    
     return null;
   }
 }
@@ -153,13 +183,13 @@ async function callWithAdminToken(
 }
 
 /**
- * 사용자 크레딧 정보 조회 (동적 토큰)
+ * 사용자 크레딧 정보 조회 (동적 토큰 우선)
  */
 export const getUserCredits = async (userId: string): Promise<UserCredits | null> => {
   try {
     console.log('🔍 사용자 크레딧 조회:', userId);
 
-    // 1순위: 동적 토큰 시스템
+    // 1순위: 동적 토큰 시스템 (자동 재시도 포함)
     const result = await callWithDynamicToken(userId, 'getUserData');
     
     if (result?.success && result.data && result.data.length > 0) {
@@ -213,7 +243,7 @@ export const getUserCredits = async (userId: string): Promise<UserCredits | null
 };
 
 /**
- * 크레딧 사용 기록 추가 (동적 토큰)
+ * 크레딧 사용 기록 추가 (동적 토큰 우선)
  */
 export const useCredits = async (
   userId: string, 
@@ -228,7 +258,7 @@ export const useCredits = async (
       return false;
     }
 
-    // 2. 히스토리 추가 (동적 토큰 시도)
+    // 2. 히스토리 추가 (동적 토큰 자동 재시도)
     const historyData = {
       userJoin: { "$oid": userId },
       uses: uses,
@@ -254,7 +284,7 @@ export const useCredits = async (
       return false;
     }
 
-    // 3. remainCount 업데이트 (동적 토큰 시도)
+    // 3. remainCount 업데이트 (동적 토큰 자동 재시도)
     const newRemainCount = currentCredits.remainingCredits - Math.abs(count);
     const updateData = { newCount: newRemainCount };
 
@@ -284,7 +314,7 @@ export const useCredits = async (
 };
 
 /**
- * 크레딧 복구 (동적 토큰)
+ * 크레딧 복구 (동적 토큰 우선)
  */
 export const restoreCredits = async (
   userId: string,
@@ -298,7 +328,7 @@ export const restoreCredits = async (
       return false;
     }
 
-    // 복구용 히스토리 추가 (동적 토큰 시도)
+    // 복구용 히스토리 추가 (동적 토큰 자동 재시도)
     const restoreData = {
       userJoin: { "$oid": userId },
       uses: `${uses}_restore`,
@@ -347,7 +377,7 @@ export const restoreCredits = async (
 };
 
 /**
- * 생성 결과 저장 (동적 토큰 우선, 관리자 토큰 폴백)
+ * 생성 결과 저장 (동적 토큰 우선)
  */
 export const saveGenerationResult = async (params: {
   userId: string;
@@ -392,7 +422,7 @@ export const saveGenerationResult = async (params: {
 
     console.log('생성 결과 저장 시작 (동적 토큰)...');
 
-    // 1순위: 동적 토큰
+    // 1순위: 동적 토큰 (자동 재시도 포함)
     let result = await callWithDynamicToken(params.userId, 'saveGenerationResult', documentData);
     
     if (result?.success) {
@@ -425,14 +455,13 @@ export const saveGenerationResult = async (params: {
 };
 
 /**
- * 생성 내역 조회 (동적 토큰 우선)
+ * 생성 내역 조회 (관리자 토큰 사용)
  */
 export const getGenerationHistory = async (userId: string, limit: number = 50): Promise<GenerationResult[]> => {
   try {
     const threeDaysAgo = new Date();
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
-    // 동적 토큰으로는 지원하지 않으므로 관리자 토큰 사용
     const result = await callWithAdminToken(
       'aggregate',
       '_users',
@@ -511,43 +540,6 @@ export const getCreditHistory = async (userId: string, limit: number = 10): Prom
 };
 
 /**
- * 간소화된 결과 저장 (관리자 토큰 사용)
- */
-export const saveSimpleGenerationResult = async (
-  userId: string, 
-  type: 'image' | 'video', 
-  creditsUsed: number
-): Promise<boolean> => {
-  try {
-    console.log('간소화된 생성 결과 저장...');
-    
-    const now = new Date();
-    
-    const result = await callWithAdminToken(
-      'create',
-      '_users',
-      'aiGenerationHistory',
-      {
-        userId: { "$oid": userId },
-        type: type,
-        originalImageUrl: 'simplified_record',
-        resultUrl: 'simplified_record',
-        creditsUsed: creditsUsed,
-        createdAt: now.toISOString(),
-        _createTime: now.toISOString(),
-        status: 'simplified'
-      }
-    );
-
-    return result?.code === '1' || result?.code === 1;
-    
-  } catch (error) {
-    console.error('간소화된 결과 저장 중 오류:', error);
-    return false;
-  }
-};
-
-/**
  * 토큰 캐시 클리어 (디버깅용)
  */
 export const clearTokenCache = (userId?: string) => {
@@ -565,15 +557,17 @@ export const clearTokenCache = (userId?: string) => {
  */
 export const getServiceStatus = () => {
   return {
-    version: '2.0-DYNAMIC-TOKEN',
+    version: '3.0-AUTO-TOKEN-REFRESH',
     tokenCacheSize: Object.keys(tokenCache).length,
     cachedUsers: Object.keys(tokenCache),
     features: [
       '🔑 동적 사용자 토큰 발급',
       '💾 토큰 메모리 캐싱 (50분)',
-      '🔄 토큰 만료시 자동 갱신',
+      '🔄 토큰 만료시 자동 갱신 (최대 2회 재시도)',
       '🛡️ 관리자 토큰 폴백 시스템',
-      '⚡ 이중 안전망 구조'
+      '⚡ 이중 안전망 구조',
+      '🚀 네트워크 오류 자동 재시도',
+      '⏱️ 1초 대기 후 재시도 로직'
     ]
   };
 };
