@@ -1,4 +1,4 @@
-// netlify/functions/bullnabi-proxy.js - 토큰 자동 갱신 최종 버전
+// netlify/functions/bullnabi-proxy.js - 토큰 만료시 데이터 반환 최종 버전
 
 exports.handler = async (event, context) => {
   const headers = {
@@ -32,18 +32,18 @@ exports.handler = async (event, context) => {
     
     const { action, metaCode, collectionName, documentJson, token, userId, data, query } = requestBody;
     
-    // 🆕 동적 토큰 시스템: 사용자 토큰 발급
+    // 동적 토큰 시스템: 사용자 토큰 발급
     if (action === 'getUserToken') {
       return await handleGetUserToken(userId, headers);
     }
     
-    // 🆕 동적 토큰 시스템: 사용자 토큰 기반 액션들
+    // 동적 토큰 시스템: 사용자 토큰 기반 액션들
     if (token && (action === 'getUserData' || action === 'createCreditHistory' || 
                   action === 'updateUserCredits' || action === 'saveGenerationResult')) {
       return await handleUserTokenAction(action, token, userId, data, headers);
     }
     
-    // 🔧 기존 관리자 토큰 시스템 (기존 코드 그대로)
+    // 기존 관리자 토큰 시스템 (기존 코드 그대로)
     return await handleAdminTokenAction(action, metaCode, collectionName, documentJson, headers);
     
   } catch (error) {
@@ -63,7 +63,7 @@ exports.handler = async (event, context) => {
 };
 
 /**
- * 🆕 사용자 토큰 발급 (동적 토큰 시스템) - 강화된 버전
+ * 사용자 토큰 발급 (동적 토큰 시스템)
  */
 async function handleGetUserToken(userId, headers) {
   try {
@@ -85,23 +85,7 @@ async function handleGetUserToken(userId, headers) {
     console.log('[Dynamic Token] 사용자 토큰 발급 요청:', userId);
     console.log('[Dynamic Token] 관리자 토큰 사용:', adminToken.substring(0, 20) + '...');
     
-    // 토큰 유효성 미리 검증 (선택적)
-    const tokenValidation = await validateAdminToken(adminToken);
-    if (!tokenValidation.valid) {
-      console.warn('[Dynamic Token] 관리자 토큰 검증 실패:', tokenValidation.error);
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({
-          success: false,
-          error: 'Invalid admin token',
-          details: tokenValidation.error,
-          timestamp: new Date().toISOString()
-        })
-      };
-    }
-    
-    // 현재는 관리자 토큰을 반환 (임시 방식, 향후 사용자별 토큰 생성 가능)
+    // 현재는 관리자 토큰을 반환 (임시 방식)
     return {
       statusCode: 200,
       headers,
@@ -111,7 +95,7 @@ async function handleGetUserToken(userId, headers) {
         expiresIn: 3600, // 1시간
         issuedAt: new Date().toISOString(),
         userId: userId,
-        note: 'Using validated admin token as user token'
+        note: 'Using admin token as user token'
       })
     };
     
@@ -130,50 +114,7 @@ async function handleGetUserToken(userId, headers) {
 }
 
 /**
- * 🆕 토큰 유효성 검증 함수
- */
-async function validateAdminToken(token) {
-  try {
-    // 간단한 테스트 요청으로 토큰 유효성 확인
-    const testResponse = await fetch('https://drylink.ohmyapp.io/bnb/aggregateForTableWithDocTimeline', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': token
-      },
-      body: new URLSearchParams({
-        metaCode: '_users',
-        collectionName: '_users',
-        documentJson: JSON.stringify({
-          "pipeline": {
-            "$match": { "_id": { "$exists": true } },
-            "$limit": 1
-          }
-        })
-      }).toString()
-    });
-    
-    const testText = await testResponse.text();
-    
-    if (testResponse.ok) {
-      try {
-        const testData = JSON.parse(testText);
-        // 성공적인 응답이면 토큰 유효
-        return { valid: true };
-      } catch (e) {
-        return { valid: false, error: 'Invalid response format' };
-      }
-    } else {
-      return { valid: false, error: `HTTP ${testResponse.status}` };
-    }
-    
-  } catch (error) {
-    return { valid: false, error: error.message };
-  }
-}
-
-/**
- * 🆕 사용자 토큰 기반 액션 처리 (토큰 자동 갱신 지원)
+ * 사용자 토큰 기반 액션 처리 - 토큰 만료시 데이터 반환 로직
  */
 async function handleUserTokenAction(action, token, userId, data, headers) {
   try {
@@ -188,7 +129,7 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
     let apiUrl = 'https://drylink.ohmyapp.io/bnb';
     let formData = new URLSearchParams();
     
-    // 🔧 액션별 처리 개선
+    // 액션별 처리
     switch (action) {
       case 'getUserData':
         apiUrl += '/aggregateForTableWithDocTimeline';
@@ -248,7 +189,7 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': token  // Bearer 이미 포함되어 있음
+        'Authorization': token
       },
       body: formData.toString()
     });
@@ -264,16 +205,16 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
       timestamp: new Date().toISOString()
     });
     
-    // 🔧 HTTP 에러 처리
+    // HTTP 에러 처리
     if (!response.ok) {
       console.error('[User Token] HTTP 에러:', response.status, response.statusText);
       return {
-        statusCode: 200, // 클라이언트에서 재시도할 수 있도록 200으로 반환
+        statusCode: 200,
         headers,
         body: JSON.stringify({
           success: false,
           error: `HTTP ${response.status}: ${response.statusText}`,
-          needRefresh: response.status === 401, // 401이면 토큰 갱신 필요
+          needRefresh: false, // HTTP 에러는 토큰 갱신으로 해결되지 않음
           rawResponse: responseText.substring(0, 300),
           timestamp: new Date().toISOString()
         })
@@ -307,11 +248,11 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
       };
     }
     
-    // 🎯 토큰 만료 감지 - 더 정확한 조건들
+    // 🎯 핵심 수정: 토큰 만료 감지 시 데이터가 있으면 성공으로 처리
     const tokenExpiredConditions = [
       jsonData.code === -110,
       jsonData.code === '-110',
-      jsonData.code === -111, // 추가 만료 코드
+      jsonData.code === -111,
       jsonData.code === '-111',
       jsonData.message && (
         jsonData.message.includes('만료된 토큰') ||
@@ -323,32 +264,56 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
     ];
     
     if (tokenExpiredConditions.some(condition => condition)) {
-      console.warn('[User Token] 토큰 만료 감지:', {
+      console.warn('[User Token] 토큰 만료 감지, 데이터 확인 중:', {
         code: jsonData.code,
         message: jsonData.message,
+        hasData: !!jsonData.data,
+        dataLength: jsonData.data ? jsonData.data.length : 0,
         action: action,
         userId: userId
       });
       
+      // 🔥 핵심: 토큰이 만료되어도 데이터가 있으면 성공으로 처리
+      if (jsonData.data && jsonData.data.length > 0) {
+        console.log('[User Token] 토큰 만료되었지만 데이터 조회 성공 - 성공으로 처리');
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            data: jsonData.data,
+            recordsTotal: jsonData.recordsTotal || jsonData.data.length,
+            recordsFiltered: jsonData.recordsFiltered || jsonData.data.length,
+            metaVersion: jsonData.metaVersion,
+            code: 'expired_but_data_available',
+            message: '토큰 만료되었지만 데이터 조회 성공',
+            tokenExpired: true, // 토큰 만료 표시 (참고용)
+            timestamp: new Date().toISOString()
+          })
+        };
+      }
+      
+      // 데이터도 없으면 실제 실패 (무한루프 방지)
       return {
-        statusCode: 200, // 🔧 401 대신 200으로 반환 (재시도 가능하도록)
+        statusCode: 200,
         headers,
         body: JSON.stringify({
           success: false,
-          error: 'User token expired',
-          needRefresh: true,
+          error: 'Token expired and no data available',
+          needRefresh: false, // 🔥 무한루프 방지 - 토큰 갱신 시도 안함
           code: jsonData.code,
           message: jsonData.message,
+          tokenExpired: true,
           timestamp: new Date().toISOString()
         })
       };
     }
     
-    // 🔧 성공 응답 조건 강화
+    // 일반적인 성공 조건 확인
     const successConditions = [
       jsonData.code === '1',
       jsonData.code === 1,
-      jsonData.data && Array.isArray(jsonData.data),
+      jsonData.data && Array.isArray(jsonData.data) && jsonData.data.length > 0,
       jsonData.recordsTotal > 0,
       // 특별한 경우: 데이터가 없어도 성공인 경우들
       (action === 'updateUserCredits' && !jsonData.error),
@@ -381,7 +346,7 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
       };
     }
     
-    // 기타 에러 (성공도 실패도 아닌 상황)
+    // 기타 상황 (성공도 실패도 아닌 경우)
     console.warn('[User Token] 애매한 API 응답:', {
       action,
       code: jsonData.code,
@@ -396,12 +361,13 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
       body: JSON.stringify({
         success: false,
         error: jsonData.message || jsonData.error || 'Unknown API response',
-        needRefresh: false,
+        needRefresh: false, // 애매한 상황에서도 토큰 갱신 시도 안함
         code: jsonData.code,
         rawData: {
           code: jsonData.code,
           message: jsonData.message,
-          error: jsonData.error
+          error: jsonData.error,
+          hasData: !!jsonData.data
         },
         timestamp: new Date().toISOString()
       })
@@ -416,12 +382,12 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
     });
     
     return {
-      statusCode: 200, // 예외 상황에서도 200 반환 (재시도 가능하도록)
+      statusCode: 200,
       headers,
       body: JSON.stringify({
         success: false,
         error: error.message,
-        needRefresh: false, // 예외는 토큰 문제가 아닐 가능성이 높음
+        needRefresh: false, // 예외 상황에서는 토큰 갱신 시도 안함
         stack: error.stack?.substring(0, 300),
         timestamp: new Date().toISOString()
       })
@@ -430,7 +396,7 @@ async function handleUserTokenAction(action, token, userId, data, headers) {
 }
 
 /**
- * 🔧 기존 관리자 토큰 시스템 (호환성 유지)
+ * 기존 관리자 토큰 시스템 (호환성 유지)
  */
 async function handleAdminTokenAction(action, metaCode, collectionName, documentJson, headers) {
   console.log('[Admin Token] 관리자 토큰으로 처리:', { action, metaCode, collectionName });
