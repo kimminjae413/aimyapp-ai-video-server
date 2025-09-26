@@ -227,20 +227,49 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           };
         }
       } else if (isIOS) {
-        // iOS: 새 탭에서 비디오 열기 + 실제 다운로드 확인
-        const newWindow = window.open(cleanUrl, '_blank');
-        
-        if (!newWindow) {
-          throw new Error('팝업이 차단되었습니다. Safari 설정에서 팝업을 허용해주세요.');
+        // iOS: 강화된 다운로드 처리
+        try {
+          // 1. Share API 먼저 시도 (iOS 12+)
+          if (navigator.share && navigator.canShare) {
+            const response = await fetch(cleanUrl);
+            const blob = await response.blob();
+            const file = new File([blob], filename, { type: 'video/mp4' });
+            
+            if (navigator.canShare({ files: [file] })) {
+              await navigator.share({ files: [file] });
+              return { 
+                success: true, 
+                message: 'Share API로 공유 완료!' 
+              };
+            }
+          }
+        } catch (shareError) {
+          console.log('Share API 실패, 대체 방법 시도:', shareError);
         }
         
-        // 실제 창이 열렸는지 확인
-        setTimeout(() => {
-          if (newWindow.closed) {
-            console.warn('비디오 창이 일찍 닫혔습니다.');
-          }
-        }, 1000);
+        // 2. 새 창 열기 (기존 방식)
+        const newWindow = window.open(cleanUrl, '_blank', 'width=800,height=600');
         
+        if (!newWindow) {
+          // 팝업 차단된 경우 URL 직접 제공
+          const userConfirmed = confirm(`팝업이 차단되었습니다. 비디오 URL을 클립보드에 복사하시겠습니까?\n\n${cleanUrl.substring(0, 80)}...`);
+          
+          if (userConfirmed) {
+            try {
+              await navigator.clipboard.writeText(cleanUrl);
+              return { 
+                success: true, 
+                message: 'URL이 클립보드에 복사되었습니다. Safari에서 열어 저장하세요.' 
+              };
+            } catch (clipError) {
+              throw new Error(`URL 복사 실패: ${cleanUrl}`);
+            }
+          } else {
+            throw new Error('팝업이 차단되어 다운로드할 수 없습니다.');
+          }
+        }
+        
+        // 새 창이 정상 열린 경우
         return { 
           success: true, 
           message: '새 탭에서 비디오를 열었습니다. 길게 터치하여 저장하세요.' 
@@ -280,10 +309,15 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
   };
 
   const handleDownload = async (item: GenerationResult) => {
-    // 수정: 고유한 itemId 생성 (중복 방지)
-    const itemId = item._id?.toString() || `${item.type}-${item.userId}-${Date.parse(item.createdAt)}-${item.resultUrl.slice(-10)}`;
+    // 수정: 완전히 고유한 itemId 생성 (인덱스 추가로 중복 완전 방지)
+    const baseId = item._id?.toString() || `${item.type}-${item.userId}-${Date.parse(item.createdAt)}`;
+    const itemIndex = history.findIndex(h => h === item);
+    const itemId = `${baseId}-idx${itemIndex}`;
+    
+    console.log('다운로드 시작:', { itemId, originalId: item._id, index: itemIndex });
     
     if (downloadingIds.has(itemId)) {
+      console.log('이미 다운로드 중:', itemId);
       return; // 이미 다운로드 중
     }
 
@@ -434,9 +468,10 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {history.map((item) => {
-                // 수정: 고유한 itemId 생성 (중복 방지)
-                const itemId = item._id?.toString() || `${item.type}-${item.userId}-${Date.parse(item.createdAt)}-${item.resultUrl.slice(-10)}`;
+              {history.map((item, index) => {
+                // 수정: 완전히 고유한 itemId 생성 (인덱스 추가로 중복 완전 방지)
+                const baseId = item._id?.toString() || `${item.type}-${item.userId}-${Date.parse(item.createdAt)}`;
+                const itemId = `${baseId}-idx${index}`;
                 const isDownloading = downloadingIds.has(itemId);
                 const downloadStatus = downloadStatuses.get(itemId);
                 
