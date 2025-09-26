@@ -1,7 +1,7 @@
 import type { ImageFile } from '../types';
 
 // Netlify Function 프록시 사용
-const USE_NETLIFY_PROXY = true; // Netlify Functions 사용
+const USE_NETLIFY_PROXY = true;
 const PROXY_URL = '/.netlify/functions/kling-proxy';
 
 interface KlingCreateTaskResponse {
@@ -42,24 +42,145 @@ interface KlingQueryTaskResponse {
   };
 }
 
-// 🆕 영상 길이별 필요 크레딧 계산
+// 영상 길이별 필요 크레딧 계산
 export const getRequiredCredits = (duration: number): number => {
   if (duration <= 5) {
-    return 2; // 5초 이하: 2회 차감
+    return 2;
   } else if (duration <= 10) {
-    return 3; // 10초 이하: 3회 차감
+    return 3;
   } else {
-    return Math.ceil(duration / 5) + 1; // 그 이상: 5초당 1회씩 추가
+    return Math.ceil(duration / 5) + 1;
   }
 };
 
+// 🆕 URL 유효성 검증 함수
+export const validateVideoUrl = async (videoUrl: string): Promise<{ isValid: boolean; error?: string }> => {
+  try {
+    console.log('🔍 비디오 URL 검증:', videoUrl.substring(0, 80) + '...');
+    
+    // HEAD 요청으로 URL 확인 (데이터 다운로드 없이)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10초 타임아웃
+    
+    try {
+      const response = await fetch(videoUrl, {
+        method: 'HEAD',
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; VideoValidator/1.0)',
+          'Accept': 'video/*'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const contentType = response.headers.get('content-type');
+        console.log('✅ URL 유효 - Content-Type:', contentType);
+        return { isValid: true };
+      } else {
+        console.warn('⚠️ URL 응답 오류:', response.status, response.statusText);
+        return { 
+          isValid: false, 
+          error: `HTTP ${response.status}: ${response.statusText}` 
+        };
+      }
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      throw fetchError;
+    }
+    
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('❌ URL 검증 타임아웃');
+      return { isValid: false, error: 'Request timeout' };
+    }
+    
+    console.error('❌ URL 검증 실패:', error);
+    return { 
+      isValid: false, 
+      error: error instanceof Error ? error.message : 'Network error' 
+    };
+  }
+};
+
+// 🆕 URL 복구 시도 함수
+export const attemptUrlRecovery = async (originalUrl: string, taskId?: string): Promise<string | null> => {
+  try {
+    console.log('🔧 URL 복구 시도 시작...');
+    
+    // 1. URL에서 [...truncated] 제거
+    let cleanedUrl = originalUrl.replace('...[truncated]', '');
+    
+    // 2. URL이 완전하지 않은 경우 복구 시도
+    if (!cleanedUrl.endsWith('.mp4')) {
+      cleanedUrl += '.mp4';
+    }
+    
+    const urlsToTry = [cleanedUrl];
+    
+    // 3. taskId가 있으면 추가 URL 패턴 시도
+    if (taskId) {
+      const baseUrls = [
+        `https://v15-kling.klingai.com/bs2/upload-ylab-stunt-sgp/se/stream_lake_m2v_img2video_v21_std_v36_v2/${taskId}_raw_video.mp4`,
+        `https://v15-kling.klingai.com/bs2/upload/${taskId}.mp4`,
+        `https://v15-kling.klingai.com/bs2/${taskId}_video.mp4`
+      ];
+      urlsToTry.push(...baseUrls);
+    }
+    
+    // 4. 각 URL 시도
+    for (const testUrl of urlsToTry) {
+      console.log('🔄 URL 테스트:', testUrl.substring(0, 80) + '...');
+      
+      const validation = await validateVideoUrl(testUrl);
+      if (validation.isValid) {
+        console.log('✅ URL 복구 성공:', testUrl);
+        return testUrl;
+      } else {
+        console.log('❌ URL 실패:', validation.error);
+      }
+    }
+    
+    console.warn('❌ 모든 URL 복구 시도 실패');
+    return null;
+    
+  } catch (error) {
+    console.error('❌ URL 복구 중 오류:', error);
+    return null;
+  }
+};
+
+// 🆕 비디오 다운로드 및 임시 저장 (옵션)
+export const downloadAndStoreVideo = async (videoUrl: string): Promise<string | null> => {
+  try {
+    console.log('📥 비디오 다운로드 및 임시 저장 시도...');
+    
+    const response = await fetch(videoUrl);
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.status}`);
+    }
+    
+    const blob = await response.blob();
+    const tempUrl = URL.createObjectURL(blob);
+    
+    console.log('✅ 임시 URL 생성 완료');
+    return tempUrl;
+    
+  } catch (error) {
+    console.error('❌ 비디오 다운로드 실패:', error);
+    return null;
+  }
+};
+
+// 메인 비디오 생성 함수 (URL 검증 강화)
 export const generateVideoWithKling = async (
   image: ImageFile,
   prompt: string,
   duration: number = 5
 ): Promise<string> => {
   try {
-    // Base64 문자열에서 data: 접두사 제거
+    // Base64 정리
     let cleanBase64 = image.base64;
     if (cleanBase64.includes(',')) {
       cleanBase64 = cleanBase64.split(',')[1];
@@ -71,14 +192,13 @@ export const generateVideoWithKling = async (
       }
     }
 
-    console.log('🎬 Kling 비디오 생성 시작 (Netlify Proxy)');
+    console.log('🎬 Kling 비디오 생성 시작 (URL 검증 강화)');
     console.log('- Prompt:', prompt);
     console.log('- Duration:', duration, '초');
     console.log('- Required Credits:', getRequiredCredits(duration), '회');
     console.log('- Image base64 length:', cleanBase64.length);
 
     if (USE_NETLIFY_PROXY) {
-      // Netlify Function을 통해 요청
       const createTaskResponse = await fetch(PROXY_URL, {
         method: 'POST',
         headers: {
@@ -88,7 +208,7 @@ export const generateVideoWithKling = async (
           method: 'POST',
           endpoint: '',
           body: {
-            model_name: 'kling-v2-1',  // 일반 버전 사용
+            model_name: 'kling-v2-1',
             mode: 'std',
             duration: duration.toString(),
             image: cleanBase64,
@@ -118,16 +238,16 @@ export const generateVideoWithKling = async (
       const taskId = createData.data.task_id;
       console.log('✅ 비디오 작업 생성 완료. Task ID:', taskId);
 
-      return await pollVideoStatus(taskId);
+      // 🆕 URL 검증이 포함된 폴링
+      return await pollVideoStatusWithValidation(taskId);
     } else {
-      // 직접 API 호출 (CORS 에러 발생 가능)
-      throw new Error('직접 API 호출은 CORS 정책으로 차단됩니다. USE_NETLIFY_PROXY를 true로 설정하세요.');
+      throw new Error('직접 API 호출은 CORS 정책으로 차단됩니다.');
     }
   } catch (error) {
     console.error('❌ Kling API 호출 중 오류:', error);
     
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
-      throw new Error('네트워크 오류가 발생했습니다. Netlify Function이 배포되었는지 확인하세요.');
+      throw new Error('네트워크 오류가 발생했습니다. Netlify Function을 확인하세요.');
     }
     
     if (error instanceof Error) {
@@ -137,15 +257,14 @@ export const generateVideoWithKling = async (
   }
 };
 
-// 비디오 생성 상태를 주기적으로 확인
-const pollVideoStatus = async (taskId: string, maxAttempts: number = 60): Promise<string> => {
-  const pollInterval = 5000; // 5초마다 확인
+// 🆕 URL 검증이 포함된 폴링
+const pollVideoStatusWithValidation = async (taskId: string, maxAttempts: number = 60): Promise<string> => {
+  const pollInterval = 5000;
   let attempts = 0;
 
   while (attempts < maxAttempts) {
     try {
       if (USE_NETLIFY_PROXY) {
-        // Netlify Function을 통해 상태 확인
         const response = await fetch(PROXY_URL, {
           method: 'POST',
           headers: {
@@ -176,10 +295,44 @@ const pollVideoStatus = async (taskId: string, maxAttempts: number = 60): Promis
 
         if (status === 'succeed') {
           if (data.data.task_result && data.data.task_result.videos.length > 0) {
-            const videoUrl = data.data.task_result.videos[0].url;
-            console.log('✅ 비디오 생성 완료!');
-            console.log('📹 비디오 URL:', videoUrl);
-            return videoUrl;
+            const originalVideoUrl = data.data.task_result.videos[0].url;
+            console.log('🎉 비디오 생성 완료!');
+            console.log('📹 원본 URL:', originalVideoUrl);
+            
+            // 🆕 URL 검증 및 복구 프로세스
+            console.log('🔍 URL 유효성 검증 시작...');
+            
+            const validation = await validateVideoUrl(originalVideoUrl);
+            
+            if (validation.isValid) {
+              console.log('✅ URL 검증 성공 - 바로 반환');
+              return originalVideoUrl;
+            } else {
+              console.warn('⚠️ URL 검증 실패, 복구 시도:', validation.error);
+              
+              // URL 복구 시도
+              const recoveredUrl = await attemptUrlRecovery(originalVideoUrl, taskId);
+              
+              if (recoveredUrl) {
+                console.log('✅ URL 복구 성공:', recoveredUrl);
+                return recoveredUrl;
+              } else {
+                console.error('❌ URL 복구 실패');
+                
+                // 🆕 최후 수단: 비디오 다운로드 후 임시 URL 생성
+                console.log('📥 최후 수단: 비디오 다운로드 시도...');
+                const tempUrl = await downloadAndStoreVideo(originalVideoUrl);
+                
+                if (tempUrl) {
+                  console.log('✅ 임시 URL 생성 성공');
+                  return tempUrl;
+                } else {
+                  // 그래도 원본 URL 반환 (사용자가 직접 시도할 수 있도록)
+                  console.warn('⚠️ 모든 복구 방법 실패, 원본 URL 반환');
+                  return originalVideoUrl;
+                }
+              }
+            }
           } else {
             throw new Error('비디오 URL을 찾을 수 없습니다.');
           }
@@ -204,7 +357,7 @@ const pollVideoStatus = async (taskId: string, maxAttempts: number = 60): Promis
   throw new Error('비디오 생성 시간 초과 - 5분 이상 소요되고 있습니다.');
 };
 
-// 헤어살롱 전문 모션 템플릿 (영어 프롬프트)
+// 기존 템플릿들 유지
 export const motionTemplates = {
   // 헤어 모델 포즈
   hairModelPose1: 'Professional hair model slowly turning head left and right to showcase hairstyle from multiple angles with confident expression',
@@ -242,4 +395,21 @@ export const cameraMovements = {
   forward_up: 'Zoom in and pan up',
   right_turn_forward: 'Rotate right and advance',
   left_turn_forward: 'Rotate left and advance'
+};
+
+// 🆕 URL 문제 진단 함수 (디버깅용)
+export const diagnoseVideoUrl = async (videoUrl: string): Promise<void> => {
+  console.log('🔍 === URL 진단 시작 ===');
+  console.log('URL:', videoUrl);
+  console.log('길이:', videoUrl.length);
+  console.log('잘림 여부:', videoUrl.includes('...[truncated]'));
+  console.log('확장자:', videoUrl.split('.').pop());
+  
+  const validation = await validateVideoUrl(videoUrl);
+  console.log('유효성:', validation.isValid ? '✅ 유효' : '❌ 무효');
+  if (!validation.isValid) {
+    console.log('오류:', validation.error);
+  }
+  
+  console.log('🔍 === URL 진단 완료 ===');
 };
