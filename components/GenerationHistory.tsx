@@ -268,7 +268,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
   };
 
   const handleDownload = async (item: GenerationResult) => {
-    const itemId = item._id || `${item.userId}-${item.createdAt}`;
+    // 수정: ObjectId를 문자열로 안전하게 변환
+    const itemId = (item._id?.toString() || `${item.userId}-${item.createdAt}`);
     
     if (downloadingIds.has(itemId)) {
       return; // 이미 다운로드 중
@@ -281,7 +282,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
       if (item.type === 'image') {
         console.log('🖼️ [내 작품] 이미지 다운로드 시작:', item.resultUrl);
         
-        // 파일명 생성
+        // 파일명 생성 - 안전한 문자열 처리
         const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
         const filename = `faceswap-${timestamp}-${itemId.slice(-6)}.jpg`;
         
@@ -304,7 +305,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
       } else if (item.type === 'video') {
         console.log('🎥 [내 작품] 비디오 다운로드 시작:', item.resultUrl.substring(0, 80) + '...');
         
-        // 파일명 생성
+        // 파일명 생성 - 안전한 문자열 처리
         const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
         const filename = `hairgator-video-${timestamp}-${itemId.slice(-6)}.mp4`;
         
@@ -422,7 +423,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {history.map((item) => {
-                const itemId = item._id || `${item.userId}-${item.createdAt}`;
+                // 수정: ObjectId를 문자열로 안전하게 변환
+                const itemId = (item._id?.toString() || `${item.userId}-${item.createdAt}`);
                 const isDownloading = downloadingIds.has(itemId);
                 const downloadStatus = downloadStatuses.get(itemId);
                 
@@ -589,7 +591,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           {/* 개선된 다운로드 시스템 안내 */}
           <div className="mt-2 p-2 bg-blue-600/20 rounded-lg">
             <p className="text-xs text-blue-300 text-center">
-              🎬 클링 영상 URL 자동 복구 + 프록시 다운로드 지원
+              🎬 클링 영상 URL 자동 복구 + 프록시 다운로드 지원 + itemId 타입 에러 해결
             </p>
           </div>
         </div>
