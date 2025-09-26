@@ -652,9 +652,9 @@ export const getGenerationHistory = async (userId: string, limit: number = 50): 
         // 클링 영상 URL 복구
         const recoveredUrl = cleanKlingUrl(item.resultUrl);
         console.log('🎬 생성 내역에서 클링 URL 복구:', {
-          itemId: item._id?.substring(0, 8) + '...',
-          원본: item.resultUrl.substring(0, 50) + '...',
-          복구됨: recoveredUrl.substring(0, 50) + '...'
+          itemId: (item._id || 'unknown').toString().substring(0, 8) + '...',
+          원본: (item.resultUrl || '').substring(0, 50) + '...',
+          복구됨: (recoveredUrl || '').substring(0, 50) + '...'
         });
         
         return {
