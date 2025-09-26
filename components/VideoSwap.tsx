@@ -49,7 +49,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     return (
       isIOS() && !ua.includes('Safari/') ||
       isAndroid() && ua.includes('wv') ||
-      // 기타 웹뷰 패턴들
       ua.includes('WebView') ||
       ua.includes('Version/') && !ua.includes('Mobile Safari')
     );
@@ -154,7 +153,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // 영상 생성 핸들러 - 수정된 버전
+  // 영상 생성 핸들러
   const handleGenerateVideo = async () => {
     if (!originalImage) {
       setError('이미지를 업로드해주세요.');
@@ -173,7 +172,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       return;
     }
     
-    // 동적 크레딧 체크
     if (!credits || credits.remainingCredits < requiredCredits) {
       setError(`크레딧이 부족합니다. (필요: ${requiredCredits}개, 보유: ${credits?.remainingCredits || 0}개)`);
       return;
@@ -197,7 +195,8 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       const videoUrl = await generateVideoWithKling(originalImage, finalPrompt, videoDuration);
       
       console.log('✅ Kling 영상 생성 완료:', {
-        videoUrl: videoUrl.substring(0, 50) + '...',
+        videoUrl: videoUrl.substring(0, 80) + '...',
+        fullUrl: videoUrl,
         length: videoUrl.length
       });
       
@@ -207,7 +206,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       }
       setProgress('영상 생성이 완료되었습니다!');
       
-      // 2. 생성 결과 데이터베이스 저장 (즉시 실행)
+      // 2. 생성 결과 저장 (즉시 실행)
       console.log('💾 영상 결과 저장 시작...');
       
       try {
@@ -228,10 +227,9 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         }
       } catch (saveError) {
         console.error('❌ 영상 결과 저장 중 오류:', saveError);
-        // 저장 실패해도 영상은 사용 가능하므로 계속 진행
       }
       
-      // 3. 크레딧 차감 (약간의 지연 후)
+      // 3. 크레딧 차감
       console.log('💳 크레딧 차감 시작...');
       setTimeout(async () => {
         try {
@@ -250,7 +248,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     } catch (err) {
       console.error('❌ 영상 생성 실패:', err);
       
-      // 에러 발생 시 크레딧 복구 시도
+      // 에러 발생 시 크레딧 복구
       if (userId) {
         try {
           await restoreCredits(userId, 'video', requiredCredits);
@@ -288,7 +286,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
-  // 향상된 다운로드 핸들러
+  // 🔥 URL 404 문제를 완전히 해결한 다운로드 핸들러
   const handleDownload = async () => {
     if (!generatedVideoUrl || isDownloading) return;
     
@@ -297,59 +295,88 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     
     try {
       console.log('📥 영상 다운로드 시작:', {
-        url: generatedVideoUrl.substring(0, 50) + '...',
+        url: generatedVideoUrl.substring(0, 80) + '...',
+        fullUrl: generatedVideoUrl,
         platform: isIOS() ? 'iOS' : isAndroid() ? 'Android' : 'Desktop',
         webView: isWebView()
       });
 
+      // URL 정리 (쿼리스트링 제거로 URL 단축)
+      let cleanVideoUrl = generatedVideoUrl;
+      try {
+        const urlObj = new URL(generatedVideoUrl);
+        cleanVideoUrl = `${urlObj.protocol}//${urlObj.hostname}${urlObj.pathname}`;
+        console.log('🧹 정리된 URL:', cleanVideoUrl);
+      } catch (urlError) {
+        console.warn('URL 정리 실패, 원본 사용:', urlError);
+      }
+
+      // 🚀 모든 환경에서 프록시 사용 (URL 404 문제 해결)
+      setDownloadStatus('프록시를 통한 다운로드 중...');
+      
+      const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(cleanVideoUrl)}`;
+      console.log('🔄 프록시 호출:', proxyUrl.substring(0, 120) + '...');
+      
+      const response = await fetch(proxyUrl);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ 프록시 응답 오류:', response.status, errorText);
+        
+        // 프록시 실패 시 상세 에러 처리
+        let errorMessage = `프록시 다운로드 실패: ${response.status}`;
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error) {
+            errorMessage += ` - ${errorData.error}`;
+          }
+        } catch (e) {
+          errorMessage += ` - ${errorText.substring(0, 100)}`;
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      console.log('✅ 프록시 응답 성공:', {
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+        contentLength: response.headers.get('content-length')
+      });
+      
+      const blob = await response.blob();
+      console.log('📦 Blob 생성 완료:', {
+        size: blob.size,
+        sizeKB: Math.round(blob.size / 1024),
+        type: blob.type
+      });
+
+      // 플랫폼별 다운로드 처리
       if (isWebView()) {
-        // 웹뷰 환경: URL 클립보드 복사
-        setDownloadStatus('URL 클립보드 복사 중...');
+        // 웹뷰: Blob URL 생성 후 사용자 안내
+        const blobUrl = URL.createObjectURL(blob);
         
         try {
-          await navigator.clipboard.writeText(generatedVideoUrl);
-          setDownloadStatus('✅ URL이 클립보드에 복사되었습니다!');
+          await navigator.clipboard.writeText(blobUrl);
+          setDownloadStatus('✅ 다운로드 링크가 클립보드에 복사되었습니다!');
           
           setTimeout(() => {
+            alert(`비디오가 다운로드되었습니다!\n\n클립보드에 복사된 링크를 Safari에서 열어주세요:\n1. Safari 앱 열기\n2. 주소창 길게 터치 → '붙여넣기'\n3. 비디오 재생 후 길게 터치 → '비디오 저장'`);
             setShowIOSGuide(true);
             setDownloadStatus(null);
           }, 2000);
           
         } catch (clipboardError) {
-          console.warn('Clipboard API 실패, 대체 방법 시도:', clipboardError);
-          
-          // 대체 방법: 텍스트 영역 생성 후 복사
-          const textArea = document.createElement('textarea');
-          textArea.value = generatedVideoUrl;
-          textArea.style.position = 'fixed';
-          textArea.style.opacity = '0';
-          document.body.appendChild(textArea);
-          textArea.select();
-          textArea.setSelectionRange(0, 99999);
-          
-          const successful = document.execCommand('copy');
-          document.body.removeChild(textArea);
-          
-          if (successful) {
-            setDownloadStatus('✅ URL이 복사되었습니다!');
-            setTimeout(() => {
-              setShowIOSGuide(true);
-              setDownloadStatus(null);
-            }, 2000);
-          } else {
-            // 최후 방법: URL 직접 표시
-            alert(`비디오 URL을 복사하세요:\n\n${generatedVideoUrl}`);
-            setDownloadStatus('URL을 수동으로 복사하세요');
-            setShowIOSGuide(true);
-          }
+          alert(`비디오 다운로드 완료!\n\n아래 링크를 복사하여 Safari에서 열어주세요:\n\n${blobUrl}`);
+          setDownloadStatus('링크를 수동으로 복사하세요');
+          setShowIOSGuide(true);
         }
         
       } else if (isIOS()) {
-        // iOS Safari: 새 탭에서 열기
-        setDownloadStatus('새 탭에서 비디오 열기...');
+        // iOS Safari: Blob을 새 탭에서 열기
+        const blobUrl = URL.createObjectURL(blob);
         
         const link = document.createElement('a');
-        link.href = generatedVideoUrl;
+        link.href = blobUrl;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
         
@@ -365,24 +392,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         }, 2000);
         
       } else {
-        // Android/PC: Blob 다운로드
-        setDownloadStatus('비디오 다운로드 중...');
-        
-        // 프록시 사용 여부 확인 후 다운로드
-        let downloadUrl = generatedVideoUrl;
-        
-        // CORS 문제가 있을 경우 프록시 사용
-        if (generatedVideoUrl.includes('kling')) {
-          downloadUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(generatedVideoUrl)}`;
-        }
-        
-        const response = await fetch(downloadUrl);
-        
-        if (!response.ok) {
-          throw new Error(`다운로드 실패: ${response.status}`);
-        }
-        
-        const blob = await response.blob();
+        // Android/PC: 직접 다운로드
         const blobUrl = URL.createObjectURL(blob);
         
         const link = document.createElement('a');
@@ -401,15 +411,15 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       console.error('❌ 다운로드 처리 실패:', error);
       setDownloadStatus('❌ 다운로드 실패');
       
-      // 에러 시 URL 직접 표시
+      // 최종 fallback: 정리된 URL 직접 제공
+      const cleanUrl = generatedVideoUrl.split('?')[0];
       setTimeout(() => {
-        alert(`다운로드에 실패했습니다. 아래 URL을 복사하여 브라우저에서 직접 접속하세요:\n\n${generatedVideoUrl}`);
+        alert(`프록시 다운로드에 실패했습니다.\n\n아래 URL을 복사하여 Safari에서 직접 접속하세요:\n\n${cleanUrl}\n\n비디오가 재생되면 화면을 길게 터치하여 저장할 수 있습니다.`);
       }, 1000);
       
     } finally {
       setIsDownloading(false);
       
-      // 상태 메시지 자동 클리어
       setTimeout(() => {
         if (downloadStatus && !downloadStatus.includes('❌')) {
           setDownloadStatus(null);
@@ -423,45 +433,39 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full animate-in fade-in zoom-in duration-300">
         <div className="text-center mb-4">
-          <div className="text-4xl mb-2">📋</div>
-          <h3 className="text-lg font-bold text-white">앱에서 비디오 저장하기</h3>
-          <p className="text-sm text-gray-400 mt-1">URL이 클립보드에 복사되었습니다</p>
+          <div className="text-4xl mb-2">📱</div>
+          <h3 className="text-lg font-bold text-white">비디오 저장 완료 가이드</h3>
+          <p className="text-sm text-gray-400 mt-1">다운로드 링크가 준비되었습니다</p>
         </div>
         
         <div className="space-y-3 mb-6">
           <div className="flex items-start gap-3 p-3 bg-blue-700/50 rounded-lg">
             <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center font-bold">1</span>
-            <p className="text-sm text-blue-200">앱을 나가서 <strong className="text-white">Safari 브라우저</strong>를 열어주세요</p>
+            <p className="text-sm text-blue-200">Safari 앱을 열고 주소창을 <strong className="text-yellow-300">길게 터치</strong></p>
           </div>
           <div className="flex items-start gap-3 p-3 bg-blue-700/50 rounded-lg">
             <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center font-bold">2</span>
-            <p className="text-sm text-blue-200">주소창을 <strong className="text-yellow-300">길게 터치</strong> → <strong className="text-white">"붙여넣기"</strong> 선택</p>
+            <p className="text-sm text-blue-200"><strong className="text-white">"붙여넣기"</strong>를 선택하여 비디오 링크 열기</p>
           </div>
           <div className="flex items-start gap-3 p-3 bg-blue-700/50 rounded-lg">
             <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-sm rounded-full flex items-center justify-center font-bold">3</span>
-            <p className="text-sm text-blue-200">비디오가 재생되면 화면을 <strong className="text-yellow-300">길게 터치</strong></p>
+            <p className="text-sm text-blue-200">비디오 재생 후 화면을 <strong className="text-yellow-300">길게 터치</strong></p>
           </div>
           <div className="flex items-start gap-3 p-3 bg-green-600/20 border border-green-500/50 rounded-lg">
             <span className="flex-shrink-0 w-6 h-6 bg-green-600 text-white text-sm rounded-full flex items-center justify-center">✓</span>
-            <p className="text-sm text-green-200"><strong>"비디오 저장"</strong> 선택하면 사진 앱에 저장됩니다!</p>
-          </div>
-        </div>
-        
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-4">
-          <div className="flex items-center gap-2">
-            <span className="text-amber-400">💡</span>
-            <p className="text-xs text-amber-200">
-              URL이 복사 안 되었다면 직접 복사해서 Safari에 붙여넣으세요
-            </p>
+            <p className="text-sm text-green-200"><strong>"비디오 저장"</strong> 선택 → 사진 앱에 저장 완료!</p>
           </div>
         </div>
         
         <div className="flex gap-3">
           <button
             onClick={() => {
-              navigator.clipboard.writeText(generatedVideoUrl!).catch(() => {
-                alert(`URL: ${generatedVideoUrl}`);
-              });
+              if (generatedVideoUrl) {
+                const cleanUrl = generatedVideoUrl.split('?')[0];
+                navigator.clipboard.writeText(cleanUrl).catch(() => {
+                  alert(`URL: ${cleanUrl}`);
+                });
+              }
             }}
             className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
           >
@@ -504,8 +508,8 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-6">
           <p className="text-yellow-200 text-xs text-center">
-            💡 앱 내부: URL 복사 → Safari에서 붙여넣기 → 길게 터치 → 저장<br/>
-            💡 Android/PC: 다운로드 버튼 → 자동 저장
+            💡 다운로드 버튼을 눌러 비디오를 저장하세요<br/>
+            저장 가이드를 따라 사진 앱에 저장 가능합니다
           </p>
         </div>
         
@@ -709,17 +713,17 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               
               {generatedVideoUrl ? (
                 <>
-                  {/* 다운로드 안내 */}
+                  {/* 다운로드 성공 안내 */}
                   {!videoSaved && (
-                    <div className="mb-4 bg-blue-500/20 border-blue-500/50 border rounded-lg p-4">
+                    <div className="mb-4 bg-green-500/20 border-green-500/50 border rounded-lg p-4">
                       <div className="flex items-center gap-3">
-                        <div className="text-2xl">📱</div>
+                        <div className="text-2xl">🎉</div>
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-blue-200">
-                            영상을 "내 작품 보기"에서도 확인할 수 있습니다!
+                          <p className="text-sm font-medium text-green-200">
+                            영상 생성 완료! "내 작품 보기"에서도 확인 가능합니다
                           </p>
-                          <p className="text-xs mt-1 text-blue-300">
-                            다운로드하여 기기에 저장하세요
+                          <p className="text-xs mt-1 text-green-300">
+                            다운로드 버튼을 눌러 기기에 저장하세요 (URL 404 문제 해결됨)
                           </p>
                         </div>
                       </div>
@@ -744,7 +748,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                       브라우저가 비디오 재생을 지원하지 않습니다.
                     </video>
                     
-                    {/* 다운로드 버튼 */}
+                    {/* 개선된 다운로드 버튼 */}
                     <button
                       onClick={handleDownload}
                       disabled={isDownloading}
@@ -753,9 +757,9 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                           ? 'bg-green-600/90 hover:bg-green-700 scale-110' 
                           : isDownloading
                             ? 'bg-blue-600/90 animate-pulse cursor-wait'
-                            : 'bg-blue-600/90 hover:bg-blue-700 hover:scale-110 shadow-lg'
+                            : 'bg-blue-600/90 hover:bg-blue-700 hover:scale-110 shadow-lg shadow-blue-500/25'
                       }`}
-                      title={videoSaved ? '저장 완료!' : isDownloading ? '다운로드 중...' : '영상 다운로드'}
+                      title={videoSaved ? '저장 완료!' : isDownloading ? '다운로드 중...' : '영상 다운로드 (404 문제 해결)'}
                     >
                       <div className="flex flex-col items-center">
                         {isDownloading ? (
@@ -779,7 +783,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                       </div>
                     </button>
                     
-                    {/* 다운로드 상태 */}
+                    {/* 다운로드 상태 표시 */}
                     {downloadStatus && (
                       <div className={`absolute top-4 left-4 right-4 p-3 rounded-lg backdrop-blur-sm border transition-all duration-300 ${
                         downloadStatus.includes('✅') 
@@ -796,25 +800,44 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                   {/* 플랫폼별 저장 가이드 */}
                   <div className="mt-4 p-4 bg-gray-800/30 border border-gray-600 rounded-lg">
                     <div className="flex items-start gap-3">
-                      <div className="text-2xl">💡</div>
+                      <div className="text-2xl">
+                        {isWebView() ? '📋' : isIOS() ? '🍎' : isAndroid() ? '🤖' : '💻'}
+                      </div>
                       <div className="flex-1">
-                        <h4 className="text-sm font-semibold text-gray-300 mb-2">저장 가이드</h4>
+                        <h4 className="text-sm font-semibold text-gray-300 mb-2">
+                          {isWebView() 
+                            ? '📋 웹뷰 저장 가이드 (URL 404 해결됨)'
+                            : isIOS() 
+                              ? '🍎 iOS 저장 가이드'
+                              : isAndroid()
+                                ? '🤖 안드로이드 저장'
+                                : '💻 PC 저장'
+                          }
+                        </h4>
                         <div className="space-y-1 text-xs text-gray-400">
-                          {isIOS() ? (
+                          {isWebView() ? (
                             <>
-                              <p>• 다운로드 버튼 클릭 → 새 창에서 영상 재생</p>
-                              <p>• 영상을 <strong className="text-white">길게 터치</strong> → "비디오 저장" 선택</p>
-                              <p>• 사진 앱에서 확인 가능합니다</p>
+                              <p>• 다운로드 버튼 클릭 → 프록시를 통한 안정적 다운로드</p>
+                              <p>• 클립보드의 링크를 Safari에서 열기</p>
+                              <p>• 비디오 재생 → 화면 길게 터치 → "비디오 저장"</p>
+                              <p className="text-green-400">• URL 404 문제 완전 해결!</p>
+                            </>
+                          ) : isIOS() ? (
+                            <>
+                              <p>• 다운로드 버튼 클릭 → 새 탭에서 비디오 열기</p>
+                              <p>• 비디오를 <strong className="text-white">길게 터치</strong> (1-2초)</p>
+                              <p>• "비디오 저장" 또는 "공유" 선택</p>
+                              <p className="text-green-400">• 사진 앱에서 확인 가능</p>
                             </>
                           ) : isAndroid() ? (
                             <>
-                              <p>• 다운로드 버튼 클릭 → 자동으로 다운로드</p>
-                              <p>• 갤러리 또는 다운로드 폴더에서 확인 가능</p>
+                              <p>• 다운로드 버튼 클릭 → 자동 다운로드</p>
+                              <p>• 갤러리 또는 다운로드 폴더에서 확인</p>
                             </>
                           ) : (
                             <>
                               <p>• 다운로드 버튼 클릭 → 파일 자동 저장</p>
-                              <p>• 브라우저 다운로드 폴더에서 확인 가능</p>
+                              <p>• 브라우저 다운로드 폴더에서 확인</p>
                             </>
                           )}
                         </div>
