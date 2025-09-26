@@ -227,8 +227,20 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           };
         }
       } else if (isIOS) {
-        // iOS: 새 탭에서 비디오 열기
-        window.open(cleanUrl, '_blank');
+        // iOS: 새 탭에서 비디오 열기 + 실제 다운로드 확인
+        const newWindow = window.open(cleanUrl, '_blank');
+        
+        if (!newWindow) {
+          throw new Error('팝업이 차단되었습니다. Safari 설정에서 팝업을 허용해주세요.');
+        }
+        
+        // 실제 창이 열렸는지 확인
+        setTimeout(() => {
+          if (newWindow.closed) {
+            console.warn('비디오 창이 일찍 닫혔습니다.');
+          }
+        }, 1000);
+        
         return { 
           success: true, 
           message: '새 탭에서 비디오를 열었습니다. 길게 터치하여 저장하세요.' 
@@ -268,8 +280,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
   };
 
   const handleDownload = async (item: GenerationResult) => {
-    // 수정: ObjectId를 문자열로 안전하게 변환
-    const itemId = (item._id?.toString() || `${item.userId}-${item.createdAt}`);
+    // 수정: 고유한 itemId 생성 (중복 방지)
+    const itemId = item._id?.toString() || `${item.type}-${item.userId}-${Date.parse(item.createdAt)}-${item.resultUrl.slice(-10)}`;
     
     if (downloadingIds.has(itemId)) {
       return; // 이미 다운로드 중
@@ -423,8 +435,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {history.map((item) => {
-                // 수정: ObjectId를 문자열로 안전하게 변환
-                const itemId = (item._id?.toString() || `${item.userId}-${item.createdAt}`);
+                // 수정: 고유한 itemId 생성 (중복 방지)
+                const itemId = item._id?.toString() || `${item.type}-${item.userId}-${Date.parse(item.createdAt)}-${item.resultUrl.slice(-10)}`;
                 const isDownloading = downloadingIds.has(itemId);
                 const downloadStatus = downloadStatuses.get(itemId);
                 
@@ -452,29 +464,64 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                             className="w-full h-full object-cover"
                             muted
                             loop
-                            onMouseEnter={(e) => {
+                            playsInline
+                            onTouchStart={(e) => {
+                              // iPhone/iPad용 터치 이벤트
                               try {
-                                (e.target as HTMLVideoElement).play();
+                                const video = e.target as HTMLVideoElement;
+                                if (video.paused) {
+                                  video.play();
+                                } else {
+                                  video.pause();
+                                }
                               } catch (err) {
-                                console.warn('Video preview play failed:', err);
+                                console.warn('Video touch play failed:', err);
+                              }
+                            }}
+                            onClick={(e) => {
+                              // 클릭/터치 이벤트 (iOS 호환)
+                              try {
+                                const video = e.target as HTMLVideoElement;
+                                if (video.paused) {
+                                  video.play();
+                                } else {
+                                  video.pause();
+                                }
+                              } catch (err) {
+                                console.warn('Video click play failed:', err);
+                              }
+                            }}
+                            onMouseEnter={(e) => {
+                              // 데스크톱용 마우스 호버 (기존 유지)
+                              if (!(/iPad|iPhone|iPod/.test(navigator.userAgent))) {
+                                try {
+                                  (e.target as HTMLVideoElement).play();
+                                } catch (err) {
+                                  console.warn('Video preview play failed:', err);
+                                }
                               }
                             }}
                             onMouseLeave={(e) => {
-                              try {
-                                (e.target as HTMLVideoElement).pause();
-                              } catch (err) {
-                                console.warn('Video preview pause failed:', err);
+                              // 데스크톱용 마우스 나감 (기존 유지)  
+                              if (!(/iPad|iPhone|iPod/.test(navigator.userAgent))) {
+                                try {
+                                  (e.target as HTMLVideoElement).pause();
+                                } catch (err) {
+                                  console.warn('Video preview pause failed:', err);
+                                }
                               }
                             }}
                             onError={(e) => {
                               console.warn('Video thumbnail load failed:', {
+                                itemId: itemId,
                                 originalUrl: item.resultUrl,
                                 cleanedUrl: cleanKlingUrl(item.resultUrl),
-                                wasRecovered: item.resultUrl.includes('...[truncated]')
+                                wasRecovered: item.resultUrl.includes('...[truncated]'),
+                                userAgent: navigator.userAgent.substring(0, 50) + '...'
                               });
                             }}
                           />
-                          <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                             <div className="w-12 h-12 bg-black/50 rounded-full flex items-center justify-center">
                               <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M8 5v14l11-7z"/>
@@ -591,7 +638,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           {/* 개선된 다운로드 시스템 안내 */}
           <div className="mt-2 p-2 bg-blue-600/20 rounded-lg">
             <p className="text-xs text-blue-300 text-center">
-              🎬 클링 영상 URL 자동 복구 + 프록시 다운로드 지원 + itemId 타입 에러 해결
+              🎬 클링 영상 URL 자동 복구 + itemId 중복 문제 해결 + iOS 터치 이벤트 추가
             </p>
           </div>
         </div>
