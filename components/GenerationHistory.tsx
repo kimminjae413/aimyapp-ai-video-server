@@ -47,6 +47,165 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     }
   };
 
+  // 🆕 클링 URL 정리 함수 (쿼리스트링 제거)
+  const cleanKlingUrl = (url: string): string => {
+    if (!url || !url.includes('klingai.com')) return url;
+    
+    try {
+      // ?x-kcdn-pid= 같은 쿼리스트링 제거
+      const cleanUrl = url.split('?')[0];
+      console.log('🧹 [내 작품] URL 정리:', {
+        original: url.substring(0, 80) + '...',
+        cleaned: cleanUrl.substring(0, 80) + '...',
+        removed: url.length - cleanUrl.length + ' chars'
+      });
+      return cleanUrl;
+    } catch (error) {
+      console.error('URL 정리 실패:', error);
+      return url;
+    }
+  };
+
+  // 🆕 프록시를 통한 안전한 비디오 다운로드 (기존 클링 URL 처리)
+  const downloadVideoViaProxy = async (originalUrl: string, filename: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      console.log('📹 [내 작품] 프록시 비디오 다운로드 시작:', {
+        originalUrl: originalUrl.substring(0, 80) + '...',
+        filename
+      });
+
+      // 1. 클링 URL 정리 (쿼리스트링 제거)
+      const cleanUrl = cleanKlingUrl(originalUrl);
+      
+      // 2. 프록시 URL 인코딩
+      const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(cleanUrl)}`;
+      
+      console.log('🔗 [내 작품] 프록시 호출:', {
+        proxyUrl: proxyUrl.substring(0, 100) + '...',
+        method: 'GET with proxy'
+      });
+
+      // 3. 프록시를 통한 비디오 다운로드
+      const response = await fetch(proxyUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'video/mp4,video/*,*/*'
+        }
+      });
+
+      console.log('📊 [내 작품] 프록시 응답:', {
+        status: response.status,
+        ok: response.ok,
+        contentType: response.headers.get('content-type'),
+        contentLength: response.headers.get('content-length')
+      });
+
+      if (!response.ok) {
+        // 프록시 실패시 정리된 URL로 직접 시도
+        console.log('⚠️ [내 작품] 프록시 실패, 정리된 URL로 직접 시도');
+        
+        try {
+          const directResponse = await fetch(cleanUrl);
+          if (directResponse.ok) {
+            const blob = await directResponse.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+            
+            return { 
+              success: true, 
+              message: '정리된 URL로 다운로드 성공' 
+            };
+          }
+        } catch (directError) {
+          console.error('직접 다운로드도 실패:', directError);
+        }
+        
+        throw new Error(`프록시 응답 오류: ${response.status}`);
+      }
+
+      // 4. Blob 생성 및 다운로드
+      const blob = await response.blob();
+      
+      if (blob.size === 0) {
+        throw new Error('빈 파일 응답');
+      }
+
+      console.log('💾 [내 작품] Blob 생성 완료:', {
+        size: (blob.size / 1024 / 1024).toFixed(2) + 'MB',
+        type: blob.type
+      });
+
+      // 5. 플랫폼별 다운로드 처리
+      const isWebView = /WebView|wv/i.test(navigator.userAgent);
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      
+      if (isWebView) {
+        // 웹뷰: URL을 클립보드에 복사
+        try {
+          await navigator.clipboard.writeText(cleanUrl);
+          console.log('📋 [내 작품] 웹뷰 - URL 클립보드 복사 성공');
+          return { 
+            success: true, 
+            message: 'URL이 클립보드에 복사되었습니다. Safari에서 붙여넣기하여 저장하세요.' 
+          };
+        } catch (clipError) {
+          console.error('클립보드 복사 실패:', clipError);
+          // 클립보드 실패시 alert로 URL 표시
+          alert(`비디오 URL을 복사하세요:\n\n${cleanUrl}`);
+          return { 
+            success: true, 
+            message: 'URL을 수동으로 복사하세요' 
+          };
+        }
+      } else if (isIOS) {
+        // iOS: 새 탭에서 비디오 열기
+        window.open(cleanUrl, '_blank');
+        return { 
+          success: true, 
+          message: '새 탭에서 비디오를 열었습니다. 길게 터치하여 저장하세요.' 
+        };
+      } else {
+        // Android/PC: Blob 다운로드
+        const blobUrl = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        
+        console.log('✅ [내 작품] Blob 다운로드 완료');
+        return { 
+          success: true, 
+          message: '비디오 다운로드 완료!' 
+        };
+      }
+
+    } catch (error) {
+      console.error('❌ [내 작품] 프록시 비디오 다운로드 실패:', error);
+      
+      // 최종 fallback: 정리된 URL 제공
+      const cleanUrl = cleanKlingUrl(originalUrl);
+      console.log('🔄 [내 작품] 최종 fallback - 정리된 URL:', cleanUrl);
+      
+      return { 
+        success: false, 
+        message: `다운로드 실패. 수동 접근 URL: ${cleanUrl}` 
+      };
+    }
+  };
+
   const handleDownload = async (item: GenerationResult) => {
     const itemId = item._id || `${item.userId}-${item.createdAt}`;
     
@@ -59,7 +218,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
       setDownloadStatuses(prev => new Map(prev).set(itemId, '다운로드 중...'));
 
       if (item.type === 'image') {
-        console.log('🖼️ 이미지 다운로드 시작:', item.resultUrl);
+        console.log('🖼️ [내 작품] 이미지 다운로드 시작:', item.resultUrl);
         
         // 파일명 생성
         const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
@@ -82,31 +241,50 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
         }
         
       } else if (item.type === 'video') {
-        console.log('🎥 비디오 다운로드 시작:', item.resultUrl);
+        console.log('🎥 [내 작품] 비디오 다운로드 시작:', item.resultUrl.substring(0, 80) + '...');
         
         // 파일명 생성
         const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
-        const filename = `video-${timestamp}-${itemId.slice(-6)}.mp4`;
+        const filename = `hairgator-video-${timestamp}-${itemId.slice(-6)}.mp4`;
         
-        // downloadHelper를 사용하여 비디오 다운로드
-        const result = await downloadHelper.downloadVideo(item.resultUrl, filename);
-        
-        if (result.success) {
-          setDownloadStatuses(prev => new Map(prev).set(itemId, '✅ 저장 완료!'));
+        // 🆕 클링 URL인지 확인하고 프록시 사용
+        if (item.resultUrl.includes('klingai.com')) {
+          console.log('🔍 [내 작품] 클링 비디오 감지 - 프록시 사용');
+          const result = await downloadVideoViaProxy(item.resultUrl, filename);
           
-          // iOS에서 추가 안내가 필요한 경우
-          if (result.method === 'new-window-video' && downloadHelper.isIOS()) {
-            setTimeout(() => {
-              setDownloadStatuses(prev => new Map(prev).set(itemId, '💡 비디오를 길게 터치하여 저장하세요'));
-            }, 2000);
+          if (result.success) {
+            setDownloadStatuses(prev => new Map(prev).set(itemId, '✅ 저장 완료!'));
+            
+            // 추가 안내가 필요한 경우
+            if (result.message && result.message.includes('길게 터치')) {
+              setTimeout(() => {
+                setDownloadStatuses(prev => new Map(prev).set(itemId, '💡 비디오를 길게 터치하여 저장하세요'));
+              }, 2000);
+            }
+          } else {
+            setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ ${result.message || '다운로드 실패'}`));
           }
         } else {
-          setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ 다운로드 실패: ${result.message || 'Unknown error'}`));
+          // 클링이 아닌 다른 비디오는 기존 방식 사용
+          const result = await downloadHelper.downloadVideo(item.resultUrl, filename);
+          
+          if (result.success) {
+            setDownloadStatuses(prev => new Map(prev).set(itemId, '✅ 저장 완료!'));
+            
+            // iOS에서 추가 안내가 필요한 경우
+            if (result.method === 'new-window-video' && downloadHelper.isIOS()) {
+              setTimeout(() => {
+                setDownloadStatuses(prev => new Map(prev).set(itemId, '💡 비디오를 길게 터치하여 저장하세요'));
+              }, 2000);
+            }
+          } else {
+            setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ 다운로드 실패: ${result.message || 'Unknown error'}`));
+          }
         }
       }
       
     } catch (error) {
-      console.error('다운로드 중 오류:', error);
+      console.error('❌ [내 작품] 다운로드 중 오류:', error);
       setDownloadStatuses(prev => new Map(prev).set(itemId, '❌ 다운로드 오류'));
     } finally {
       setDownloadingIds(prev => {
@@ -207,12 +385,28 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                       ) : (
                         <div className="relative w-full h-full">
                           <video
-                            src={item.resultUrl}
+                            src={cleanKlingUrl(item.resultUrl)} // 🆕 비디오 썸네일에도 정리된 URL 사용
                             className="w-full h-full object-cover"
                             muted
                             loop
-                            onMouseEnter={(e) => (e.target as HTMLVideoElement).play()}
-                            onMouseLeave={(e) => (e.target as HTMLVideoElement).pause()}
+                            onMouseEnter={(e) => {
+                              try {
+                                (e.target as HTMLVideoElement).play();
+                              } catch (err) {
+                                console.warn('Video preview play failed:', err);
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              try {
+                                (e.target as HTMLVideoElement).pause();
+                              } catch (err) {
+                                console.warn('Video preview pause failed:', err);
+                              }
+                            }}
+                            onError={(e) => {
+                              console.warn('Video thumbnail load failed:', item.resultUrl);
+                              // 비디오 로드 실패시 플레이 버튼만 표시
+                            }}
                           />
                           <div className="absolute inset-0 flex items-center justify-center">
                             <div className="w-12 h-12 bg-black/50 rounded-full flex items-center justify-center">
@@ -221,6 +415,13 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                               </svg>
                             </div>
                           </div>
+                          
+                          {/* 🆕 클링 비디오 표시 */}
+                          {item.resultUrl.includes('klingai.com') && (
+                            <div className="absolute top-2 left-2 px-2 py-1 bg-blue-600/80 text-white text-xs rounded">
+                              Kling AI
+                            </div>
+                          )}
                         </div>
                       )}
                       
@@ -326,6 +527,13 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             ) : (
               <span>💻 PC: 다운로드 → 다운로드 폴더에서 확인</span>
             )}
+          </div>
+          
+          {/* 🆕 클링 비디오 특별 안내 */}
+          <div className="mt-2 p-2 bg-blue-600/20 rounded-lg">
+            <p className="text-xs text-blue-300 text-center">
+              🎬 Kling AI 비디오는 URL 정리 후 프록시를 통해 안전하게 다운로드됩니다
+            </p>
           </div>
         </div>
       </div>
