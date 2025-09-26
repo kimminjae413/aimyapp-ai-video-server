@@ -566,7 +566,63 @@ export const saveGenerationResult = async (params: {
 };
 
 /**
- * 생성 내역 조회 (자동 갱신 연동)
+ * 🔧 기존 잘린 URL 복구 함수
+ */
+const recoverTruncatedKlingUrl = (url: string): string => {
+  if (!url || !url.includes('...[truncated]')) {
+    return url; // 잘리지 않은 URL은 그대로 반환
+  }
+  
+  console.log('🔧 잘린 클링 URL 복구 시도:', {
+    원본: url.substring(0, 80) + '...',
+    잘림확인: true
+  });
+  
+  // ...[truncated] 제거 후 .mp4 확장자 확인/추가
+  let recoveredUrl = url.replace('...[truncated]', '');
+  
+  // .mp4 확장자가 없으면 추가
+  if (!recoveredUrl.endsWith('.mp4')) {
+    recoveredUrl += '.mp4';
+  }
+  
+  console.log('✅ 클링 URL 복구 완료:', {
+    복구됨: recoveredUrl.substring(0, 80) + '...',
+    길이: recoveredUrl.length
+  });
+  
+  return recoveredUrl;
+};
+
+/**
+ * 🧹 클링 URL 완전 정리 함수 (복구 + 쿼리스트링 제거)
+ */
+export const cleanKlingUrl = (url: string): string => {
+  if (!url || !url.includes('klingai.com')) return url;
+  
+  try {
+    // 1. 먼저 잘린 URL 복구
+    const recoveredUrl = recoverTruncatedKlingUrl(url);
+    
+    // 2. 쿼리스트링 제거
+    const cleanUrl = recoveredUrl.split('?')[0];
+    
+    console.log('🧹 클링 URL 최종 정리:', {
+      원본: url.substring(0, 80) + '...',
+      복구후: recoveredUrl.substring(0, 80) + '...',
+      최종: cleanUrl.substring(0, 80) + '...',
+      처리단계: url.includes('...[truncated]') ? '복구+정리' : '정리만'
+    });
+    
+    return cleanUrl;
+  } catch (error) {
+    console.error('클링 URL 정리 실패:', error);
+    return url;
+  }
+};
+
+/**
+ * 생성 내역 조회 (자동 갱신 연동) - 🔧 URL 복구 로직 적용
  */
 export const getGenerationHistory = async (userId: string, limit: number = 50): Promise<GenerationResult[]> => {
   try {
@@ -589,7 +645,27 @@ export const getGenerationHistory = async (userId: string, limit: number = 50): 
       }
     );
 
-    return result?.data || [];
+    // 🔧 결과 데이터에서 클링 URL 복구 적용
+    const historyData = result?.data || [];
+    const recoveredHistory = historyData.map((item: GenerationResult) => {
+      if (item.type === 'video' && item.resultUrl && item.resultUrl.includes('klingai.com')) {
+        // 클링 영상 URL 복구
+        const recoveredUrl = cleanKlingUrl(item.resultUrl);
+        console.log('🎬 생성 내역에서 클링 URL 복구:', {
+          itemId: item._id?.substring(0, 8) + '...',
+          원본: item.resultUrl.substring(0, 50) + '...',
+          복구됨: recoveredUrl.substring(0, 50) + '...'
+        });
+        
+        return {
+          ...item,
+          resultUrl: recoveredUrl
+        };
+      }
+      return item;
+    });
+
+    return recoveredHistory;
   } catch (error) {
     console.error('생성 내역 조회 중 오류:', error);
     return [];
@@ -675,7 +751,7 @@ export const manualTokenRefresh = async (): Promise<boolean> => {
  */
 export const getServiceStatus = () => {
   return {
-    version: '5.1-KLING-URL-FIX',
+    version: '5.2-KLING-URL-RECOVERY',
     tokenCacheSize: Object.keys(tokenCache).length,
     cachedUsers: Object.keys(tokenCache),
     features: [
@@ -687,14 +763,16 @@ export const getServiceStatus = () => {
       '🛡️ 관리자 토큰 자동 갱신 폴백',
       '🆘 기본 크레딧 제공 (서비스 중단 방지)',
       '⚡ 이중 안전망 + 자동 갱신 구조',
-      '🎬 클링 URL 완전 보존 (404 해결)'
+      '🎬 클링 URL 완전 보존 (404 해결)',
+      '🔧 기존 잘린 URL 자동 복구'
     ],
     newFeatures: [
       '📧 이메일 로그인 기반 토큰 자동 갱신',
       '🔄 refreshTokenOnServer() 함수 추가',
       '⚙️ 런타임 환경변수 자동 업데이트',
       '🛡️ 예외 상황 기본 크레딧 제공',
-      '🔧 클링 URL 쿼리스트링 제거 (...[truncated] 방지)'
+      '🔧 클링 URL 쿼리스트링 제거 (...[truncated] 방지)',
+      '🎯 기존 DB의 잘린 URL 자동 복구 시스템'
     ]
   };
 };
