@@ -1,4 +1,4 @@
-// services/bullnabiService.ts - 토큰 자동 갱신 연동 최종 버전
+// services/bullnabiService.ts - 토큰 자동 갱신 연동 최종 버전 + 클링 URL 문제 해결
 import type { UserCredits, GenerationResult } from '../types';
 
 const API_BASE_URL = '/.netlify/functions/bullnabi-proxy';
@@ -474,7 +474,7 @@ export const restoreCredits = async (
 };
 
 /**
- * 생성 결과 저장 (자동 갱신 연동)
+ * 생성 결과 저장 (자동 갱신 연동) - 🔧 클링 URL 문제 해결
  */
 export const saveGenerationResult = async (params: {
   userId: string;
@@ -491,8 +491,22 @@ export const saveGenerationResult = async (params: {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
+    // 🔧 클링 URL 문제 해결: 클링 URL은 쿼리스트링만 제거하고 전체 보존
     const truncateUrl = (url: string, maxLength: number = 100): string => {
       if (!url || url.length <= maxLength) return url || '';
+      
+      // 클링 URL의 경우 쿼리스트링만 제거하고 전체 URL 보존
+      if (url.includes('klingai.com')) {
+        const cleanUrl = url.split('?')[0]; // ?x-kcdn-pid=112372 같은 쿼리스트링 제거
+        console.log('🧹 클링 URL 정리:', {
+          원본: url.substring(0, 80) + '...',
+          정리됨: cleanUrl.substring(0, 80) + '...',
+          길이감소: url.length - cleanUrl.length + ' chars'
+        });
+        return cleanUrl;
+      }
+      
+      // 다른 URL은 기존 방식으로 자르기
       return url.substring(0, maxLength) + '...[truncated]';
     };
 
@@ -505,7 +519,7 @@ export const saveGenerationResult = async (params: {
       userId: { "$oid": params.userId },
       type: params.type,
       originalImageUrl: truncateUrl(params.originalImageUrl, 150),
-      resultUrl: truncateUrl(params.resultUrl, 150),
+      resultUrl: truncateUrl(params.resultUrl, 150), // 🔧 클링 URL은 쿼리스트링만 제거
       prompt: truncateText(params.prompt || '', 200),
       facePrompt: truncateText(params.facePrompt || '', 200),
       clothingPrompt: truncateText(params.clothingPrompt || '', 200),
@@ -517,7 +531,7 @@ export const saveGenerationResult = async (params: {
       status: 'completed'
     };
 
-    console.log('생성 결과 저장 시작 (자동 갱신 연동)...');
+    console.log('생성 결과 저장 시작 (클링 URL 최적화)...');
 
     // 1순위: 동적 토큰 (자동 갱신 포함)
     let result = await callWithDynamicToken(params.userId, 'saveGenerationResult', documentData);
@@ -661,7 +675,7 @@ export const manualTokenRefresh = async (): Promise<boolean> => {
  */
 export const getServiceStatus = () => {
   return {
-    version: '5.0-AUTO-TOKEN-REFRESH',
+    version: '5.1-KLING-URL-FIX',
     tokenCacheSize: Object.keys(tokenCache).length,
     cachedUsers: Object.keys(tokenCache),
     features: [
@@ -672,13 +686,15 @@ export const getServiceStatus = () => {
       '🚫 무한루프 방지 (최대 2회 재시도)',
       '🛡️ 관리자 토큰 자동 갱신 폴백',
       '🆘 기본 크레딧 제공 (서비스 중단 방지)',
-      '⚡ 이중 안전망 + 자동 갱신 구조'
+      '⚡ 이중 안전망 + 자동 갱신 구조',
+      '🎬 클링 URL 완전 보존 (404 해결)'
     ],
     newFeatures: [
       '📧 이메일 로그인 기반 토큰 자동 갱신',
       '🔄 refreshTokenOnServer() 함수 추가',
       '⚙️ 런타임 환경변수 자동 업데이트',
-      '🛡️ 예외 상황 기본 크레딧 제공'
+      '🛡️ 예외 상황 기본 크레딧 제공',
+      '🔧 클링 URL 쿼리스트링 제거 (...[truncated] 방지)'
     ]
   };
 };
