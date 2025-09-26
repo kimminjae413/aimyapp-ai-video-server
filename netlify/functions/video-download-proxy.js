@@ -1,4 +1,4 @@
-// netlify/functions/video-download-proxy.js - 개선된 버전
+// netlify/functions/video-download-proxy.js - 클링 URL 최적화 버전
 exports.handler = async (event, context) => {
   // CORS 헤더
   const corsHeaders = {
@@ -41,35 +41,110 @@ exports.handler = async (event, context) => {
       };
     }
 
-    console.log('🎥 Video proxy request:', {
-      url: videoUrl,
+    console.log('🎥 [Download Proxy] 요청 시작:', {
+      url: videoUrl.substring(0, 80) + '...',
       userAgent: event.headers['user-agent'],
       origin: event.headers.origin
     });
 
+    // 🆕 클링 URL 검증 및 복구
+    let workingUrl = videoUrl;
+    
+    // URL이 잘려있는 경우 복구 시도
+    if (videoUrl.includes('...[truncated]')) {
+      console.log('🔧 [Download Proxy] 잘린 URL 감지, 복구 시도...');
+      workingUrl = videoUrl.replace('...[truncated]', '');
+      if (!workingUrl.endsWith('.mp4')) {
+        workingUrl += '.mp4';
+      }
+    }
+
     // Range 헤더 지원 (스트리밍용)
     const rangeHeader = event.headers.range;
     const fetchHeaders = {
-      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+      'User-Agent': 'Mozilla/5.0 (compatible; VideoDownloadProxy/1.0)',
+      'Accept': 'video/*',
+      'Cache-Control': 'no-cache'
     };
 
     // Range 요청이 있으면 전달
     if (rangeHeader) {
       fetchHeaders['Range'] = rangeHeader;
+      console.log('📊 [Download Proxy] Range 요청:', rangeHeader);
+    }
+
+    // 🆕 먼저 HEAD 요청으로 URL 검증
+    try {
+      const headResponse = await fetch(workingUrl, {
+        method: 'HEAD',
+        headers: {
+          'User-Agent': fetchHeaders['User-Agent']
+        }
+      });
+
+      if (!headResponse.ok) {
+        console.warn('⚠️ [Download Proxy] HEAD 요청 실패:', headResponse.status);
+        
+        // 클링 URL의 경우 여러 패턴 시도
+        if (workingUrl.includes('kling')) {
+          const urlParts = workingUrl.split('/');
+          const possibleVideoId = urlParts.find(part => part.includes('-') && part.length > 30);
+          
+          if (possibleVideoId) {
+            const alternativeUrls = [
+              `https://v15-kling.klingai.com/bs2/upload-ylab-stunt-sgp/se/stream_lake_m2v_img2video_v21_std_v36_v2/${possibleVideoId}_raw_video.mp4`,
+              `https://v15-kling.klingai.com/bs2/upload/${possibleVideoId}.mp4`
+            ];
+            
+            for (const altUrl of alternativeUrls) {
+              console.log('🔄 [Download Proxy] 대체 URL 시도:', altUrl.substring(0, 80) + '...');
+              const altHeadResponse = await fetch(altUrl, { method: 'HEAD', headers: { 'User-Agent': fetchHeaders['User-Agent'] } });
+              
+              if (altHeadResponse.ok) {
+                console.log('✅ [Download Proxy] 대체 URL 성공');
+                workingUrl = altUrl;
+                break;
+              }
+            }
+          }
+        }
+      } else {
+        console.log('✅ [Download Proxy] URL 검증 성공');
+      }
+    } catch (headError) {
+      console.warn('⚠️ [Download Proxy] HEAD 요청 실패:', headError.message);
+      // HEAD 실패해도 GET 시도 계속
     }
 
     // 원본 비디오 fetch
-    const response = await fetch(videoUrl, {
+    const response = await fetch(workingUrl, {
       method: 'GET',
       headers: fetchHeaders
     });
 
     if (!response.ok) {
-      console.error('❌ Video fetch failed:', response.status, response.statusText);
+      console.error('❌ [Download Proxy] Video fetch failed:', response.status, response.statusText);
+      
+      // 404인 경우 상세 오류 정보 제공
+      if (response.status === 404) {
+        return {
+          statusCode: 404,
+          headers: corsHeaders,
+          body: JSON.stringify({ 
+            error: 'Video not found',
+            details: 'The video URL may have expired or been moved',
+            originalUrl: videoUrl,
+            attemptedUrl: workingUrl,
+            suggestion: 'Try generating the video again',
+            timestamp: new Date().toISOString()
+          })
+        };
+      }
+      
       throw new Error(`Failed to fetch video: ${response.status} ${response.statusText}`);
     }
 
-    console.log('✅ Video fetch successful:', {
+    console.log('✅ [Download Proxy] Video fetch successful:', {
       status: response.status,
       contentType: response.headers.get('content-type'),
       contentLength: response.headers.get('content-length')
@@ -79,7 +154,7 @@ exports.handler = async (event, context) => {
     const responseHeaders = {
       ...corsHeaders,
       'Content-Type': response.headers.get('content-type') || 'video/mp4',
-      'Cache-Control': 'public, max-age=3600', // 1시간 캐시
+      'Cache-Control': 'public, max-age=1800', // 30분 캐시 (클링 URL 특성상 짧게)
       'Accept-Ranges': 'bytes'
     };
 
@@ -101,12 +176,13 @@ exports.handler = async (event, context) => {
       responseHeaders['X-Content-Type-Options'] = 'nosniff';
     }
 
-    // 비디오 데이터를 스트림으로 처리 (base64 인코딩 제거!)
+    // 비디오 데이터 처리
     const videoArrayBuffer = await response.arrayBuffer();
     
-    console.log('📊 Proxy response:', {
+    console.log('📊 [Download Proxy] Response:', {
       status: response.status,
       size: videoArrayBuffer.byteLength,
+      sizeKB: Math.round(videoArrayBuffer.byteLength / 1024),
       headers: Object.keys(responseHeaders)
     });
 
@@ -118,22 +194,38 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error('❌ Video proxy error:', {
+    console.error('❌ [Download Proxy] Error:', {
       message: error.message,
       stack: error.stack,
       url: event.queryStringParameters?.url
     });
     
-    // 에러 타입별 상태 코드
+    // 에러 타입별 상세 응답
     let statusCode = 500;
     let errorMessage = 'Internal server error';
+    let errorDetails = {};
     
     if (error.message.includes('Failed to fetch')) {
       statusCode = 502;
       errorMessage = 'Bad gateway: Unable to fetch video from source';
+      errorDetails = {
+        reason: 'Source server unreachable',
+        suggestion: 'The video may have been moved or deleted'
+      };
     } else if (error.message.includes('timeout')) {
       statusCode = 504;
       errorMessage = 'Gateway timeout: Video source is too slow';
+      errorDetails = {
+        reason: 'Download timeout',
+        suggestion: 'Try again in a few moments'
+      };
+    } else if (error.message.includes('404')) {
+      statusCode = 404;
+      errorMessage = 'Video not found';
+      errorDetails = {
+        reason: 'Video URL expired or invalid',
+        suggestion: 'Generate the video again'
+      };
     }
     
     return {
@@ -141,9 +233,11 @@ exports.handler = async (event, context) => {
       headers: corsHeaders,
       body: JSON.stringify({ 
         error: errorMessage,
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        details: errorDetails,
+        originalUrl: event.queryStringParameters?.url,
         timestamp: new Date().toISOString(),
-        requestId: context.awsRequestId
+        requestId: context.awsRequestId,
+        developmentInfo: process.env.NODE_ENV === 'development' ? error.message : undefined
       })
     };
   }
