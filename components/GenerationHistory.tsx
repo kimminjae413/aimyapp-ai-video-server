@@ -22,6 +22,85 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
   const [downloadStatuses, setDownloadStatuses] = useState<Map<string, string>>(new Map());
 
+  // 🆕 비디오 썸네일 컴포넌트 - 404 에러 처리 포함
+  const VideoThumbnail: React.FC<{ videoUrl: string; itemId: string }> = ({ videoUrl, itemId }) => {
+    const [thumbnailError, setThumbnailError] = useState(false);
+    const [videoLoaded, setVideoLoaded] = useState(false);
+    
+    const cleanedUrl = cleanKlingUrl(videoUrl);
+    
+    return (
+      <div className="relative w-full h-full">
+        {!thumbnailError && (
+          <video
+            src={cleanedUrl}
+            className="w-full h-full object-cover"
+            muted
+            loop
+            playsInline
+            onLoadedData={() => {
+              setVideoLoaded(true);
+              console.log(`✅ [썸네일] 비디오 로드 성공: ${itemId}`);
+            }}
+            onMouseEnter={(e) => {
+              if (videoLoaded) {
+                try {
+                  (e.target as HTMLVideoElement).play();
+                } catch (err) {
+                  console.warn('Video preview play failed:', err);
+                }
+              }
+            }}
+            onMouseLeave={(e) => {
+              try {
+                (e.target as HTMLVideoElement).pause();
+              } catch (err) {
+                console.warn('Video preview pause failed:', err);
+              }
+            }}
+            onError={(e) => {
+              console.warn(`❌ [썸네일] 비디오 로드 실패: ${itemId}`, {
+                originalUrl: videoUrl.substring(0, 80) + '...',
+                cleanedUrl: cleanedUrl.substring(0, 80) + '...'
+              });
+              setThumbnailError(true);
+            }}
+          />
+        )}
+        
+        {/* 플레이 버튼 오버레이 */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
+            thumbnailError 
+              ? 'bg-gray-600/80' 
+              : videoLoaded 
+                ? 'bg-black/30 hover:bg-black/60' 
+                : 'bg-black/50'
+          }`}>
+            {thumbnailError ? (
+              <svg className="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            )}
+          </div>
+        </div>
+        
+        {/* 썸네일 로드 실패시 안내 */}
+        {thumbnailError && (
+          <div className="absolute bottom-1 left-1 right-1">
+            <div className="bg-gray-800/80 text-white text-xs px-2 py-1 rounded text-center">
+              영상 미리보기 불가
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   useEffect(() => {
     if (isOpen && userId) {
       loadHistory();
@@ -416,12 +495,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                             </div>
                           </div>
                           
-                          {/* 🆕 클링 비디오 표시 */}
-                          {item.resultUrl.includes('klingai.com') && (
-                            <div className="absolute top-2 left-2 px-2 py-1 bg-blue-600/80 text-white text-xs rounded">
-                              Kling AI
-                            </div>
-                          )}
+
                         </div>
                       )}
                       
@@ -529,10 +603,10 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             )}
           </div>
           
-          {/* 🆕 클링 비디오 특별 안내 */}
+          {/* 개선된 다운로드 시스템 안내 */}
           <div className="mt-2 p-2 bg-blue-600/20 rounded-lg">
             <p className="text-xs text-blue-300 text-center">
-              🎬 Kling AI 비디오는 URL 정리 후 프록시를 통해 안전하게 다운로드됩니다
+              🎬 영상은 프록시를 통해 안전하게 다운로드됩니다
             </p>
           </div>
         </div>
