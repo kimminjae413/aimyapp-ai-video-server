@@ -526,6 +526,20 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                             target.src = item.originalImageUrl; // 결과 이미지 로드 실패 시 원본 표시
                           }}
                         />
+                      ) : item.resultUrl.startsWith('blob:') ? (
+                        // Blob URL은 만료되었으므로 대체 UI 표시
+                        <div className="w-full h-full bg-gray-700 flex flex-col items-center justify-center">
+                          <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                              d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          <p className="text-xs text-gray-400 text-center px-2">
+                            영상 URL 만료됨
+                          </p>
+                          <p className="text-xs text-gray-500 text-center px-2 mt-1">
+                            {formatDate(item.createdAt)}
+                          </p>
+                        </div>
                       ) : (
                         <div className="relative w-full h-full">
                           <video
@@ -603,17 +617,23 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                       {/* Download button with status */}
                       <button
                         onClick={() => handleDownload(item)}
-                        disabled={isDownloading}
+                        disabled={isDownloading || item.resultUrl.startsWith('blob:')}
                         className={`absolute top-2 right-2 p-2 backdrop-blur-sm rounded-full text-white transition-colors ${
-                          isDownloading
-                            ? 'bg-blue-500/80 cursor-wait'
-                            : downloadStatus?.includes('✅')
-                              ? 'bg-green-500/80'
-                              : downloadStatus?.includes('❌')
-                                ? 'bg-red-500/80'
-                                : 'bg-black/50 hover:bg-black/70'
+                          item.resultUrl.startsWith('blob:')
+                            ? 'bg-gray-600/80 cursor-not-allowed'
+                            : isDownloading
+                              ? 'bg-blue-500/80 cursor-wait'
+                              : downloadStatus?.includes('✅')
+                                ? 'bg-green-500/80'
+                                : downloadStatus?.includes('❌')
+                                  ? 'bg-red-500/80'
+                                  : 'bg-black/50 hover:bg-black/70'
                         }`}
-                        title={downloadStatus || "다운로드"}
+                        title={
+                          item.resultUrl.startsWith('blob:') 
+                            ? "URL 만료로 다운로드 불가" 
+                            : downloadStatus || "다운로드"
+                        }
                       >
                         {isDownloading ? (
                           <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -622,6 +642,10 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                         ) : downloadStatus?.includes('✅') ? (
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : item.resultUrl.startsWith('blob:') ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636" />
                           </svg>
                         ) : (
                           <DownloadIcon className="w-4 h-4" />
@@ -704,10 +728,10 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             )}
           </div>
           
-          {/* iPhone 다운로드 문제 해결 완료 안내 */}
+          {/* 개선 완료 안내 */}
           <div className="mt-2 p-2 bg-green-600/20 border border-green-500/50 rounded-lg">
             <p className="text-xs text-green-300 text-center">
-              ✅ iPhone 다운로드 문제 해결 완료: Share API + Blob 다운로드 + 3단계 안전망
+              ✅ iPhone 다운로드 완전 해결 + URL 복구 시스템 + Blob URL 만료 처리
             </p>
           </div>
         </div>
