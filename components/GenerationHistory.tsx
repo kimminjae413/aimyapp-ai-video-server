@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { XIcon } from './icons/XIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { downloadHelper } from '../utils/downloadHelper';
-import { getGenerationHistory, cleanupExpiredGenerations } from '../services/bullnabiService';
+import { getGenerationHistory, cleanupExpiredGenerations, cleanKlingUrl } from '../services/bullnabiService';
 import type { GenerationResult } from '../types';
 
 interface GenerationHistoryProps {
@@ -22,11 +22,12 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
   const [downloadStatuses, setDownloadStatuses] = useState<Map<string, string>>(new Map());
 
-  // 🆕 비디오 썸네일 컴포넌트 - 404 에러 처리 포함
+  // 비디오 썸네일 컴포넌트 - 404 에러 처리 포함
   const VideoThumbnail: React.FC<{ videoUrl: string; itemId: string }> = ({ videoUrl, itemId }) => {
     const [thumbnailError, setThumbnailError] = useState(false);
     const [videoLoaded, setVideoLoaded] = useState(false);
     
+    // bullnabiService의 cleanKlingUrl 함수 사용
     const cleanedUrl = cleanKlingUrl(videoUrl);
     
     return (
@@ -61,7 +62,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             onError={(e) => {
               console.warn(`❌ [썸네일] 비디오 로드 실패: ${itemId}`, {
                 originalUrl: videoUrl.substring(0, 80) + '...',
-                cleanedUrl: cleanedUrl.substring(0, 80) + '...'
+                cleanedUrl: cleanedUrl.substring(0, 80) + '...',
+                recovered: videoUrl.includes('...[truncated]')
               });
               setThumbnailError(true);
             }}
@@ -115,8 +117,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
       // 만료된 데이터 정리 먼저 실행
       await cleanupExpiredGenerations(userId);
       
-      // 최근 3일간의 내역 조회
-      const results = await getGenerationHistory(userId, 50); // 최대 50개
+      // 최근 3일간의 내역 조회 (이미 URL 복구 적용됨)
+      const results = await getGenerationHistory(userId, 50);
       setHistory(results);
     } catch (err) {
       setError('내역을 불러오는데 실패했습니다.');
@@ -126,26 +128,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     }
   };
 
-  // 🆕 클링 URL 정리 함수 (쿼리스트링 제거)
-  const cleanKlingUrl = (url: string): string => {
-    if (!url || !url.includes('klingai.com')) return url;
-    
-    try {
-      // ?x-kcdn-pid= 같은 쿼리스트링 제거
-      const cleanUrl = url.split('?')[0];
-      console.log('🧹 [내 작품] URL 정리:', {
-        original: url.substring(0, 80) + '...',
-        cleaned: cleanUrl.substring(0, 80) + '...',
-        removed: url.length - cleanUrl.length + ' chars'
-      });
-      return cleanUrl;
-    } catch (error) {
-      console.error('URL 정리 실패:', error);
-      return url;
-    }
-  };
-
-  // 🆕 프록시를 통한 안전한 비디오 다운로드 (기존 클링 URL 처리)
+  // 프록시를 통한 안전한 비디오 다운로드 (클링 URL 복구 포함)
   const downloadVideoViaProxy = async (originalUrl: string, filename: string): Promise<{ success: boolean; message?: string }> => {
     try {
       console.log('📹 [내 작품] 프록시 비디오 다운로드 시작:', {
@@ -153,10 +136,10 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
         filename
       });
 
-      // 1. 클링 URL 정리 (쿼리스트링 제거)
+      // bullnabiService의 cleanKlingUrl 사용 (복구 + 정리)
       const cleanUrl = cleanKlingUrl(originalUrl);
       
-      // 2. 프록시 URL 인코딩
+      // 프록시 URL 인코딩
       const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(cleanUrl)}`;
       
       console.log('🔗 [내 작품] 프록시 호출:', {
@@ -164,7 +147,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
         method: 'GET with proxy'
       });
 
-      // 3. 프록시를 통한 비디오 다운로드
+      // 프록시를 통한 비디오 다운로드
       const response = await fetch(proxyUrl, {
         method: 'GET',
         headers: {
@@ -210,7 +193,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
         throw new Error(`프록시 응답 오류: ${response.status}`);
       }
 
-      // 4. Blob 생성 및 다운로드
+      // Blob 생성 및 다운로드
       const blob = await response.blob();
       
       if (blob.size === 0) {
@@ -222,7 +205,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
         type: blob.type
       });
 
-      // 5. 플랫폼별 다운로드 처리
+      // 플랫폼별 다운로드 처리
       const isWebView = /WebView|wv/i.test(navigator.userAgent);
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       
@@ -237,7 +220,6 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           };
         } catch (clipError) {
           console.error('클립보드 복사 실패:', clipError);
-          // 클립보드 실패시 alert로 URL 표시
           alert(`비디오 URL을 복사하세요:\n\n${cleanUrl}`);
           return { 
             success: true, 
@@ -274,9 +256,9 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     } catch (error) {
       console.error('❌ [내 작품] 프록시 비디오 다운로드 실패:', error);
       
-      // 최종 fallback: 정리된 URL 제공
+      // 최종 fallback: 복구된 URL 제공
       const cleanUrl = cleanKlingUrl(originalUrl);
-      console.log('🔄 [내 작품] 최종 fallback - 정리된 URL:', cleanUrl);
+      console.log('🔄 [내 작품] 최종 fallback - 복구된 URL:', cleanUrl);
       
       return { 
         success: false, 
@@ -326,9 +308,9 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
         const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
         const filename = `hairgator-video-${timestamp}-${itemId.slice(-6)}.mp4`;
         
-        // 🆕 클링 URL인지 확인하고 프록시 사용
+        // 클링 URL인지 확인하고 프록시 사용
         if (item.resultUrl.includes('klingai.com')) {
-          console.log('🔍 [내 작품] 클링 비디오 감지 - 프록시 사용');
+          console.log('🔍 [내 작품] 클링 비디오 감지 - 프록시 사용 (URL 복구 포함)');
           const result = await downloadVideoViaProxy(item.resultUrl, filename);
           
           if (result.success) {
@@ -464,7 +446,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                       ) : (
                         <div className="relative w-full h-full">
                           <video
-                            src={cleanKlingUrl(item.resultUrl)} // 🆕 비디오 썸네일에도 정리된 URL 사용
+                            src={cleanKlingUrl(item.resultUrl)} // 복구된 클링 URL 사용
                             className="w-full h-full object-cover"
                             muted
                             loop
@@ -483,8 +465,11 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                               }
                             }}
                             onError={(e) => {
-                              console.warn('Video thumbnail load failed:', item.resultUrl);
-                              // 비디오 로드 실패시 플레이 버튼만 표시
+                              console.warn('Video thumbnail load failed:', {
+                                originalUrl: item.resultUrl,
+                                cleanedUrl: cleanKlingUrl(item.resultUrl),
+                                wasRecovered: item.resultUrl.includes('...[truncated]')
+                              });
                             }}
                           />
                           <div className="absolute inset-0 flex items-center justify-center">
@@ -494,8 +479,6 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                               </svg>
                             </div>
                           </div>
-                          
-
                         </div>
                       )}
                       
@@ -606,7 +589,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           {/* 개선된 다운로드 시스템 안내 */}
           <div className="mt-2 p-2 bg-blue-600/20 rounded-lg">
             <p className="text-xs text-blue-300 text-center">
-              🎬 영상은 프록시를 통해 안전하게 다운로드됩니다
+              🎬 클링 영상 URL 자동 복구 + 프록시 다운로드 지원
             </p>
           </div>
         </div>
