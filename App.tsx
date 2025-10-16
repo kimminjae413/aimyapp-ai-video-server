@@ -9,7 +9,7 @@ import { ControlPanel } from './components/ControlPanel';
 // VModel 우선 변환 서비스
 import { smartFaceTransformation } from './services/hybridImageService';
 import { getUserCredits, useCredits, saveGenerationResult } from './services/bullnabiService';
-import { uploadImage } from './services/imageHostingService'; // ✅ 추가
+import { uploadImage } from './services/imageHostingService';
 import type { ImageFile, UserCredits } from './types';
 
 type PageType = 'main' | 'faceSwap' | 'videoSwap';
@@ -33,6 +33,7 @@ const FaceSwapPage: React.FC<{
   const [referenceImage, setReferenceImage] = useState<ImageFile | null>(null);
   const [generatedImage, setGeneratedImage] = useState<ImageFile | null>(preservedResult);
   const [clothingPrompt, setClothingPrompt] = useState<string>('');
+  const [backgroundPrompt, setBackgroundPrompt] = useState<string>(''); // ✅ 배경 프롬프트 추가
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [transformationMethod, setTransformationMethod] = useState<string>('');
@@ -81,7 +82,7 @@ const FaceSwapPage: React.FC<{
     reader.readAsDataURL(file);
   };
 
-  // 🔥 VModel 참조이미지 전용 생성 함수 (이미지 호스팅 추가)
+  // 🔥 VModel 참조이미지 전용 생성 함수 (배경 프롬프트 추가)
   const handleGenerateClick = useCallback(async () => {
     if (!originalImage) {
       setError('원본 이미지를 업로드해주세요.');
@@ -107,16 +108,18 @@ const FaceSwapPage: React.FC<{
       console.log('- 원본 이미지 크기:', originalImage.base64.length);
       console.log('- 참조 이미지 크기:', referenceImage.base64.length);
       console.log('- 의상 변경:', clothingPrompt || 'None');
+      console.log('- 배경 변경:', backgroundPrompt || 'None'); // ✅ 배경 로그 추가
       
-      // Step 1: 얼굴 교체 수행
+      // Step 1: 얼굴 교체 수행 (배경 프롬프트 포함)
       const { result: resultImage, method } = await smartFaceTransformation(
         originalImage,        // 원본 이미지
         '',                  // facePrompt (빈 문자열)
         clothingPrompt,      // 의상 프롬프트
-        referenceImage,      // 참조 이미지 (4번째 파라미터)
-        (status: string) => { // onProgress 콜백 (5번째 파라미터)
+        referenceImage,      // 참조 이미지
+        (status: string) => { // onProgress 콜백
           console.log('진행 상황:', status);
-        }
+        },
+        backgroundPrompt     // ✅ 배경 프롬프트 추가 (6번째 파라미터)
       );
       
       console.log(`✅ 얼굴교체 완료: ${method}`);
@@ -127,7 +130,7 @@ const FaceSwapPage: React.FC<{
         setGeneratedImage(resultImage);
         onResultGenerated(resultImage);
         
-        // ✅ Step 2: 이미지 업로드 및 DB 저장 (동기적으로 처리)
+        // ✅ Step 2: 이미지 업로드 및 DB 저장
         try {
           console.log('📤 결과 이미지 Cloudinary/Imgur 업로드 중...');
           
@@ -139,10 +142,12 @@ const FaceSwapPage: React.FC<{
           const saved = await saveGenerationResult({
             userId,
             type: 'image',
-            originalImageUrl: 'N/A', // 원본은 저장 안함
-            resultUrl: uploadedResultUrl, // ✅ Cloudinary/Imgur URL
+            originalImageUrl: 'N/A',
+            resultUrl: uploadedResultUrl,
             facePrompt: '참조이미지 기반 VModel',
-            clothingPrompt,
+            clothingPrompt: clothingPrompt || backgroundPrompt 
+              ? `의상: ${clothingPrompt || '변경안함'} / 배경: ${backgroundPrompt || '변경안함'}` 
+              : undefined, // ✅ 배경 정보 포함
             creditsUsed: 1
           });
           
@@ -153,7 +158,6 @@ const FaceSwapPage: React.FC<{
           }
         } catch (uploadError) {
           console.error('❌ 이미지 업로드/저장 실패:', uploadError);
-          // 에러 발생해도 UI에는 이미 표시되었으므로 사용자는 결과를 볼 수 있음
         }
         
         // ✅ Step 3: 크레딧 차감 (비동기)
@@ -202,7 +206,7 @@ const FaceSwapPage: React.FC<{
     } finally {
       setIsLoading(false);
     }
-  }, [originalImage, referenceImage, clothingPrompt, userId, credits, onCreditsUsed, onResultGenerated]);
+  }, [originalImage, referenceImage, clothingPrompt, backgroundPrompt, userId, credits, onCreditsUsed, onResultGenerated]); // ✅ backgroundPrompt 의존성 추가
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col items-center p-4 sm:p-6 lg:p-8">
@@ -226,7 +230,7 @@ const FaceSwapPage: React.FC<{
       
       <Header />
       
-     {/* 변환 완료 표시 (성공시에만) */}
+     {/* 변환 완료 표시 */}
       {transformationMethod && generatedImage && !isLoading && (
         <div className="w-full max-w-7xl mb-4">
           <div className="bg-gradient-to-r from-green-600/20 to-blue-600/20 border-green-500/30 border rounded-lg p-3">
@@ -257,10 +261,12 @@ const FaceSwapPage: React.FC<{
             </p>
           </div>
           
-          {/* 의상 변경 (선택사항) */}
+          {/* 의상 & 배경 변경 (선택사항) */}
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
-            <h2 className="text-xl text-center text-cyan-400 font-bold">3. 의상 변경 (선택사항)</h2>
-            <div className="mt-4">
+            <h2 className="text-xl text-center text-cyan-400 font-bold mb-4">3. 스타일 변경 (선택사항)</h2>
+            
+            {/* 의상 변경 */}
+            <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-300">의상 스타일</label>
               <select
                 value={clothingPrompt}
@@ -276,10 +282,42 @@ const FaceSwapPage: React.FC<{
                 <option value="A simple elegant dress">심플한 원피스</option>
               </select>
             </div>
+
+            {/* ✅ 배경 변경 추가 */}
+            <div className="mb-4">
+              <label className="block mb-2 text-sm font-medium text-gray-300">배경 스타일</label>
+              <select
+                value={backgroundPrompt}
+                onChange={(e) => setBackgroundPrompt(e.target.value)}
+                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-purple-500 focus:border-purple-500 transition"
+              >
+                <option value="">변경하지 않음</option>
+                <option value="white cement textured wall background">하얀 시멘트 벽</option>
+                <option value="beige curtain background">베이지색 커튼</option>
+                <option value="clean white studio background">화이트 스튜디오</option>
+                <option value="gray studio background">회색 스튜디오</option>
+                <option value="warm wooden wall background">따뜻한 나무 벽면</option>
+                <option value="vintage brick wall background">빈티지 벽돌 벽</option>
+                <option value="soft gradient background">부드러운 그라데이션</option>
+                <option value="natural outdoor background">자연스러운 야외</option>
+                <option value="soft bokeh blur background">흐릿한 보케 배경</option>
+              </select>
+            </div>
+
+            {/* 선택된 옵션 표시 */}
+            {(clothingPrompt || backgroundPrompt) && (
+              <div className="mb-4 p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg">
+                <p className="text-xs text-blue-200">
+                  {clothingPrompt && `👔 의상: ${clothingPrompt}`}
+                  {clothingPrompt && backgroundPrompt && <br />}
+                  {backgroundPrompt && `🎨 배경: ${backgroundPrompt}`}
+                </p>
+              </div>
+            )}
             
             {/* 크레딧 부족 경고 */}
             {credits && credits.remainingCredits < 1 && (
-              <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mt-4">
+              <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4">
                 <p className="text-sm text-red-400">
                   크레딧이 부족합니다. 얼굴 변환에는 1개의 크레딧이 필요합니다.
                 </p>
@@ -371,7 +409,7 @@ const App: React.FC = () => {
       setIsLoadingCredits(false);
     }
 
-    // 서비스 연결 상태 확인 (간소화)
+    // 서비스 연결 상태 확인
     const checkServices = async () => {
       console.log('🚀 ===== 서비스 연결 테스트 시작 =====');
       
@@ -386,7 +424,7 @@ const App: React.FC = () => {
           status: vmodelConnected ? '✅ 사용 가능' : '❌ 연결 실패'
         });
         
-        // VModel 공식 예시 테스트 (조건부)
+        // VModel 공식 예시 테스트
         if (process.env.VMODEL_API_TOKEN && vmodelConnected) {
           try {
             const vmodelService = await import('./services/vmodelService');
@@ -402,7 +440,7 @@ const App: React.FC = () => {
         console.warn('⚠️ VModel 연결 테스트 실패:', vmodelError);
       }
       
-      // 2. Gemini AI 상태 확인 (폴백용)
+      // 2. Gemini AI 상태 확인
       try {
         const { getServiceStatus } = await import('./services/geminiService');
         const geminiStatus = getServiceStatus();
