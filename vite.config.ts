@@ -128,9 +128,21 @@ export default defineConfig(({ mode }) => {
         rollupOptions: {
           output: {
             // 청크 분할 최적화
-            manualChunks: {
-              'react-vendor': ['react', 'react-dom'],
-              'google-ai': ['@google/generative-ai']
+            manualChunks: (id) => {
+              // node_modules 분리
+              if (id.includes('node_modules')) {
+                if (id.includes('react') || id.includes('react-dom')) {
+                  return 'react-vendor';
+                }
+                if (id.includes('react-router')) {
+                  return 'router';
+                }
+                if (id.includes('react-icons')) {
+                  return 'icons';
+                }
+                // 기타 라이브러리
+                return 'vendor';
+              }
             }
           }
         }
