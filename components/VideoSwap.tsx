@@ -266,18 +266,21 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         aspectRatio: '9:16'
       });
       
-      console.log('✅ Gemini 영상 생성 완료:', {
-        videoUrl: result.videoUrl.substring(0, 80) + '...',
-        duration: result.duration,
-        creditsUsed: result.creditsUsed,
-        fullUrl: result.videoUrl
-      });
-      
-      setGeneratedVideoUrl(result.videoUrl);
-      if (onVideoGenerated) {
-        onVideoGenerated(result.videoUrl);
-      }
-      setProgress('영상 생성이 완료되었습니다!');
+     console.log('✅ Gemini 영상 생성 완료:', {
+  videoUrl: result.videoUrl.substring(0, 80) + '...',
+  duration: result.duration,
+  creditsUsed: result.creditsUsed,
+  fullUrl: result.videoUrl
+});
+
+// 🔧 프록시 URL로 변환 (인증 문제 해결)
+const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(result.videoUrl)}`;
+
+setGeneratedVideoUrl(proxyUrl);
+if (onVideoGenerated) {
+  onVideoGenerated(proxyUrl);
+}
+setProgress('영상 생성이 완료되었습니다!');
       
       // 2. 생성 결과 저장 (즉시 실행)
       console.log('💾 영상 결과 저장 시작...');
