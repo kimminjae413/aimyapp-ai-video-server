@@ -37,7 +37,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
   const [showIOSGuide, setShowIOSGuide] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
-  const [selectedDuration, setSelectedDuration] = useState<4 | 6 | 8>(6);
+  const [selectedDuration, setSelectedDuration] = useState<5 | 8>(5);  // ✅ Veo 2: 5초 또는 8초
 
   // 헤어 모션 템플릿 (16개 - 그대로 유지)
   const hairMotionTemplates = {
@@ -59,14 +59,13 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     salonVibe2: 'The person celebrates joyfully as if high-fiving with the hair designer'
   };
 
-  // Duration 옵션 정의
+  // ✅ Duration 옵션 정의 - Veo 2: 5초/8초만!
   const durationOptions = [
-    { value: 4 as const, label: '4초', credits: 4, desc: '짧고 빠른 영상', time: '~3분' },
-    { value: 6 as const, label: '6초', credits: 6, desc: '적당한 길이 (추천)', time: '~4분' },
-    { value: 8 as const, label: '8초', credits: 8, desc: '긴 영상', time: '~5분' }
+    { value: 5 as const, label: '5초', credits: 5, desc: '짧고 빠른 영상', time: '~3-4분' },
+    { value: 8 as const, label: '8초', credits: 8, desc: '긴 영상 (추천)', time: '~4-5분' }
   ];
 
-  // 크레딧 계산: 선택한 duration과 동일
+  // ✅ 크레딧 계산: 선택한 duration과 동일 (5초=5, 8초=8)
   const getRequiredCredits = () => {
     return selectedDuration;
   };
@@ -213,7 +212,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     console.log('🗑️ 이미지 제거:', { remainingImages: uploadedImages.length - 1 });
   };
 
-  // ✅ 영상 생성 핸들러 - 수정된 버전
+  // ✅ 영상 생성 핸들러 - Veo 2용
   const handleGenerateVideo = async () => {
     if (uploadedImages.length === 0) {
       setError('이미지를 최소 1개 업로드해주세요.');
@@ -244,12 +243,12 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     setVideoSaved(false);
     setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
-    const videoDuration = selectedDuration;
+    const videoDuration = selectedDuration;  // 5 또는 8
 
-    console.log('🎬 Gemini 영상 생성 시작:', {
+    console.log('🎬 Gemini Veo 2 영상 생성 시작:', {
       userId,
       imageCount: uploadedImages.length,
-      model: 'Veo 3.1 Fast',
+      model: 'Veo 2',
       duration: `${videoDuration}초`,
       prompt: finalPrompt,
       creditsRequired: requiredCredits,
@@ -260,20 +259,20 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     let creditDeducted = false;
 
     try {
-      // 1. Gemini Video API로 영상 생성
+      // 1. Gemini Video API로 영상 생성 (Veo 2)
       setProgress(uploadedImages.length === 2 
-        ? `2개 이미지로 ${selectedDuration}초 전환 영상 생성 중... (Veo 3.1 Fast)`
-        : `1개 이미지로 ${selectedDuration}초 영상 생성 중... (Veo 3.1 Fast)`
+        ? `2개 이미지로 ${selectedDuration}초 전환 영상 생성 중... (Veo 2)`
+        : `1개 이미지로 ${selectedDuration}초 영상 생성 중... (Veo 2)`
       );
 
       const result = await geminiVideoService.generateVideo({
         images: uploadedImages.map(img => `data:${img.mimeType};base64,${img.base64}`),
         prompt: finalPrompt,
-        duration: selectedDuration,
+        duration: selectedDuration,  // ✅ 5 또는 8
         aspectRatio: '9:16'
       });
       
-      console.log('✅ Gemini 영상 생성 완료:', {
+      console.log('✅ Gemini Veo 2 영상 생성 완료:', {
         videoUrl: result.videoUrl.substring(0, 80) + '...',
         duration: result.duration,
         creditsUsed: result.creditsUsed,
@@ -289,14 +288,14 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       }
       setProgress('영상 생성이 완료되었습니다!');
       
-      // 2. 생성 결과 저장 - ✅ 수정된 부분
+      // 2. 생성 결과 저장
       console.log('💾 영상 결과 저장 시작...');
       
       try {
         const saveResult = await saveGenerationResult({
           userId,
           type: 'video',
-          originalImageUrl: null,  // ✅ blob URL 대신 null 사용
+          originalImageUrl: null,
           resultUrl: result.videoUrl,
           prompt: finalPrompt,
           videoDuration,
@@ -309,7 +308,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
           console.warn('⚠️ 영상 결과 저장 실패 - 하지만 영상은 정상 생성됨');
         }
       } catch (saveError) {
-        // ✅ 저장 실패해도 영상 생성은 성공이므로 에러를 던지지 않음
         console.error('❌ 영상 결과 저장 중 오류:', saveError);
         console.warn('⚠️ DB 저장 실패했지만 영상은 정상 생성되었습니다.');
       }
@@ -705,32 +703,33 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                     />
                     <div className="flex items-center justify-center gap-2 text-cyan-400">
                       <FiPlus className="w-5 h-5" />
-                      <span className="text-sm font-medium">2번째 이미지 추가 (전환 영상)</span>
+                      <span className="text-sm font-medium">2번째 이미지 추가 (8초 전환 영상)</span>
                     </div>
                   </label>
                 )}
               </div>
             )}
             
+            {/* ✅ Duration 선택 섹션 - Veo 2용 (5초/8초) */}
             <div className="mt-4 p-4 bg-gray-700/50 border border-gray-600 rounded-lg">
               <label className="block mb-3 text-sm font-medium text-gray-300">
-                영상 길이 선택
+                영상 길이 선택 (Veo 2)
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 {durationOptions.map((option) => (
                   <button
                     key={option.value}
                     onClick={() => setSelectedDuration(option.value)}
-                    className={`p-3 rounded-lg border-2 transition-all ${
+                    className={`p-4 rounded-lg border-2 transition-all ${
                       selectedDuration === option.value
                         ? 'border-cyan-500 bg-cyan-500/20 text-cyan-300'
                         : 'border-gray-600 bg-gray-700 text-gray-400 hover:border-gray-500'
                     }`}
                   >
                     <div className="text-center">
-                      <div className="text-lg font-bold">{option.label}</div>
+                      <div className="text-xl font-bold">{option.label}</div>
                       <div className="text-xs mt-1">{option.desc}</div>
-                      <div className="text-xs mt-1 font-semibold text-yellow-400">
+                      <div className="text-sm mt-2 font-semibold text-yellow-400">
                         {option.credits}회 차감
                       </div>
                       <div className="text-xs mt-1 text-gray-500">
@@ -741,10 +740,11 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                 ))}
               </div>
               
-              <div className="mt-3 p-2 bg-blue-900/30 border border-blue-700/50 rounded">
-                <p className="text-xs text-blue-200 text-center">
-                  ⏱️ <strong>선택한 길이</strong>: {selectedDuration}초 | 
-                  💎 <strong>필요 크레딧</strong>: {selectedDuration}회 차감
+              <div className="mt-3 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg">
+                <p className="text-xs text-blue-200">
+                  💡 <strong>추천:</strong><br/>
+                  • 이미지 1개 → 5초 (5회)<br/>
+                  • 이미지 2개 → 8초 (8회)
                 </p>
               </div>
             </div>
