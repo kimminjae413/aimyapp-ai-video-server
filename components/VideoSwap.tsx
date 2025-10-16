@@ -60,7 +60,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
 
   // 동적 크레딧 계산: 이미지 1개 = 1크레딧, 2개 = 3크레딧
   const getRequiredCredits = () => {
-    return uploadedImages.length === 2 ? 3 : 1;
+    return uploadedImages.length === 2 ? 10 : 5;
   };
   const requiredCredits = getRequiredCredits();
 
@@ -727,8 +727,8 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
             {/* 크레딧 안내 */}
             <div className="mt-4 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg">
               <p className="text-xs text-blue-200">
-                📸 <strong>이미지 1개</strong>: 5초 영상 생성 (1회 차감)<br/>
-                📸📸 <strong>이미지 2개</strong>: 10초 전환 영상 생성 (3회 차감)
+                📸 <strong>이미지 1개</strong>: 5초 영상 생성 (5회 차감)<br/>
+                📸📸 <strong>이미지 2개</strong>: 10초 전환 영상 생성 (10회 차감)
               </p>
             </div>
           </div>
