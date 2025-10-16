@@ -24,6 +24,7 @@ class GeminiVideoService {
   private readonly MAX_RETRIES = 3;
   private readonly POLL_INTERVAL = 10000; // 10초
   private readonly MAX_POLL_ATTEMPTS = 30; // 최대 5분
+  private currentDuration: number = 5; // 현재 생성 중인 영상 길이
 
   /**
    * Gemini Video API로 영상 생성
@@ -51,6 +52,7 @@ class GeminiVideoService {
     }
 
     const creditsRequired = duration === 5 ? 5 : 10;
+    this.currentDuration = duration; // 저장
 
     console.log('🎬 Gemini Video 생성 시작:', {
       imageCount: images.length,
@@ -71,7 +73,7 @@ class GeminiVideoService {
       });
 
       // Step 2: 완료될 때까지 폴링
-      const videoUrl = await this.pollUntilComplete(operationId);
+      const videoUrl = await this.pollUntilComplete(operationId, duration);
       
       console.log('✅ Gemini Video 생성 완료:', {
         videoUrl: videoUrl.substring(0, 80) + '...',
@@ -148,7 +150,7 @@ class GeminiVideoService {
   /**
    * Step 2: 완료될 때까지 폴링
    */
-  private async pollUntilComplete(operationId: string): Promise<string> {
+  private async pollUntilComplete(operationId: string, duration: number): Promise<string> {
     for (let attempt = 1; attempt <= this.MAX_POLL_ATTEMPTS; attempt++) {
       console.log(`⏱️ 폴링 ${attempt}/${this.MAX_POLL_ATTEMPTS}...`);
 
@@ -158,7 +160,7 @@ class GeminiVideoService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             operationId,
-            duration: this.currentDuration  // duration 정보 전달
+            duration  // duration 정보 전달
           })
         });
 
@@ -176,12 +178,12 @@ class GeminiVideoService {
         }
 
         // 실패
-        if (data.status === 'failed') {
+        if (data.status === 'failed' || data.status === 'error') {
           throw new Error(data.error || '영상 생성 실패');
         }
 
         // 아직 처리 중
-        console.log(`⏳ ${data.message || '생성 중...'}`);
+        console.log(`⏳ ${data.message || `${duration}초 영상 생성 중...`}`);
 
       } catch (error) {
         console.warn(`⚠️ 폴링 오류 (${attempt}/${this.MAX_POLL_ATTEMPTS}):`, error);
@@ -206,27 +208,27 @@ class GeminiVideoService {
       return new Error('영상 생성 시간이 초과되었습니다. 다시 시도해주세요.');
     }
 
-    if (error.message.includes('network')) {
+    if (error.message?.includes('network')) {
       return new Error('네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.');
     }
 
-    if (error.message.includes('API key')) {
+    if (error.message?.includes('API key')) {
       return new Error('API 인증 오류가 발생했습니다.');
     }
 
-    if (error.message.includes('quota') || error.message.includes('429')) {
+    if (error.message?.includes('quota') || error.message?.includes('429')) {
       return new Error('API 요청 한도 초과. 1분 후 다시 시도해주세요.');
     }
 
-    if (error.message.includes('RESOURCE_EXHAUSTED')) {
+    if (error.message?.includes('RESOURCE_EXHAUSTED')) {
       return new Error('API 리소스 한도 초과. 잠시 후 다시 시도해주세요.');
     }
 
-    if (error.message.includes('size')) {
+    if (error.message?.includes('size')) {
       return new Error('이미지 크기가 너무 큽니다. 더 작은 이미지를 사용해주세요.');
     }
 
-    if (error.message.includes('시간 초과')) {
+    if (error.message?.includes('시간 초과')) {
       return new Error('영상 생성에 시간이 너무 오래 걸립니다. 다시 시도해주세요.');
     }
 
@@ -265,3 +267,6 @@ class GeminiVideoService {
 
 // 싱글톤 인스턴스 export
 export const geminiVideoService = new GeminiVideoService();
+
+// 타입 export
+export type { VideoGenerationOptions, VideoGenerationResult };
