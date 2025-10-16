@@ -1,7 +1,6 @@
 /**
- * Netlify Function: Gemini Veo Video Generation (Minimal Config)
- * 5초 = 5 크레딧, 8초 = 8 크레딧
- * Veo 3 Fast 사용 (안정성 우선)
+ * Netlify Function: Gemini Veo Video Generation (FINAL)
+ * Veo 3.1 Fast: 4초/6초/8초 (5초 미지원!)
  * 
  * 환경변수:
  * - GEMINI_VIDEO_API_KEY (우선순위 1)
@@ -11,7 +10,7 @@
 const { GoogleGenAI } = require('@google/genai');
 
 exports.config = {
-  timeout: 300  // 5분 (비동기 처리용)
+  timeout: 300  // 5분
 };
 
 exports.handler = async (event, context) => {
@@ -24,7 +23,6 @@ exports.handler = async (event, context) => {
     'Content-Type': 'application/json'
   };
 
-  // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -42,9 +40,8 @@ exports.handler = async (event, context) => {
     console.log('🎬 Gemini Veo Video Generation Request Started');
     console.log('═══════════════════════════════════════════════════════════');
     
-    // Parse request
     const data = JSON.parse(event.body);
-    const { images, prompt, duration = 5 } = data;
+    const { images, prompt, duration = 6 } = data;  // ✅ 기본값 6초
 
     // ✅ Validation
     if (!images || !Array.isArray(images) || images.length === 0 || images.length > 2) {
@@ -55,12 +52,13 @@ exports.handler = async (event, context) => {
       throw new Error('프롬프트가 필요합니다.');
     }
 
-    // ⏱️ Duration validation (5초 또는 8초만 허용 - API 제한)
-    if (![5, 8].includes(duration)) {
-      throw new Error('영상 길이는 5초 또는 8초만 가능합니다.');
+    // ⏱️ Duration validation - Veo 3.1 Fast: 4, 6, 8만 지원 (5 미지원!)
+    const validDurations = [4, 6, 8];
+    if (!validDurations.includes(duration)) {
+      throw new Error(`영상 길이는 4초, 6초, 8초만 가능합니다. (받은 값: ${duration})`);
     }
 
-    // 🔑 API Key - 우선순위: GEMINI_VIDEO_API_KEY > GEMINI_API_KEY
+    // 🔑 API Key
     const apiKey = process.env.GEMINI_VIDEO_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('GEMINI_VIDEO_API_KEY or GEMINI_API_KEY not configured');
@@ -68,12 +66,11 @@ exports.handler = async (event, context) => {
 
     console.log('🔑 API Key source:', process.env.GEMINI_VIDEO_API_KEY ? 'GEMINI_VIDEO_API_KEY' : 'GEMINI_API_KEY (fallback)');
 
-    // 💰 크레딧 계산
+    // 💰 크레딧 계산: duration과 동일
     const isTwoImages = images.length === 2;
-    const creditsRequired = duration === 5 ? 5 : 8;  // 5초=5크레딧, 8초=8크레딧
+    const creditsRequired = duration;  // 4초=4, 6초=6, 8초=8
 
-    // 🎬 모델 선택 - Veo 3 Fast (더 안정적)
-    const selectedModel = 'veo-3-fast-generate-preview';
+    const selectedModel = 'veo-3.1-fast-generate-preview';
 
     console.log('📊 Request Parameters:', {
       imageCount: images.length,
@@ -102,7 +99,7 @@ exports.handler = async (event, context) => {
       preview: firstImageBase64.substring(0, 50) + '...'
     });
 
-    // 🎨 Build request parameters - MINIMAL CONFIG (필수만)
+    // 🎨 Build request parameters
     const requestParams = {
       model: selectedModel,
       prompt: prompt,
@@ -112,9 +109,9 @@ exports.handler = async (event, context) => {
       },
       config: {
         aspectRatio: '9:16',
-        durationSeconds: duration  // 5 or 8
-        // ❌ personGeneration 제거 (선택적 파라미터)
-        // ❌ resolution 제거 (선택적 파라미터)
+        durationSeconds: duration,  // ✅ 4, 6, 8 중 하나
+        resolution: '720p',
+        personGeneration: 'allow_adult'  // 이미지 기반 생성에 필수
       }
     };
 
@@ -143,8 +140,8 @@ exports.handler = async (event, context) => {
       console.log(`🎬 Mode: Image-to-Video (${duration}초)`);
     }
 
-    // ▶️  Generate video
-    console.log('▶️  Calling generateVideos API...');
+    // ▶️ Generate video
+    console.log('▶️ Calling generateVideos API...');
     console.log('📋 Request structure:', {
       model: requestParams.model,
       hasPrompt: !!requestParams.prompt,
@@ -161,7 +158,6 @@ exports.handler = async (event, context) => {
 
     console.log('✅ Operation started:', operation.name);
 
-    // 🎯 Return operation ID immediately (avoid timeout)
     const responseTime = Date.now() - startTime;
     
     console.log('═══════════════════════════════════════════════════════════');
@@ -181,10 +177,10 @@ exports.handler = async (event, context) => {
         success: true,
         operationId: operation.name,
         status: 'processing',
-        message: `${duration}초 영상 생성이 시작되었습니다. 예상 소요 시간: ${duration === 5 ? '3-4분' : '4-5분'}`,
+        message: `${duration}초 영상 생성이 시작되었습니다. 예상 소요 시간: ${duration === 4 ? '3분' : duration === 6 ? '4분' : '5분'}`,
         duration: duration,
         creditsUsed: creditsRequired,
-        estimatedTime: duration === 5 ? '3-4분' : '4-5분'
+        estimatedTime: duration === 4 ? '3분' : duration === 6 ? '4분' : '5분'
       })
     };
 
@@ -205,8 +201,11 @@ exports.handler = async (event, context) => {
     } else if (error.message && error.message.includes('429')) {
       errorMessage = 'API 요청 한도 초과. 1분 후 다시 시도해주세요.';
       statusCode = 429;
+    } else if (error.message && error.message.includes('not found')) {
+      errorMessage = 'Veo 모델을 찾을 수 없습니다. API 키 권한을 확인하세요.';
+      statusCode = 404;
     } else if (error.message && error.message.includes('out of bound')) {
-      errorMessage = `API 파라미터 오류 (duration: ${duration}). Gemini 측 문제일 수 있습니다.`;
+      errorMessage = 'Duration은 4초, 6초, 8초만 가능합니다 (5초 미지원).';
       statusCode = 400;
     }
     
