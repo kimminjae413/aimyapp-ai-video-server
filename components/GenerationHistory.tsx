@@ -43,33 +43,33 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     return url.includes('generativelanguage.googleapis.com');
   };
 
-  // 비디오 썸네일 컴포넌트 (Gemini Proxy 지원)
-  const VideoThumbnail: React.FC<{ videoUrl: string; itemId: string }> = ({ videoUrl, itemId }) => {
-    const [thumbnailError, setThumbnailError] = useState(false);
-    const [videoLoaded, setVideoLoaded] = useState(false);
-    const [proxyUrl, setProxyUrl] = useState<string>('');
-    
-    useEffect(() => {
-      const cleanedUrl = cleanKlingUrl(videoUrl);
-      
-      // 🔑 Gemini Video는 프록시 필수, 그 외는 직접 URL
-      if (isGeminiVideoUrl(cleanedUrl)) {
-        const proxy = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(cleanedUrl)}`;
-        setProxyUrl(proxy);
-        console.log(`🔒 [썸네일] Gemini Video 프록시 사용: ${itemId}`);
-      } else {
-        setProxyUrl(cleanedUrl);
-        console.log(`🔓 [썸네일] 직접 URL 사용: ${itemId}`);
-      }
-    }, [videoUrl, itemId]);
-    
-    if (!proxyUrl) {
+  // 🎬 비디오 썸네일 컴포넌트 (Gemini URL 만료 대응)
+  const VideoThumbnail: React.FC<{ videoUrl: string; itemId: string; isGemini: boolean }> = ({ videoUrl, itemId, isGemini }) => {
+    // Gemini Video는 URL이 짧은 시간 후 만료되므로 플레이스홀더만 표시
+    if (isGemini) {
       return (
-        <div className="w-full h-full bg-gray-700 flex items-center justify-center">
-          <div className="w-8 h-8 border-4 border-blue-400 border-dashed rounded-full animate-spin"></div>
+        <div className="relative w-full h-full bg-gradient-to-br from-purple-900/50 to-blue-900/50">
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mb-3">
+              <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </div>
+            <p className="text-white text-sm font-medium">Gemini Video</p>
+            <p className="text-white/60 text-xs mt-1">다운로드하여 재생</p>
+          </div>
+          
+          {/* 애니메이션 효과 */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-shimmer"></div>
         </div>
       );
     }
+    
+    // Kling이나 Cloudinary 등 일반 비디오는 프록시로 썸네일 표시
+    const [thumbnailError, setThumbnailError] = useState(false);
+    const [videoLoaded, setVideoLoaded] = useState(false);
+    const cleanedUrl = cleanKlingUrl(videoUrl);
+    const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(cleanedUrl)}`;
     
     return (
       <div className="relative w-full h-full">
@@ -406,7 +406,11 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                           </div>
                         )
                       ) : hasValidVideoUrl ? (
-                        <VideoThumbnail videoUrl={item.resultUrl} itemId={itemId} />
+                        <VideoThumbnail 
+                          videoUrl={item.resultUrl} 
+                          itemId={itemId}
+                          isGemini={isGeminiVideoUrl(item.resultUrl)}
+                        />
                       ) : (
                         <div className="w-full h-full bg-gray-700 flex flex-col items-center justify-center">
                           <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -535,11 +539,22 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           
           <div className="mt-2 p-2 bg-green-600/20 border border-green-500/50 rounded-lg">
             <p className="text-xs text-green-300 text-center">
-              ✅ Gemini Video 프록시 지원 + 5초/8초 duration + 403 에러 해결
+              ✅ Gemini Video: URL 만료 방지 (플레이스홀더 썸네일 + 다운로드 우선)
             </p>
           </div>
         </div>
       </div>
+      
+      {/* CSS for shimmer animation */}
+      <style>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        .animate-shimmer {
+          animation: shimmer 2s infinite;
+        }
+      `}</style>
     </div>
   );
 };
