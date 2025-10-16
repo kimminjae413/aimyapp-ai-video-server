@@ -61,12 +61,10 @@ exports.handler = async (event, context) => {
       ? images[0].split(',')[1] 
       : images[0];
 
-    // 이미지 객체 생성
+    // ⚠️ REST API 스키마: bytesBase64Encoded + mimeType (직접)
     const firstImage = {
-      inlineData: {
-        data: firstImageBase64,
-        mimeType: 'image/jpeg'
-      }
+      bytesBase64Encoded: firstImageBase64,
+      mimeType: 'image/jpeg'
     };
 
     // 모델 및 config 설정
@@ -92,12 +90,10 @@ exports.handler = async (event, context) => {
         ? images[1].split(',')[1]
         : images[1];
       
-      // ⚠️ lastFrame은 config 밖에 최상위로!
+      // ⚠️ REST API 스키마: bytesBase64Encoded + mimeType (직접)
       requestParams.lastFrame = {
-        inlineData: {
-          data: lastImageBase64,
-          mimeType: 'image/jpeg'
-        }
+        bytesBase64Encoded: lastImageBase64,
+        mimeType: 'image/jpeg'
       };
 
       console.log('📸📸 Veo 3.1 + lastFrame 모드');
