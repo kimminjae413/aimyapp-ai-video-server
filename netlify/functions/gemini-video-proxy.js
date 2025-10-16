@@ -1,7 +1,7 @@
 /**
- * Netlify Function: Gemini Veo Video Generation (Final Version)
+ * Netlify Function: Gemini Veo Video Generation (Minimal Config)
  * 5초 = 5 크레딧, 8초 = 8 크레딧
- * Veo 3.1 Fast 사용
+ * Veo 3 Fast 사용 (안정성 우선)
  * 
  * 환경변수:
  * - GEMINI_VIDEO_API_KEY (우선순위 1)
@@ -72,8 +72,8 @@ exports.handler = async (event, context) => {
     const isTwoImages = images.length === 2;
     const creditsRequired = duration === 5 ? 5 : 8;  // 5초=5크레딧, 8초=8크레딧
 
-    // 🎬 모델 선택 (Veo 3.1 Fast - 항상 사용)
-    const selectedModel = 'veo-3.1-fast-generate-preview';  // 1개/2개 이미지 모두 Veo 3.1 Fast
+    // 🎬 모델 선택 - Veo 3 Fast (더 안정적)
+    const selectedModel = 'veo-3-fast-generate-preview';
 
     console.log('📊 Request Parameters:', {
       imageCount: images.length,
@@ -102,23 +102,23 @@ exports.handler = async (event, context) => {
       preview: firstImageBase64.substring(0, 50) + '...'
     });
 
-    // 🎨 Build request parameters
+    // 🎨 Build request parameters - MINIMAL CONFIG (필수만)
     const requestParams = {
       model: selectedModel,
       prompt: prompt,
       image: {
-        imageBytes: firstImageBase64,  // base64 string
+        imageBytes: firstImageBase64,
         mimeType: 'image/jpeg'
       },
       config: {
         aspectRatio: '9:16',
-        durationSeconds: duration,  // 5 or 8
-        personGeneration: 'allow_adult',
-        resolution: '720p'
+        durationSeconds: duration  // 5 or 8
+        // ❌ personGeneration 제거 (선택적 파라미터)
+        // ❌ resolution 제거 (선택적 파라미터)
       }
     };
 
-    // 📸 Add second image for Veo 3.1 (lastFrame)
+    // 📸 Add second image for interpolation
     if (isTwoImages) {
       const lastImageBase64 = images[1].includes(',')
         ? images[1].split(',')[1]
@@ -138,7 +138,9 @@ exports.handler = async (event, context) => {
         preview: lastImageBase64.substring(0, 50) + '...'
       });
       
-      console.log(`🎬 Mode: Veo 3.1 Fast ${isTwoImages ? 'Frame Interpolation' : 'Image-to-Video'} (${duration}초)`);
+      console.log(`🎬 Mode: Frame Interpolation (${duration}초)`);
+    } else {
+      console.log(`🎬 Mode: Image-to-Video (${duration}초)`);
     }
 
     // ▶️  Generate video
@@ -160,7 +162,6 @@ exports.handler = async (event, context) => {
     console.log('✅ Operation started:', operation.name);
 
     // 🎯 Return operation ID immediately (avoid timeout)
-    // Client will poll for completion using gemini-video-status endpoint
     const responseTime = Date.now() - startTime;
     
     console.log('═══════════════════════════════════════════════════════════');
@@ -204,6 +205,9 @@ exports.handler = async (event, context) => {
     } else if (error.message && error.message.includes('429')) {
       errorMessage = 'API 요청 한도 초과. 1분 후 다시 시도해주세요.';
       statusCode = 429;
+    } else if (error.message && error.message.includes('out of bound')) {
+      errorMessage = `API 파라미터 오류 (duration: ${duration}). Gemini 측 문제일 수 있습니다.`;
+      statusCode = 400;
     }
     
     return {
@@ -212,7 +216,7 @@ exports.handler = async (event, context) => {
       body: JSON.stringify({
         success: false,
         error: errorMessage,
-        details: error.stack
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       })
     };
   }
