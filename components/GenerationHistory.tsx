@@ -55,7 +55,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                 <path d="M8 5v14l11-7z"/>
               </svg>
             </div>
-            <p className="text-white text-sm font-medium">Gemini Video</p>
+            <p className="text-white text-sm font-medium">Hairgator Video</p>
             <p className="text-white/60 text-xs mt-1">다운로드하여 재생</p>
           </div>
           
