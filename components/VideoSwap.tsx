@@ -58,9 +58,9 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     salonVibe2: 'The person celebrates joyfully as if high-fiving with the hair designer'
   };
 
-  // 동적 크레딧 계산: 이미지 1개 = 5크레딧, 2개 = 10크레딧
+  // ✅ 동적 크레딧 계산: 이미지 1개 = 5크레딧(5초), 2개 = 8크레딧(8초)
   const getRequiredCredits = () => {
-    return uploadedImages.length === 2 ? 10 : 5;
+    return uploadedImages.length === 2 ? 8 : 5;
   };
   const requiredCredits = getRequiredCredits();
 
@@ -154,7 +154,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
-  // 이미지 업로드 핸들러 (배열에 추가하도록 수정)
+  // 이미지 업로드 핸들러
   const handleImageUpload = (file: File) => {
     if (uploadedImages.length >= 2) {
       setError('최대 2개의 이미지만 업로드할 수 있습니다.');
@@ -180,7 +180,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       
       console.log('✅ 이미지 업로드 완료:', {
         totalImages: uploadedImages.length + 1,
-        requiredCredits: uploadedImages.length + 1 === 2 ? 10 : 5
+        requiredCredits: uploadedImages.length + 1 === 2 ? 8 : 5
       });
     };
     
@@ -204,7 +204,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     console.log('🗑️ 이미지 제거:', { remainingImages: uploadedImages.length - 1 });
   };
 
-  // 영상 생성 핸들러 - ✅ duration 파라미터 추가!
+  // ✅ 영상 생성 핸들러 - 5초/8초로 수정!
   const handleGenerateVideo = async () => {
     if (uploadedImages.length === 0) {
       setError('이미지를 최소 1개 업로드해주세요.');
@@ -235,8 +235,8 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     setVideoSaved(false);
     setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
-    // ✅ duration 계산
-    const videoDuration = uploadedImages.length === 2 ? 10 : 5;
+    // ✅ duration 계산: 5초 또는 8초 (API 제한)
+    const videoDuration = uploadedImages.length === 2 ? 8 : 5;
 
     console.log('🎬 Gemini 영상 생성 시작:', {
       userId,
@@ -253,16 +253,16 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     let creditDeducted = false;
 
     try {
-      // 1. Gemini Video API로 영상 생성 - ✅ duration 파라미터 전달!
+      // 1. Gemini Video API로 영상 생성 - ✅ duration: 5 또는 8
       setProgress(uploadedImages.length === 2 
-        ? '2개 이미지로 10초 전환 영상 생성 중... (Veo 3.1 Fast)'
+        ? '2개 이미지로 8초 전환 영상 생성 중... (Veo 3.1 Fast)'
         : '1개 이미지로 5초 영상 생성 중... (Veo 3 Fast)'
       );
 
       const result = await geminiVideoService.generateVideo({
         images: uploadedImages.map(img => `data:${img.mimeType};base64,${img.base64}`),
         prompt: finalPrompt,
-        duration: videoDuration as 5 | 10,  // ✅ duration 추가!
+        duration: videoDuration as 5 | 8,  // ✅ 5 또는 8초!
         aspectRatio: '9:16'
       });
       
@@ -371,7 +371,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
-  // iPhone에서 실제 파일이 저장되는 다운로드 핸들러 - 최종 완성 버전 (완전히 유지)
+  // iPhone에서 실제 파일이 저장되는 다운로드 핸들러 (완전히 유지)
   const handleDownload = async () => {
     if (!generatedVideoUrl || isDownloading) return;
     
@@ -384,7 +384,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         platform: isIOS() ? 'iOS' : isAndroid() ? 'Android' : 'Desktop'
       });
 
-      // 1단계: 실제 비디오 파일 fetch
       setDownloadStatus('비디오 파일 다운로드 중...');
       
       const response = await fetch(generatedVideoUrl, {
@@ -412,11 +411,9 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       const filename = `hairgator-video-${Date.now()}.mp4`;
 
       if (isIOS()) {
-        // iPhone/iPad 전용 처리: Share API 우선, Blob 다운로드 폴백
         setDownloadStatus('iOS 파일 저장 중...');
         
         try {
-          // 방법 1: Web Share API 시도 (iOS 14+)
           if ('share' in navigator && 'canShare' in navigator) {
             const file = new File([blob], filename, { type: 'video/mp4' });
             
@@ -438,7 +435,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         }
         
         try {
-          // 방법 2: Blob 다운로드 (iOS Safari 네이티브 다운로드)
           console.log('📱 Blob 다운로드 방식 시도');
           
           const blobUrl = URL.createObjectURL(blob);
@@ -446,25 +442,13 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
           const link = document.createElement('a');
           link.href = blobUrl;
           link.download = filename;
-          
-          // iOS Safari에서 실제 다운로드가 되도록 하는 핵심 설정
           link.style.display = 'none';
-          link.target = '_self';  // 현재 창에서 다운로드
-          link.click = function() {
-            // iOS에서 다운로드 대화상자가 나타나도록 강제
-            const event = new MouseEvent('click', {
-              bubbles: true,
-              cancelable: true,
-              view: window
-            });
-            this.dispatchEvent(event);
-          };
+          link.target = '_self';
           
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
           
-          // 메모리 정리
           setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
           
           setDownloadStatus('📁 파일 앱 또는 다운로드 폴더를 확인하세요');
@@ -473,7 +457,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         } catch (blobError) {
           console.warn('Blob 다운로드 실패:', blobError);
           
-          // 방법 3: 최후 수단 - 새 창에서 열기
           const newWindow = window.open(generatedVideoUrl, '_blank');
           
           if (newWindow) {
@@ -488,7 +471,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         }
         
       } else {
-        // Android/PC: 기존 Blob 다운로드 방식
         const blobUrl = URL.createObjectURL(blob);
         
         const link = document.createElement('a');
@@ -508,7 +490,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       console.error('❌ 다운로드 실패:', error);
       setDownloadStatus('❌ 다운로드 실패');
       
-      // 최종 fallback: URL 직접 제공
       setTimeout(() => {
         const cleanUrl = generatedVideoUrl.split('?')[0];
         if (confirm('다운로드에 실패했습니다. 비디오 URL을 클립보드에 복사하시겠습니까?')) {
@@ -531,7 +512,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
-  // iOS 가이드 모달 (완전히 유지)
+  // iOS 가이드 모달
   const IOSGuideModal = () => (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full animate-in fade-in zoom-in duration-300">
@@ -584,7 +565,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     </div>
   );
 
-  // 경고 모달 (완전히 유지)
+  // 경고 모달
   const ExitWarningModal = () => (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full">
@@ -721,18 +702,18 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                     />
                     <div className="flex items-center justify-center gap-2 text-cyan-400">
                       <FiPlus className="w-5 h-5" />
-                      <span className="text-sm font-medium">2번째 이미지 추가 (10초 영상)</span>
+                      <span className="text-sm font-medium">2번째 이미지 추가 (8초 영상)</span>
                     </div>
                   </label>
                 )}
               </div>
             )}
             
-            {/* 크레딧 안내 */}
+            {/* ✅ 크레딧 안내 - 5초/8초로 수정 */}
             <div className="mt-4 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg">
               <p className="text-xs text-blue-200">
                 📸 <strong>이미지 1개</strong>: 5초 영상 생성 (5회 차감)<br/>
-                📸📸 <strong>이미지 2개</strong>: 10초 전환 영상 생성 (10회 차감)
+                📸📸 <strong>이미지 2개</strong>: 8초 전환 영상 생성 (8회 차감)
               </p>
             </div>
           </div>
@@ -822,7 +803,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               ) : (
                 <>
                   <VideoIcon className="w-5 h-5 mr-2" />
-                  {uploadedImages.length === 2 ? '10초 영상 생성하기' : '5초 영상 생성하기'} ({requiredCredits}회 차감)
+                  {uploadedImages.length === 2 ? '8초 영상 생성하기' : '5초 영상 생성하기'} ({requiredCredits}회 차감)
                 </>
               )}
             </button>
