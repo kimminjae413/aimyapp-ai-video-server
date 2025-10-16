@@ -37,6 +37,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
   const [showIOSGuide, setShowIOSGuide] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState<4 | 6 | 8>(6);  // ✅ 새로 추가: 기본값 6초
 
   // 헤어 모션 템플릿 (16개 - 그대로 유지)
   const hairMotionTemplates = {
@@ -58,9 +59,16 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     salonVibe2: 'The person celebrates joyfully as if high-fiving with the hair designer'
   };
 
-  // ✅ 동적 크레딧 계산: 이미지 1개 = 5크레딧(5초), 2개 = 8크레딧(8초)
+  // ✅ Duration 옵션 정의
+  const durationOptions = [
+    { value: 4 as const, label: '4초', credits: 4, desc: '짧고 빠른 영상', time: '~3분' },
+    { value: 6 as const, label: '6초', credits: 6, desc: '적당한 길이 (추천)', time: '~4분' },
+    { value: 8 as const, label: '8초', credits: 8, desc: '긴 영상', time: '~5분' }
+  ];
+
+  // ✅ 크레딧 계산: 선택한 duration과 동일
   const getRequiredCredits = () => {
-    return uploadedImages.length === 2 ? 8 : 5;
+    return selectedDuration;  // 4초=4, 6초=6, 8초=8
   };
   const requiredCredits = getRequiredCredits();
 
@@ -180,7 +188,8 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       
       console.log('✅ 이미지 업로드 완료:', {
         totalImages: uploadedImages.length + 1,
-        requiredCredits: uploadedImages.length + 1 === 2 ? 8 : 5
+        selectedDuration: selectedDuration,
+        requiredCredits: selectedDuration
       });
     };
     
@@ -204,7 +213,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     console.log('🗑️ 이미지 제거:', { remainingImages: uploadedImages.length - 1 });
   };
 
-  // ✅ 영상 생성 핸들러 - 5초/8초로 수정!
+  // ✅ 영상 생성 핸들러 - Duration 선택 기능!
   const handleGenerateVideo = async () => {
     if (uploadedImages.length === 0) {
       setError('이미지를 최소 1개 업로드해주세요.');
@@ -235,13 +244,13 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     setVideoSaved(false);
     setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
-    // ✅ duration 계산: 5초 또는 8초 (API 제한)
-    const videoDuration = uploadedImages.length === 2 ? 8 : 6;
+    // ✅ duration: 사용자가 선택한 값 사용 (4, 6, 8초)
+    const videoDuration = selectedDuration;
 
     console.log('🎬 Gemini 영상 생성 시작:', {
       userId,
       imageCount: uploadedImages.length,
-      model: uploadedImages.length === 2 ? 'Veo 3.1 Fast' : 'Veo 3 Fast',
+      model: 'Veo 3.1 Fast',
       duration: `${videoDuration}초`,
       prompt: finalPrompt,
       creditsRequired: requiredCredits,
@@ -253,34 +262,34 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     let creditDeducted = false;
 
     try {
-      // 1. Gemini Video API로 영상 생성 - ✅ duration: 5 또는 8
+      // 1. Gemini Video API로 영상 생성 - ✅ 사용자가 선택한 duration!
       setProgress(uploadedImages.length === 2 
-        ? '2개 이미지로 8초 전환 영상 생성 중... (Veo 3.1 Fast)'
-        : '1개 이미지로 5초 영상 생성 중... (Veo 3 Fast)'
+        ? `2개 이미지로 ${selectedDuration}초 전환 영상 생성 중... (Veo 3.1 Fast)`
+        : `1개 이미지로 ${selectedDuration}초 영상 생성 중... (Veo 3.1 Fast)`
       );
 
       const result = await geminiVideoService.generateVideo({
         images: uploadedImages.map(img => `data:${img.mimeType};base64,${img.base64}`),
         prompt: finalPrompt,
-        duration: videoDuration as 5 | 8,  // ✅ 5 또는 8초!
+        duration: selectedDuration,  // ✅ 사용자가 선택한 4, 6, 8초!
         aspectRatio: '9:16'
       });
       
-     console.log('✅ Gemini 영상 생성 완료:', {
-  videoUrl: result.videoUrl.substring(0, 80) + '...',
-  duration: result.duration,
-  creditsUsed: result.creditsUsed,
-  fullUrl: result.videoUrl
-});
+      console.log('✅ Gemini 영상 생성 완료:', {
+        videoUrl: result.videoUrl.substring(0, 80) + '...',
+        duration: result.duration,
+        creditsUsed: result.creditsUsed,
+        fullUrl: result.videoUrl
+      });
 
-// 🔧 프록시 URL로 변환 (인증 문제 해결)
-const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(result.videoUrl)}`;
+      // 🔧 프록시 URL로 변환 (인증 문제 해결)
+      const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(result.videoUrl)}`;
 
-setGeneratedVideoUrl(proxyUrl);
-if (onVideoGenerated) {
-  onVideoGenerated(proxyUrl);
-}
-setProgress('영상 생성이 완료되었습니다!');
+      setGeneratedVideoUrl(proxyUrl);
+      if (onVideoGenerated) {
+        onVideoGenerated(proxyUrl);
+      }
+      setProgress('영상 생성이 완료되었습니다!');
       
       // 2. 생성 결과 저장 (즉시 실행)
       console.log('💾 영상 결과 저장 시작...');
@@ -705,19 +714,50 @@ setProgress('영상 생성이 완료되었습니다!');
                     />
                     <div className="flex items-center justify-center gap-2 text-cyan-400">
                       <FiPlus className="w-5 h-5" />
-                      <span className="text-sm font-medium">2번째 이미지 추가 (8초 영상)</span>
+                      <span className="text-sm font-medium">2번째 이미지 추가 (전환 영상)</span>
                     </div>
                   </label>
                 )}
               </div>
             )}
             
-            {/* ✅ 크레딧 안내 - 5초/8초로 수정 */}
-            <div className="mt-4 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg">
-              <p className="text-xs text-blue-200">
-                📸 <strong>이미지 1개</strong>: 5초 영상 생성 (5회 차감)<br/>
-                📸📸 <strong>이미지 2개</strong>: 8초 전환 영상 생성 (8회 차감)
-              </p>
+            {/* ✅ Duration 선택 UI */}
+            <div className="mt-4 p-4 bg-gray-700/50 border border-gray-600 rounded-lg">
+              <label className="block mb-3 text-sm font-medium text-gray-300">
+                영상 길이 선택
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {durationOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setSelectedDuration(option.value)}
+                    className={`p-3 rounded-lg border-2 transition-all ${
+                      selectedDuration === option.value
+                        ? 'border-cyan-500 bg-cyan-500/20 text-cyan-300'
+                        : 'border-gray-600 bg-gray-700 text-gray-400 hover:border-gray-500'
+                    }`}
+                  >
+                    <div className="text-center">
+                      <div className="text-lg font-bold">{option.label}</div>
+                      <div className="text-xs mt-1">{option.desc}</div>
+                      <div className="text-xs mt-1 font-semibold text-yellow-400">
+                        {option.credits}회 차감
+                      </div>
+                      <div className="text-xs mt-1 text-gray-500">
+                        생성: {option.time}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              
+              {/* 선택된 옵션 안내 */}
+              <div className="mt-3 p-2 bg-blue-900/30 border border-blue-700/50 rounded">
+                <p className="text-xs text-blue-200 text-center">
+                  ⏱️ <strong>선택한 길이</strong>: {selectedDuration}초 | 
+                  💎 <strong>필요 크레딧</strong>: {selectedDuration}회 차감
+                </p>
+              </div>
             </div>
           </div>
 
@@ -785,7 +825,7 @@ setProgress('영상 생성이 완료되었습니다!');
             {credits && !hasEnoughCredits && (
               <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4">
                 <p className="text-sm text-red-400">
-                  크레딧이 부족합니다. 현재 설정({uploadedImages.length}개 이미지)에는 {requiredCredits}개의 크레딧이 필요합니다.
+                  크레딧이 부족합니다. {selectedDuration}초 영상 생성에는 {requiredCredits}개의 크레딧이 필요합니다.
                 </p>
               </div>
             )}
@@ -806,7 +846,7 @@ setProgress('영상 생성이 완료되었습니다!');
               ) : (
                 <>
                   <VideoIcon className="w-5 h-5 mr-2" />
-                  {uploadedImages.length === 2 ? '8초 영상 생성하기' : '5초 영상 생성하기'} ({requiredCredits}회 차감)
+                  {selectedDuration}초 영상 생성하기 ({requiredCredits}회 차감)
                 </>
               )}
             </button>
