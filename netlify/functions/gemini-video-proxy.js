@@ -1,12 +1,12 @@
 /**
- * Netlify Function: Gemini Veo Video Generation (REST API)
- * SDK 대신 직접 REST API 호출
+ * Netlify Function: Gemini Veo Video Generation
+ * @google/genai SDK 사용 (공식 방법)
  */
 
-const fetch = require('node-fetch');
+const { GoogleGenAI } = require('@google/genai');
 
 exports.config = {
-  timeout: 300
+  timeout: 300  // 5분
 };
 
 exports.handler = async (event, context) => {
@@ -17,6 +17,7 @@ exports.handler = async (event, context) => {
     'Content-Type': 'application/json'
   };
 
+  // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -32,125 +33,142 @@ exports.handler = async (event, context) => {
   try {
     const { images, prompt } = JSON.parse(event.body);
 
-    if (!images || images.length === 0 || !prompt) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: '이미지와 프롬프트가 필요합니다.' })
-      };
+    // 검증
+    if (!images || images.length === 0 || images.length > 2) {
+      throw new Error('이미지는 1~2개만 지원됩니다.');
     }
 
-    console.log('🎬 Veo REST API 호출:', {
+    if (!prompt || prompt.trim() === '') {
+      throw new Error('프롬프트가 필요합니다.');
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY not configured');
+    }
+
+    console.log('🎬 Veo SDK 호출:', {
       imageCount: images.length,
+      model: images.length === 2 ? 'veo-3.1' : 'veo-3',
       promptLength: prompt.length
     });
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    const firstImageBase64 = images[0].split(',')[1];
+    // SDK 클라이언트 초기화
+    const client = new GoogleGenAI({ apiKey });
 
-    // REST API 요청 구성
-    let requestBody = {
-      prompt: prompt,
-      image: {
-        bytesBase64Encoded: firstImageBase64,
+    // Base64 추출 (data:image/jpeg;base64, 제거)
+    const firstImageBase64 = images[0].includes(',') 
+      ? images[0].split(',')[1] 
+      : images[0];
+
+    // 이미지 객체 생성
+    const firstImage = {
+      inlineData: {
+        data: firstImageBase64,
         mimeType: 'image/jpeg'
-      },
-      generationConfig: {
-        aspectRatio: '9:16',
-        durationSeconds: '8',
-        personGeneration: 'allow_adult'
       }
     };
 
-    // 2개 이미지인 경우 lastFrame 추가
+    // 모델 및 config 설정
+    let model = 'veo-3-generate-preview';
+    let config = {
+      aspectRatio: '9:16',
+      durationSeconds: '8',
+      personGeneration: 'allow_adult',
+      resolution: '720p'
+    };
+
+    let lastFrame = null;
+
+    // 2개 이미지: Veo 3.1 + lastFrame
     if (images.length === 2) {
-      const lastImageBase64 = images[1].split(',')[1];
-      requestBody.generationConfig.lastFrame = {
-        bytesBase64Encoded: lastImageBase64,
-        mimeType: 'image/jpeg'
+      model = 'veo-3.1-generate-preview';
+      const lastImageBase64 = images[1].includes(',')
+        ? images[1].split(',')[1]
+        : images[1];
+      
+      lastFrame = {
+        inlineData: {
+          data: lastImageBase64,
+          mimeType: 'image/jpeg'
+        }
       };
-      console.log('📸📸 lastFrame 추가됨');
+
+      config.lastFrame = lastFrame;
+      console.log('📸📸 Veo 3.1 + lastFrame 모드');
+    } else {
+      console.log('📸 Veo 3 단일 이미지 모드');
     }
 
-    console.log('📤 요청 구조:', JSON.stringify({
-      prompt: requestBody.prompt.substring(0, 50),
-      hasImage: !!requestBody.image,
-      imageSize: requestBody.image.bytesBase64Encoded.length,
-      hasLastFrame: !!requestBody.generationConfig.lastFrame,
-      config: requestBody.generationConfig
-    }, null, 2));
+    // 🎬 동영상 생성 시작
+    console.log('▶️ generate_videos 호출...');
+    
+    const operation = await client.models.generateVideos({
+      model: model,
+      prompt: prompt,
+      image: firstImage,
+      config: config
+    });
 
-    // POST 요청 - 올바른 REST API 엔드포인트
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-generate-preview:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      }
-    );
+    console.log('✅ Operation 시작:', operation.name);
 
-    // 응답 텍스트 먼저 확인
-    const responseText = await response.text();
-    console.log('📩 응답 상태:', response.status);
-    console.log('📩 응답 본문:', responseText.substring(0, 500));
-
-    if (!response.ok) {
-      console.error('❌ API 오류:', responseText);
-      throw new Error(responseText || `HTTP ${response.status}`);
-    }
-
-    const result = JSON.parse(responseText);
-    console.log('✅ 작업 시작:', result.name);
-
-    // 폴링
-    let operation = result;
+    // 🔄 폴링 (최대 5분)
+    let completedOperation = operation;
     let attempts = 0;
     const maxAttempts = 30;
 
-    while (!operation.done && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 10000));
+    while (!completedOperation.done && attempts < maxAttempts) {
+      console.log(`⏱️ 폴링 ${attempts + 1}/${maxAttempts}...`);
+      await new Promise(resolve => setTimeout(resolve, 10000)); // 10초 대기
       
-      const pollResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/${operation.name}?key=${apiKey}`
-      );
+      completedOperation = await client.operations.get({
+        name: operation.name
+      });
       
-      operation = await pollResponse.json();
       attempts++;
-      console.log(`⏱️ ${attempts}/${maxAttempts}`);
     }
 
-    if (!operation.done) {
-      throw new Error('타임아웃');
+    if (!completedOperation.done) {
+      throw new Error('동영상 생성 타임아웃 (5분 초과)');
     }
 
-    const videoUrl = operation.response?.generatedVideos?.[0]?.video?.uri;
+    // 📦 결과 추출
+    const generatedVideos = completedOperation.response?.generatedVideos;
     
-    if (!videoUrl) {
-      throw new Error('비디오 URL 없음');
+    if (!generatedVideos || generatedVideos.length === 0) {
+      throw new Error('생성된 동영상이 없습니다.');
     }
 
-    console.log('✅ 완료:', videoUrl.substring(0, 50));
+    const videoUrl = generatedVideos[0].video.uri;
 
+    if (!videoUrl) {
+      throw new Error('동영상 URL을 찾을 수 없습니다.');
+    }
+
+    console.log('✅ 완료:', videoUrl.substring(0, 60) + '...');
+
+    // 성공 응답
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
         success: true,
-        videoUrl,
+        videoUrl: videoUrl,
         duration: 8,
-        creditsUsed: images.length === 2 ? 3 : 1
+        creditsUsed: images.length === 2 ? 3 : 1,
+        model: model
       })
     };
 
   } catch (error) {
-    console.error('❌ 오류:', error.message);
+    console.error('❌ Veo 생성 실패:', error);
     
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({
-        error: error.message || '생성 실패'
+        error: error.message || '동영상 생성 중 오류가 발생했습니다.',
+        details: error.stack
       })
     };
   }
