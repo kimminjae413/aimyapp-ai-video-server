@@ -1,14 +1,11 @@
 /**
- * Netlify Function: Gemini Video Generation Proxy
+ * Netlify Function: Gemini Veo Video Generation Proxy
  * 
- * 이미지 1개: Veo 2 (veo-2.0-generate-001) → 5초
- * 이미지 2개: Veo 3.1 (veo-3.1-generate-preview) → 10초 전환
+ * 이미지 1개: Veo 3 → 8초
+ * 이미지 2개: Veo 3.1 (last_frame) → 8초 전환
  */
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-// Gemini API 초기화
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const { genai } = require('@google/genai');
 
 // ⚠️ 중요: Netlify Functions 타임아웃 설정 (5분)
 exports.config = {
@@ -83,116 +80,110 @@ exports.handler = async (event, context) => {
       };
     }
 
-    console.log('🎬 Gemini Video 생성 시작:', {
+    console.log('🎬 Veo Video 생성 시작:', {
       imageCount: images.length,
-      model: images.length === 2 ? 'Veo 3.1' : 'Veo 2',
+      model: images.length === 2 ? 'Veo 3.1' : 'Veo 3',
       promptLength: prompt.length,
       aspectRatio
     });
 
-    // 모델 선택 및 파라미터 설정
-    const isMultipleImages = images.length === 2;
-    const modelName = isMultipleImages 
-      ? 'veo-3.1-generate-preview'  // 2개 이미지 → Veo 3.1
-      : 'veo-2.0-generate-001';      // 1개 이미지 → Veo 2
+    // Google GenAI Client 초기화
+    const client = genai.Client({ apiKey: process.env.GEMINI_API_KEY });
 
-    const model = genAI.getGenerativeModel({ model: modelName });
-
-    // 이미지 파트 준비
-    const imageParts = images.map((imageData, index) => {
-      // data:image/jpeg;base64,/9j/4AAQ... 형식
-      const [header, base64Data] = imageData.split(',');
-      const mimeType = header.match(/:(.*?);/)[1];
-
-      return {
-        inlineData: {
-          mimeType,
-          data: base64Data
-        }
-      };
-    });
-
-    // 요청 구성
-    let generationConfig = {
-      temperature: 1.0,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 8192
-      // ❌ aspectRatio와 duration은 generationConfig에서 제거
-      // Gemini API가 이 필드들을 지원하지 않음
-    };
-
-    let requestParts = [];
-
-    if (isMultipleImages) {
-      // 2개 이미지: last_frame 사용 (Veo 3.1)
-      console.log('📸📸 Veo 3.1 모드: 10초 전환 영상');
+    // 모델 선택
+    const modelName = 'veo-3.1-generate-preview';
+    
+    // 이미지 처리
+    const firstImageData = images[0].split(',')[1]; // base64 부분만
+    const firstImageBuffer = Buffer.from(firstImageData, 'base64');
+    
+    let operation;
+    
+    if (images.length === 2) {
+      // 2개 이미지: last_frame 사용
+      console.log('📸📸 Veo 3.1 모드: 첫 프레임 + 마지막 프레임');
       
-      requestParts = [
-        { text: prompt },
-        { text: 'Start frame:' },
-        imageParts[0],
-        { text: 'Last frame:' },
-        imageParts[1]
-      ];
+      const lastImageData = images[1].split(',')[1];
+      const lastImageBuffer = Buffer.from(lastImageData, 'base64');
+      
+      operation = await client.models.generateVideos({
+        model: modelName,
+        prompt: prompt,
+        image: {
+          mimeType: 'image/jpeg',
+          data: firstImageBuffer
+        },
+        config: {
+          lastFrame: {
+            mimeType: 'image/jpeg',
+            data: lastImageBuffer
+          },
+          aspectRatio: aspectRatio,
+          durationSeconds: '8',
+          personGeneration: 'allow_adult'
+        }
+      });
       
     } else {
-      // 1개 이미지: 일반 생성 (Veo 2)
-      console.log('📸 Veo 2 모드: 5초 영상');
+      // 1개 이미지: 일반 생성
+      console.log('📸 Veo 3 모드: 단일 이미지');
       
-      requestParts = [
-        { text: prompt },
-        imageParts[0]
-      ];
+      operation = await client.models.generateVideos({
+        model: modelName,
+        prompt: prompt,
+        image: {
+          mimeType: 'image/jpeg',
+          data: firstImageBuffer
+        },
+        config: {
+          aspectRatio: aspectRatio,
+          durationSeconds: '8',
+          personGeneration: 'allow_adult'
+        }
+      });
     }
 
-    // 영상 생성 요청
-    console.log('⏳ Gemini API 호출 중...');
+    // 비동기 작업 폴링
+    console.log('⏳ 비디오 생성 대기 중... (최대 5분 소요)');
     
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: requestParts }],
-      generationConfig
-    });
-
-    // 응답 처리
-    const response = await result.response;
+    let attempts = 0;
+    const maxAttempts = 30; // 5분 (10초 * 30)
     
-    if (!response || !response.candidates || response.candidates.length === 0) {
-      throw new Error('영상 생성 응답이 없습니다.');
-    }
-
-    const candidate = response.candidates[0];
-    
-    if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
-      throw new Error('영상 데이터가 없습니다.');
-    }
-
-    // 비디오 URL 추출
-    let videoUrl = null;
-    
-    for (const part of candidate.content.parts) {
-      if (part.fileData && part.fileData.fileUri) {
-        videoUrl = part.fileData.fileUri;
-        break;
-      }
+    while (!operation.done && attempts < maxAttempts) {
+      console.log(`⏱️ 폴링 ${attempts + 1}/${maxAttempts}...`);
       
-      // 혹은 inlineData로 올 수도 있음
-      if (part.inlineData && part.inlineData.data) {
-        // base64 비디오 데이터를 blob URL로 변환 필요
-        // 하지만 보통 fileUri로 옴
-        console.warn('⚠️ inlineData 형식의 비디오 응답');
-      }
+      await new Promise(resolve => setTimeout(resolve, 10000)); // 10초 대기
+      
+      // 작업 상태 갱신
+      operation = await client.operations.get({ name: operation.name });
+      attempts++;
     }
 
-    if (!videoUrl) {
-      console.error('❌ 응답 구조:', JSON.stringify(candidate, null, 2));
-      throw new Error('비디오 URL을 찾을 수 없습니다.');
+    if (!operation.done) {
+      throw new Error('비디오 생성 시간이 초과되었습니다. (5분)');
     }
 
-    console.log('✅ 영상 생성 완료:', {
+    // 결과 확인
+    const generatedVideos = operation.response?.generatedVideos;
+    
+    if (!generatedVideos || generatedVideos.length === 0) {
+      throw new Error('생성된 비디오가 없습니다.');
+    }
+
+    const video = generatedVideos[0];
+    const videoFile = video.video;
+    
+    if (!videoFile || !videoFile.uri) {
+      throw new Error('비디오 URI를 찾을 수 없습니다.');
+    }
+
+    // 비디오 다운로드 URL 생성
+    const videoUrl = videoFile.uri;
+
+    console.log('✅ 비디오 생성 완료:', {
       videoUrl: videoUrl.substring(0, 80) + '...',
-      duration: isMultipleImages ? '10s' : '5s',
-      creditsUsed: isMultipleImages ? 3 : 1
+      duration: images.length === 2 ? '8s (transition)' : '8s',
+      creditsUsed: images.length === 2 ? 3 : 1
     });
 
     // 성공 응답
@@ -202,14 +193,14 @@ exports.handler = async (event, context) => {
       body: JSON.stringify({
         success: true,
         videoUrl,
-        duration: isMultipleImages ? 10 : 5,
-        creditsUsed: isMultipleImages ? 3 : 1,
+        duration: 8,
+        creditsUsed: images.length === 2 ? 3 : 1,
         model: modelName
       })
     };
 
   } catch (error) {
-    console.error('❌ Gemini Video 생성 오류:', error);
+    console.error('❌ Veo Video 생성 오류:', error);
 
     // 에러 응답
     return {
@@ -222,23 +213,3 @@ exports.handler = async (event, context) => {
     };
   }
 };
-
-/**
- * 이미지 데이터 검증
- */
-function validateImageData(imageData) {
-  if (!imageData || typeof imageData !== 'string') {
-    return false;
-  }
-
-  // data:image/...;base64,... 형식 확인
-  if (!imageData.startsWith('data:image/')) {
-    return false;
-  }
-
-  if (!imageData.includes(';base64,')) {
-    return false;
-  }
-
-  return true;
-}
