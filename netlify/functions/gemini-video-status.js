@@ -122,12 +122,16 @@ exports.handler = async (event, context) => {
       throw new Error('No response in completed operation');
     }
 
-    const generatedVideos = operation.response.generatedVideos;
+    // ✅ 응답 구조 확인: generateVideoResponse 사용
+    const videoResponse = operation.response.generateVideoResponse || operation.response;
+    const generatedVideos = videoResponse.generatedVideos;
     
     if (!generatedVideos || !Array.isArray(generatedVideos) || generatedVideos.length === 0) {
       console.error('❌ No generated videos:', {
         hasResponse: !!operation.response,
         responseKeys: operation.response ? Object.keys(operation.response) : [],
+        hasVideoResponse: !!videoResponse,
+        videoResponseKeys: videoResponse ? Object.keys(videoResponse) : [],
         generatedVideos: generatedVideos
       });
       throw new Error('No generated videos in response');
