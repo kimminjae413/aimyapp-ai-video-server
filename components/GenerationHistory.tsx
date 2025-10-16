@@ -28,7 +28,6 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     if (url.startsWith('blob:')) return false;
     if (url.includes('...[truncated]')) return false;
     
-    // Cloudinary, Imgur, 또는 일반 HTTP URL
     return url.startsWith('http://') || url.startsWith('https://');
   };
 
@@ -36,22 +35,47 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     if (!url) return false;
     if (url.startsWith('blob:')) return false;
     
-    // Gemini, Kling, Cloudinary 등 유효한 비디오 URL
     return url.startsWith('http://') || url.startsWith('https://');
   };
 
-  // 비디오 썸네일 컴포넌트
+  // 🎯 Gemini Video URL 감지
+  const isGeminiVideoUrl = (url: string): boolean => {
+    return url.includes('generativelanguage.googleapis.com');
+  };
+
+  // 비디오 썸네일 컴포넌트 (Gemini Proxy 지원)
   const VideoThumbnail: React.FC<{ videoUrl: string; itemId: string }> = ({ videoUrl, itemId }) => {
     const [thumbnailError, setThumbnailError] = useState(false);
     const [videoLoaded, setVideoLoaded] = useState(false);
+    const [proxyUrl, setProxyUrl] = useState<string>('');
     
-    const cleanedUrl = cleanKlingUrl(videoUrl);
+    useEffect(() => {
+      const cleanedUrl = cleanKlingUrl(videoUrl);
+      
+      // 🔑 Gemini Video는 프록시 필수, 그 외는 직접 URL
+      if (isGeminiVideoUrl(cleanedUrl)) {
+        const proxy = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(cleanedUrl)}`;
+        setProxyUrl(proxy);
+        console.log(`🔒 [썸네일] Gemini Video 프록시 사용: ${itemId}`);
+      } else {
+        setProxyUrl(cleanedUrl);
+        console.log(`🔓 [썸네일] 직접 URL 사용: ${itemId}`);
+      }
+    }, [videoUrl, itemId]);
+    
+    if (!proxyUrl) {
+      return (
+        <div className="w-full h-full bg-gray-700 flex items-center justify-center">
+          <div className="w-8 h-8 border-4 border-blue-400 border-dashed rounded-full animate-spin"></div>
+        </div>
+      );
+    }
     
     return (
       <div className="relative w-full h-full">
         {!thumbnailError && (
           <video
-            src={cleanedUrl}
+            src={proxyUrl}
             className="w-full h-full object-cover"
             muted
             loop
@@ -141,6 +165,11 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
       const cleanUrl = cleanKlingUrl(originalUrl);
       const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(cleanUrl)}`;
       
+      console.log('📥 비디오 다운로드 프록시 호출:', {
+        isGemini: isGeminiVideoUrl(cleanUrl),
+        urlPreview: cleanUrl.substring(0, 80) + '...'
+      });
+      
       const response = await fetch(proxyUrl, {
         method: 'GET',
         headers: { 'Accept': 'video/mp4,video/*,*/*' }
@@ -155,6 +184,11 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
       if (blob.size === 0) {
         throw new Error('빈 파일 응답');
       }
+
+      console.log('✅ 비디오 다운로드 완료:', {
+        size: blob.size,
+        sizeMB: (blob.size / 1024 / 1024).toFixed(2)
+      });
 
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       
@@ -222,7 +256,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
         const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
         const filename = `hairgator-video-${timestamp}-${itemId.slice(-6)}.mp4`;
         
-        if (item.resultUrl.includes('klingai.com')) {
+        // 🔑 Gemini 또는 Kling 비디오는 프록시 사용
+        if (isGeminiVideoUrl(item.resultUrl) || item.resultUrl.includes('klingai.com')) {
           const result = await downloadVideoViaProxy(item.resultUrl, filename);
           
           if (result.success) {
@@ -231,6 +266,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ ${result.message || '다운로드 실패'}`));
           }
         } else {
+          // Cloudinary 등 일반 URL은 직접 다운로드
           const result = await downloadHelper.downloadVideo(item.resultUrl, filename);
           
           if (result.success) {
@@ -337,7 +373,6 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                     <div className="relative aspect-square bg-gray-800">
                       {item.type === 'image' ? (
                         hasValidImageUrl ? (
-                          // ✅ 유효한 이미지 URL (Cloudinary 등)
                           <img
                             src={item.resultUrl}
                             alt="Generated result"
@@ -361,7 +396,6 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                             }}
                           />
                         ) : (
-                          // ❌ 만료된 이미지 (blob URL 등)
                           <div className="w-full h-full bg-gray-700 flex flex-col items-center justify-center">
                             <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
@@ -372,10 +406,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                           </div>
                         )
                       ) : hasValidVideoUrl ? (
-                        // ✅ 유효한 비디오 URL
                         <VideoThumbnail videoUrl={item.resultUrl} itemId={itemId} />
                       ) : (
-                        // ❌ 만료된 비디오 (blob URL 등)
                         <div className="w-full h-full bg-gray-700 flex flex-col items-center justify-center">
                           <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
@@ -458,7 +490,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                         </p>
                       )}
                       
-                      {/* ✅ Duration 표시 */}
+                      {/* Duration 표시 */}
                       {item.type === 'video' && item.videoDuration && (
                         <p className="text-xs text-gray-500">
                           ⏱️ {item.videoDuration}초 영상 • 💎 {item.creditsUsed}회 차감
@@ -503,7 +535,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           
           <div className="mt-2 p-2 bg-green-600/20 border border-green-500/50 rounded-lg">
             <p className="text-xs text-green-300 text-center">
-              ✅ Cloudinary 연동 + URL 만료 처리 + 5초/8초 duration 표시
+              ✅ Gemini Video 프록시 지원 + 5초/8초 duration + 403 에러 해결
             </p>
           </div>
         </div>
