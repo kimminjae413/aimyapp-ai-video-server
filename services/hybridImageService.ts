@@ -1,4 +1,4 @@
-// services/hybridImageService.ts - VModel 얼굴교체 + Gemini 의상변경
+// services/hybridImageService.ts - VModel 얼굴교체 + Gemini 의상/배경변경
 import { changeFaceInImage, changeClothingOnly } from './geminiService';
 import type { ImageFile } from '../types';
 
@@ -18,14 +18,22 @@ const loadVModelService = async () => {
 };
 
 /**
- * 🔥 진짜 하이브리드: VModel 얼굴교체 → Gemini 의상변경
+ * 🔥 진짜 하이브리드: VModel 얼굴교체 → Gemini 의상/배경변경
+ * 
+ * @param originalImage - 원본 이미지
+ * @param facePrompt - 얼굴 변경 프롬프트
+ * @param clothingPrompt - 의상 변경 프롬프트
+ * @param referenceImage - 참고할 얼굴 이미지
+ * @param onProgress - 진행 상태 콜백
+ * @param backgroundPrompt - 배경 변경 프롬프트 (✅ 새로 추가)
  */
 export const smartFaceTransformation = async (
   originalImage: ImageFile,
   facePrompt: string,
   clothingPrompt: string,
   referenceImage?: ImageFile | null,
-  onProgress?: (status: string) => void
+  onProgress?: (status: string) => void,
+  backgroundPrompt?: string  // ✅ 배경 프롬프트 추가
 ): Promise<{ result: ImageFile | null; method: string }> => {
   try {
     let currentResult: ImageFile | null = null;
@@ -51,23 +59,46 @@ export const smartFaceTransformation = async (
             currentResult = faceResult;
             method = 'VModel 얼굴교체';
             
-            // 🎯 2단계: 의상변경 (선택적)
-            if (clothingPrompt && clothingPrompt.trim()) {
-              console.log('🔥 HYBRID Step 2: Gemini 의상변경 시작');
-              if (onProgress) onProgress('Gemini로 의상변경 중...');
+            // 🎯 2단계: 의상/배경 변경 (선택적)
+            const hasClothing = clothingPrompt && clothingPrompt.trim();
+            const hasBackground = backgroundPrompt && backgroundPrompt.trim();
+            
+            if (hasClothing || hasBackground) {
+              console.log('🔥 HYBRID Step 2: Gemini 의상/배경 변경 시작');
+              
+              // 프롬프트 조합
+              let combinedPrompt = '';
+              if (hasClothing && hasBackground) {
+                combinedPrompt = `Clothing: ${clothingPrompt}. Background: ${backgroundPrompt}.`;
+                if (onProgress) onProgress('Gemini로 의상 및 배경 변경 중...');
+              } else if (hasClothing) {
+                combinedPrompt = `Clothing: ${clothingPrompt}.`;
+                if (onProgress) onProgress('Gemini로 의상 변경 중...');
+              } else if (hasBackground) {
+                combinedPrompt = `Background: ${backgroundPrompt}.`;
+                if (onProgress) onProgress('Gemini로 배경 변경 중...');
+              }
               
               try {
-                const clothingResult = await changeClothingOnly(faceResult, clothingPrompt);
-                if (clothingResult) {
-                  console.log('✅ Gemini 의상변경 성공');
-                  currentResult = clothingResult;
-                  method = 'VModel 얼굴교체 + Gemini 의상변경';
+                const enhancedResult = await changeClothingOnly(faceResult, combinedPrompt);
+                if (enhancedResult) {
+                  console.log('✅ Gemini 의상/배경 변경 성공');
+                  currentResult = enhancedResult;
+                  
+                  // 메서드명 업데이트
+                  if (hasClothing && hasBackground) {
+                    method = 'VModel 얼굴교체 + Gemini 의상/배경 변경';
+                  } else if (hasClothing) {
+                    method = 'VModel 얼굴교체 + Gemini 의상 변경';
+                  } else {
+                    method = 'VModel 얼굴교체 + Gemini 배경 변경';
+                  }
                 } else {
-                  console.log('⚠️ Gemini 의상변경 실패, 얼굴교체 결과만 사용');
+                  console.log('⚠️ Gemini 의상/배경 변경 실패, 얼굴교체 결과만 사용');
                 }
-              } catch (clothingError) {
-                console.log('⚠️ Gemini 의상변경 실패:', clothingError);
-                // 의상변경 실패해도 얼굴교체 결과는 유지
+              } catch (enhanceError) {
+                console.log('⚠️ Gemini 의상/배경 변경 실패:', enhanceError);
+                // 의상/배경 변경 실패해도 얼굴교체 결과는 유지
               }
             }
             
@@ -84,10 +115,18 @@ export const smartFaceTransformation = async (
     console.log('🔄 Gemini 전체 변환 시작 (VModel 실패 또는 참고이미지 없음)');
     if (onProgress) onProgress('Gemini AI로 변환 중...');
     
+    // 폴백 시 프롬프트 조합
+    let fallbackClothingPrompt = clothingPrompt;
+    if (backgroundPrompt && backgroundPrompt.trim()) {
+      fallbackClothingPrompt = clothingPrompt 
+        ? `${clothingPrompt}. Background: ${backgroundPrompt}.`
+        : `Background: ${backgroundPrompt}.`;
+    }
+    
     const result = await changeFaceInImage(
       originalImage, 
       referenceImage ? '참조이미지를 바탕으로 자연스러운 얼굴로 변환' : facePrompt,
-      clothingPrompt
+      fallbackClothingPrompt
     );
     
     if (onProgress) onProgress('변환 완료!');
@@ -127,14 +166,15 @@ export const checkFirebaseAvailability = async (): Promise<boolean> => {
  */
 export const getHybridServiceStatus = () => {
   return {
-    version: '4.0-TRUE-HYBRID',
-    workflow: 'VModel 얼굴교체 → Gemini 의상변경',
+    version: '4.1-TRUE-HYBRID-WITH-BACKGROUND',
+    workflow: 'VModel 얼굴교체 → Gemini 의상/배경 변경',
     primary: 'VModel AI (참고이미지 기반 얼굴교체)',
-    secondary: 'Gemini AI (텍스트 기반 의상변경)',
+    secondary: 'Gemini AI (텍스트 기반 의상/배경 변경)',
     fallback: 'Gemini AI (전체 변환)',
     features: [
       '🎯 VModel: 참고이미지 → 정밀 얼굴교체',
-      '👔 Gemini: 텍스트 → 의상변경',
+      '👔 Gemini: 텍스트 → 의상 변경',
+      '🎨 Gemini: 텍스트 → 배경 변경 (NEW!)',
       '🔄 자동 폴백 시스템',
       '🎨 2단계 하이브리드 처리',
       '⚡ 최적화된 워크플로우'
