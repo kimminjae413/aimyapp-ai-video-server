@@ -1,12 +1,13 @@
 /**
  * Netlify Function: Gemini Veo Video Generation (Final Version)
- * @google/genai SDK with imageBytes (Buffer format)
+ * 5초 = 5 크레딧, 10초 = 10 크레딧
+ * Veo 3 Fast / Veo 3.1 Fast 사용
  */
 
 const { GoogleGenAI } = require('@google/genai');
 
 exports.config = {
-  timeout: 300  // 5 minutes
+  timeout: 300  // 5분 (비동기 처리용)
 };
 
 exports.handler = async (event, context) => {
@@ -38,9 +39,10 @@ exports.handler = async (event, context) => {
     console.log('═══════════════════════════════════════════════════════════');
     
     // Parse request
-    const { images, prompt } = JSON.parse(event.body);
+    const data = JSON.parse(event.body);
+    const { images, prompt, duration = 5 } = data;
 
-    // Validation
+    // ✅ Validation
     if (!images || !Array.isArray(images) || images.length === 0 || images.length > 2) {
       throw new Error('이미지는 1~2개만 지원됩니다.');
     }
@@ -49,30 +51,38 @@ exports.handler = async (event, context) => {
       throw new Error('프롬프트가 필요합니다.');
     }
 
+    // ⏱️ Duration validation (5초 또는 10초만 허용)
+    if (![5, 10].includes(duration)) {
+      throw new Error('영상 길이는 5초 또는 10초만 가능합니다.');
+    }
+
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY not configured');
     }
 
-    // Determine model (Fast version for cost savings)
+    // 💰 크레딧 계산
     const isTwoImages = images.length === 2;
+    const creditsRequired = duration === 5 ? 5 : 10;  // 5초=5크레딧, 10초=10크레딧
+
+    // 🎬 모델 선택 (Veo 3 Fast for cost savings)
     const selectedModel = isTwoImages 
-      ? 'veo-3.1-fast-generate-preview'  // Veo 3.1 Fast
-      : 'veo-3-fast-generate-preview';   // Veo 3 Fast
-    const creditsRequired = isTwoImages ? 3 : 1;
+      ? 'veo-3.1-fast-generate-preview'  // 2개 이미지 = Veo 3.1 Fast
+      : 'veo-3-fast-generate-preview';   // 1개 이미지 = Veo 3 Fast
 
     console.log('📊 Request Parameters:', {
       imageCount: images.length,
       model: selectedModel,
+      duration: `${duration}초`,
       promptLength: prompt.length,
       creditsRequired: creditsRequired
     });
 
-    // Initialize SDK
+    // 🔧 Initialize SDK
     console.log('🔧 Initializing Google GenAI SDK...');
     const client = new GoogleGenAI({ apiKey });
 
-    // Process first image
+    // 📸 Process first image
     console.log('📸 Processing images...');
     const firstImageBase64 = images[0].includes(',') 
       ? images[0].split(',')[1] 
@@ -87,24 +97,23 @@ exports.handler = async (event, context) => {
       preview: firstImageBase64.substring(0, 50) + '...'
     });
 
-    // Build request parameters
-    // ⚠️ CRITICAL: imageBytes expects base64 STRING, not Buffer!
+    // 🎨 Build request parameters
     const requestParams = {
       model: selectedModel,
       prompt: prompt,
       image: {
-        imageBytes: firstImageBase64,  // ← base64 string!
+        imageBytes: firstImageBase64,  // base64 string
         mimeType: 'image/jpeg'
       },
       config: {
         aspectRatio: '9:16',
-        durationSeconds: 8,  // ← Number, not string!
+        durationSeconds: duration,  // 5 or 10
         personGeneration: 'allow_adult',
         resolution: '720p'
       }
     };
 
-    // Add second image for Veo 3.1
+    // 📸 Add second image for Veo 3.1 (lastFrame)
     if (isTwoImages) {
       const lastImageBase64 = images[1].includes(',')
         ? images[1].split(',')[1]
@@ -115,7 +124,7 @@ exports.handler = async (event, context) => {
       }
 
       requestParams.lastFrame = {
-        imageBytes: lastImageBase64,  // ← base64 string!
+        imageBytes: lastImageBase64,
         mimeType: 'image/jpeg'
       };
 
@@ -124,14 +133,12 @@ exports.handler = async (event, context) => {
         preview: lastImageBase64.substring(0, 50) + '...'
       });
       
-      console.log('🎬 Mode: Veo 3.1 Frame Interpolation');
+      console.log(`🎬 Mode: Veo 3.1 Fast Frame Interpolation (${duration}초)`);
     } else {
-      console.log('🎬 Mode: Veo 3 Image-to-Video');
+      console.log(`🎬 Mode: Veo 3 Fast Image-to-Video (${duration}초)`);
     }
 
-
-
-    // Generate video
+    // ▶️  Generate video
     console.log('▶️  Calling generateVideos API...');
     console.log('📋 Request structure:', {
       model: requestParams.model,
@@ -149,8 +156,20 @@ exports.handler = async (event, context) => {
 
     console.log('✅ Operation started:', operation.name);
 
-    // ⚠️ IMPORTANT: Return operation ID immediately to avoid timeout
-    // Client will poll for completion
+    // 🎯 Return operation ID immediately (avoid timeout)
+    // Client will poll for completion using gemini-video-status endpoint
+    const responseTime = Date.now() - startTime;
+    
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('✅ Video Generation Started Successfully');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('📊 Response:', {
+      operationId: operation.name.substring(0, 50) + '...',
+      duration: `${duration}초`,
+      creditsUsed: creditsRequired,
+      responseTime: `${responseTime}ms`
+    });
+
     return {
       statusCode: 202,  // Accepted
       headers,
@@ -158,89 +177,13 @@ exports.handler = async (event, context) => {
         success: true,
         operationId: operation.name,
         status: 'processing',
-        message: '영상 생성이 시작되었습니다. 상태를 확인해주세요.',
+        message: `${duration}초 영상 생성이 시작되었습니다. 상태를 확인해주세요.`,
         estimatedTime: '2-3분',
         creditsUsed: creditsRequired,
+        duration: duration,
         model: selectedModel
       })
     };
-
-    /* 이전 폴링 코드 제거 - 클라이언트에서 처리
-    console.log('⏱️  Polling for completion...');
-    let completedOperation = operation;
-    let attempts = 0;
-    const maxAttempts = 30;
-
-    while (!completedOperation.done && attempts < maxAttempts) {
-      attempts++;
-      console.log(`⏱️  Attempt ${attempts}/${maxAttempts}...`);
-      
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      
-      try {
-        completedOperation = await client.operations.get({
-          name: operation.name
-        });
-        
-        if (!completedOperation) {
-          console.warn('⚠️  Empty operation response, retrying...');
-          continue;
-        }
-
-        if (completedOperation.done) {
-          console.log(`✅ Completed after ${attempts} attempts`);
-          break;
-        }
-      } catch (pollError) {
-        console.warn(`⚠️  Polling error attempt ${attempts}:`, pollError.message);
-        if (attempts >= maxAttempts) {
-          throw pollError;
-        }
-      }
-    }
-
-    if (!completedOperation.done) {
-      throw new Error('Timeout after 5 minutes');
-    }
-
-    // Extract video URL
-    console.log('📦 Extracting video URL...');
-    const generatedVideos = completedOperation.response?.generatedVideos;
-    
-    if (!generatedVideos || generatedVideos.length === 0) {
-      throw new Error('No generated videos in response');
-    }
-
-    const videoUrl = generatedVideos[0].video?.uri;
-
-    if (!videoUrl) {
-      throw new Error('Video URL not found');
-    }
-
-    const totalTime = Date.now() - startTime;
-    
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('✅ Video Generation Successful');
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('📊 Results:', {
-      videoUrl: videoUrl.substring(0, 60) + '...',
-      duration: 8,
-      creditsUsed: creditsRequired,
-      processingTime: (totalTime / 1000).toFixed(1) + 's'
-    });
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        videoUrl: videoUrl,
-        duration: 8,
-        creditsUsed: creditsRequired,
-        model: selectedModel
-      })
-    };
-    */
 
   } catch (error) {
     const totalTime = Date.now() - startTime;
@@ -252,7 +195,7 @@ exports.handler = async (event, context) => {
     console.error('Stack:', error.stack);
     console.error('Time:', (totalTime / 1000).toFixed(1) + 's');
     
-    // Handle rate limit errors
+    // Handle specific errors
     let errorMessage = error.message || 'Video generation failed';
     let statusCode = 500;
     
@@ -273,7 +216,7 @@ exports.handler = async (event, context) => {
       body: JSON.stringify({
         error: errorMessage,
         details: error.stack,
-        retryAfter: statusCode === 429 ? 60 : null  // 1분 후 재시도
+        retryAfter: statusCode === 429 ? 60 : null
       })
     };
   }
