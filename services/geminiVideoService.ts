@@ -172,6 +172,12 @@ class GeminiVideoService {
 
         const data = await response.json();
 
+        // ✅ RAI 필터 감지 - 즉시 에러 throw (재시도 안 함)
+        if (data.status === 'filtered' || data.raiFiltered) {
+          console.error('🚫 RAI 필터 감지:', data.error);
+          throw new Error(data.error || '이미지가 안전 정책에 의해 차단되었습니다.');
+        }
+
         // 완료됨
         if (data.status === 'completed' && data.videoUrl) {
           return data.videoUrl;
@@ -186,6 +192,15 @@ class GeminiVideoService {
         console.log(`⏳ ${data.message || `${duration}초 영상 생성 중...`}`);
 
       } catch (error) {
+        // ✅ RAI 필터 에러는 즉시 throw (재시도 안 함)
+        if (error instanceof Error && 
+            (error.message.includes('안전 정책') || 
+             error.message.includes('미성년자') || 
+             error.message.includes('유명인') ||
+             error.message.includes('차단'))) {
+          throw error;
+        }
+        
         console.warn(`⚠️ 폴링 오류 (${attempt}/${this.MAX_POLL_ATTEMPTS}):`, error);
         
         if (attempt >= this.MAX_POLL_ATTEMPTS) {
@@ -234,6 +249,14 @@ class GeminiVideoService {
 
     if (error.message?.includes('out of bound')) {
       return new Error('영상 길이는 4초, 6초, 8초만 가능합니다.');
+    }
+
+    // ✅ RAI 필터 에러는 그대로 전달
+    if (error.message?.includes('안전 정책') || 
+        error.message?.includes('미성년자') || 
+        error.message?.includes('유명인') ||
+        error.message?.includes('차단')) {
+      return error;
     }
 
     return new Error(error.message || '영상 생성 중 오류가 발생했습니다.');
