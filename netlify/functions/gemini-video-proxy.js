@@ -10,6 +10,11 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 // Gemini API 초기화
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// ⚠️ 중요: Netlify Functions 타임아웃 설정 (5분)
+exports.config = {
+  timeout: 300
+};
+
 /**
  * Netlify Function Handler
  */
