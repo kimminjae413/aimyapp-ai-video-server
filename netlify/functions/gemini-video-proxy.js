@@ -1,6 +1,6 @@
 /**
- * Netlify Function: Gemini Veo Video Generation (FINAL)
- * Veo 3.1 Fast: 4초/6초/8초 (5초 미지원!)
+ * Netlify Function: Gemini Veo Video Generation (Veo 2 Final)
+ * Veo 2: 5초/8초 (Veo 3.1에서 마이그레이션)
  * 
  * 환경변수:
  * - GEMINI_VIDEO_API_KEY (우선순위 1)
@@ -37,11 +37,11 @@ exports.handler = async (event, context) => {
 
   try {
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('🎬 Gemini Veo Video Generation Request Started');
+    console.log('🎬 Gemini Veo 2 Video Generation Request Started');
     console.log('═══════════════════════════════════════════════════════════');
     
     const data = JSON.parse(event.body);
-    const { images, prompt, duration = 6 } = data;  // ✅ 기본값 6초
+    const { images, prompt, duration = 5 } = data;  // ✅ 기본값 5초
 
     // ✅ Validation
     if (!images || !Array.isArray(images) || images.length === 0 || images.length > 2) {
@@ -52,10 +52,10 @@ exports.handler = async (event, context) => {
       throw new Error('프롬프트가 필요합니다.');
     }
 
-    // ⏱️ Duration validation - Veo 3.1 Fast: 4, 6, 8만 지원 (5 미지원!)
-    const validDurations = [4, 6, 8];
+    // ⏱️ Duration validation - Veo 2: 5초, 8초만 지원!
+    const validDurations = [5, 8];
     if (!validDurations.includes(duration)) {
-      throw new Error(`영상 길이는 4초, 6초, 8초만 가능합니다. (받은 값: ${duration})`);
+      throw new Error(`영상 길이는 5초, 8초만 가능합니다. (받은 값: ${duration})`);
     }
 
     // 🔑 API Key
@@ -68,9 +68,9 @@ exports.handler = async (event, context) => {
 
     // 💰 크레딧 계산: duration과 동일
     const isTwoImages = images.length === 2;
-    const creditsRequired = duration;  // 4초=4, 6초=6, 8초=8
+    const creditsRequired = duration;  // 5초=5, 8초=8
 
-    const selectedModel = 'veo-3.1-fast-generate-preview';
+    const selectedModel = 'veo-2.0-generate-001';  // ✅ Veo 2로 변경!
 
     console.log('📊 Request Parameters:', {
       imageCount: images.length,
@@ -109,9 +109,9 @@ exports.handler = async (event, context) => {
       },
       config: {
         aspectRatio: '9:16',
-        durationSeconds: duration,  // ✅ 4, 6, 8 중 하나
+        durationSeconds: duration,  // ✅ 5 또는 8
         resolution: '720p',
-        personGeneration: 'allow_adult'  // 이미지 기반 생성에 필수
+        personGeneration: 'allow_adult'
       }
     };
 
@@ -135,9 +135,9 @@ exports.handler = async (event, context) => {
         preview: lastImageBase64.substring(0, 50) + '...'
       });
       
-      console.log(`🎬 Mode: Frame Interpolation (${duration}초)`);
+      console.log(`🎬 Mode: Veo 2 Frame Interpolation (${duration}초)`);
     } else {
-      console.log(`🎬 Mode: Image-to-Video (${duration}초)`);
+      console.log(`🎬 Mode: Veo 2 Image-to-Video (${duration}초)`);
     }
 
     // ▶️ Generate video
@@ -161,7 +161,7 @@ exports.handler = async (event, context) => {
     const responseTime = Date.now() - startTime;
     
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('✅ Video Generation Started Successfully');
+    console.log('✅ Veo 2 Video Generation Started Successfully');
     console.log('═══════════════════════════════════════════════════════════');
     console.log('📊 Response:', {
       operationId: operation.name.substring(0, 50) + '...',
@@ -177,10 +177,10 @@ exports.handler = async (event, context) => {
         success: true,
         operationId: operation.name,
         status: 'processing',
-        message: `${duration}초 영상 생성이 시작되었습니다. 예상 소요 시간: ${duration === 4 ? '3분' : duration === 6 ? '4분' : '5분'}`,
+        message: `${duration}초 영상 생성이 시작되었습니다. 예상 소요 시간: ${duration === 5 ? '3-4분' : '4-5분'}`,
         duration: duration,
         creditsUsed: creditsRequired,
-        estimatedTime: duration === 4 ? '3분' : duration === 6 ? '4분' : '5분'
+        estimatedTime: duration === 5 ? '3-4분' : '4-5분'
       })
     };
 
@@ -202,10 +202,10 @@ exports.handler = async (event, context) => {
       errorMessage = 'API 요청 한도 초과. 1분 후 다시 시도해주세요.';
       statusCode = 429;
     } else if (error.message && error.message.includes('not found')) {
-      errorMessage = 'Veo 모델을 찾을 수 없습니다. API 키 권한을 확인하세요.';
+      errorMessage = 'Veo 2 모델을 찾을 수 없습니다. API 키 권한을 확인하세요.';
       statusCode = 404;
     } else if (error.message && error.message.includes('out of bound')) {
-      errorMessage = 'Duration은 4초, 6초, 8초만 가능합니다 (5초 미지원).';
+      errorMessage = 'Duration은 5초, 8초만 가능합니다.';
       statusCode = 400;
     }
     
