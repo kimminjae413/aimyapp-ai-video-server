@@ -1,7 +1,7 @@
 /**
  * Netlify Function: Check Veo Video Generation Status
  * Polls operation status and returns video URL when complete
- * Supports 5s and 10s durations
+ * ✅ Supports 5s and 8s durations (API 제한: 4~8초)
  */
 const { GoogleGenAI } = require('@google/genai');
 
@@ -102,7 +102,7 @@ exports.handler = async (event, context) => {
         status: 'completed',
         done: true,
         videoUrl: videoUrl,
-        duration: duration || 8,  // fallback to 8s for backward compatibility
+        duration: duration || 8,  // ✅ fallback to 8s (API 최대값)
         message: '영상 생성 완료!'
       })
     };
