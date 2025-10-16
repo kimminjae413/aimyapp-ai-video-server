@@ -1,3 +1,9 @@
+# ===========================================
+# Netlify Configuration for Hairgator
+# Gemini Video Integration (Veo 2/3.1)
+# Version: 2.0.0
+# ===========================================
+
 [build]
   command = "npm run build"
   publish = "dist"
@@ -5,10 +11,162 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# Functions 타임아웃은 각 function 파일의 exports.config에서 설정
+# ===========================================
+# Functions 설정
+# ===========================================
+# ⚠️ 중요: Functions 타임아웃은 각 function 파일의 exports.config에서 설정
 # netlify.toml에서는 설정하지 않음 (배포 실패 방지)
+# 
+# 예시: netlify/functions/gemini-video-proxy.js 파일에 추가
+# exports.config = {
+#   timeout: 300  // 5분
+# }
 
+# ===========================================
+# Redirects 설정
+# ===========================================
+
+# SPA 라우팅 (React Router)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# ===========================================
+# 환경 변수 체크리스트
+# ===========================================
+# Netlify Dashboard → Site settings → Environment variables에서 설정:
+#
+# 필수 (Gemini Video):
+# - GEMINI_API_KEY
+#
+# 얼굴 변환용:
+# - VMODEL_API_TOKEN
+# - CLOUDINARY_CLOUD_NAME
+# - CLOUDINARY_API_KEY
+# - CLOUDINARY_API_SECRET
+# - IMGUR_CLIENT_ID
+#
+# 크레딧 관리:
+# - BULLNABI_TOKEN
+#
+# 선택 (레거시):
+# - OPENAI_API_KEY
+# - KLING_ACCESS_KEY (더 이상 사용 안함)
+# - KLING_SECRET_KEY (더 이상 사용 안함)
+
+# ===========================================
+# 배포 최적화
+# ===========================================
+
+# 빌드 플러그인 (필요시 추가)
+# [[plugins]]
+#   package = "@netlify/plugin-nextjs"
+
+# ===========================================
+# 성능 최적화
+# ===========================================
+
+# Asset 최적화
+[build.processing]
+  skip_processing = false
+
+[build.processing.css]
+  bundle = true
+  minify = true
+
+[build.processing.js]
+  bundle = true
+  minify = true
+
+[build.processing.html]
+  pretty_urls = true
+
+[build.processing.images]
+  compress = true
+
+# ===========================================
+# 보안 헤더
+# ===========================================
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Functions CORS 헤더 (Functions 자체에서 처리하므로 여기서는 생략)
+
+# ===========================================
+# 배포 컨텍스트별 설정
+# ===========================================
+
+# Production 설정
+[context.production]
+  command = "npm run build"
+  
+[context.production.environment]
+  NODE_ENV = "production"
+
+# Development/Preview 설정
+[context.deploy-preview]
+  command = "npm run build"
+  
+[context.deploy-preview.environment]
+  NODE_ENV = "development"
+
+# Branch deploys
+[context.branch-deploy]
+  command = "npm run build"
+
+# ===========================================
+# 트러블슈팅 가이드
+# ===========================================
+# 
+# ❌ Functions 타임아웃 에러:
+# → netlify/functions/gemini-video-proxy.js에 exports.config 추가:
+#   exports.config = { timeout: 300 };
+#
+# ❌ "GEMINI_API_KEY not found" 에러:
+# → Netlify Dashboard에서 환경변수 설정 확인
+#
+# ❌ 빌드 실패:
+# → Node.js 버전 확인 (20 이상)
+# → package.json 의존성 설치 확인
+#
+# ❌ CORS 에러:
+# → Functions 파일에서 Access-Control-Allow-Origin 헤더 확인
+#
+# ===========================================
+# Functions 파일 구조
+# ===========================================
+# netlify/
+# └── functions/
+#     └── gemini-video-proxy.js
+#         ├── exports.handler (메인 핸들러)
+#         └── exports.config = { timeout: 300 }
+#
+# ===========================================
+# 마이그레이션 체크리스트
+# ===========================================
+# ✅ @google/generative-ai 의존성 설치
+# ✅ GEMINI_API_KEY 환경변수 설정
+# ✅ gemini-video-proxy.js 함수 배포
+# ✅ VideoSwap.tsx 새 버전으로 교체
+# ✅ geminiVideoService.ts 추가
+# ✅ 기존 Kling 관련 코드 정리 (선택)
+# ✅ 테스트: 1장/2장 이미지 영상 생성
+# ✅ iPhone Safari 다운로드 테스트
+#
+# ===========================================
+# 성능 모니터링
+# ===========================================
+# Netlify Analytics:
+# - Functions 호출 횟수
+# - Functions 실행 시간
+# - 대역폭 사용량
+# - 빌드 시간
+#
+# ===========================================
