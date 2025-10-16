@@ -108,9 +108,9 @@ export function MainPage({ onFaceSwapClick, onVideoSwapClick, credits }: MainPag
 
           {/* Video Swap Card */}
           <div className="bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl p-6 shadow-xl transform transition-all duration-300 hover:scale-105 hover:shadow-2xl relative">
-            {/* ✅ 크레딧 요구사항 배지 - 5-8회로 수정 */}
+            {/* ✅ 크레딧 요구사항 배지 - 4-8회로 수정 */}
             <div className="absolute top-3 right-3 bg-white/90 px-2 py-1 rounded-full">
-              <span className="text-xs font-semibold text-blue-600">5-8회 차감</span>
+              <span className="text-xs font-semibold text-blue-600">4-8회 차감</span>
             </div>
             
             <div className="flex flex-col items-center text-center space-y-3">
@@ -131,23 +131,23 @@ export function MainPage({ onFaceSwapClick, onVideoSwapClick, credits }: MainPag
               <div className="space-y-1">
                 <h2 className="text-xl font-bold text-gray-800">AI영상변환</h2>
                 <p className="text-gray-700 text-xs px-2">
-                  헤어시진을 더욱 생생한<br />
+                  헤어사진을 더욱 생생한<br />
                   리뷰 영상으로 전달!
                 </p>
               </div>
               <button
                 onClick={onVideoSwapClick}
-                disabled={!credits || credits.remainingCredits < 5}
+                disabled={!credits || credits.remainingCredits < 4}
                 className={`group relative px-6 py-2 font-bold rounded-full shadow-lg transform transition-all duration-300 text-sm ${
-                  credits && credits.remainingCredits >= 5
+                  credits && credits.remainingCredits >= 4
                     ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-xl hover:scale-105'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
               >
                 <span className="relative z-10">
-                  {credits && credits.remainingCredits >= 5 ? '시작하기 >' : '크레딧 부족'}
+                  {credits && credits.remainingCredits >= 4 ? '시작하기 >' : '크레딧 부족'}
                 </span>
-                {credits && credits.remainingCredits >= 5 && (
+                {credits && credits.remainingCredits >= 4 && (
                   <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 )}
               </button>
@@ -162,6 +162,23 @@ export function MainPage({ onFaceSwapClick, onVideoSwapClick, credits }: MainPag
             <p className="text-xs text-red-500 mt-1">앱에서 크레딧을 구매해주세요</p>
           </div>
         )}
+
+        {/* ✅ 영상 변환 크레딧 안내 추가 */}
+        <div className="mt-6 p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl">
+          <div className="text-center">
+            <p className="text-sm text-cyan-300 font-medium mb-2">
+              💡 영상 변환 크레딧 안내
+            </p>
+            <div className="flex justify-center gap-4 text-xs text-cyan-200">
+              <span>⏱️ 4초 = 4회</span>
+              <span>⏱️ 6초 = 6회</span>
+              <span>⏱️ 8초 = 8회</span>
+            </div>
+            <p className="text-xs text-cyan-400 mt-2">
+              원하는 영상 길이를 선택하세요!
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* 생성 내역 모달 */}
