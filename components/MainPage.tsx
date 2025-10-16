@@ -108,9 +108,9 @@ export function MainPage({ onFaceSwapClick, onVideoSwapClick, credits }: MainPag
 
           {/* Video Swap Card */}
           <div className="bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl p-6 shadow-xl transform transition-all duration-300 hover:scale-105 hover:shadow-2xl relative">
-            {/* 크레딧 요구사항 배지 - 5-10회로 수정 */}
+            {/* ✅ 크레딧 요구사항 배지 - 5-8회로 수정 */}
             <div className="absolute top-3 right-3 bg-white/90 px-2 py-1 rounded-full">
-              <span className="text-xs font-semibold text-blue-600">5-10회 차감</span>
+              <span className="text-xs font-semibold text-blue-600">5-8회 차감</span>
             </div>
             
             <div className="flex flex-col items-center text-center space-y-3">
