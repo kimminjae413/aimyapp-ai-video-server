@@ -494,22 +494,27 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                         </p>
                       )}
                       
-                      {/* Duration 표시 */}
+                      {/* ✅ Duration 표시 - 4/6/8초 명확히 표시 */}
                       {item.type === 'video' && item.videoDuration && (
-                        <p className="text-xs text-gray-500">
-                          ⏱️ {item.videoDuration}초 영상 • 💎 {item.creditsUsed}회 차감
-                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs px-2 py-0.5 bg-cyan-500/20 text-cyan-300 rounded">
+                            ⏱️ {item.videoDuration}초
+                          </span>
+                          <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-300 rounded">
+                            💎 {item.creditsUsed || item.videoDuration}회
+                          </span>
+                        </div>
                       )}
                       
                       {item.type === 'image' && (
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 mt-2">
                           💎 {item.creditsUsed}회 차감
                         </p>
                       )}
                       
                       {/* URL 상태 표시 */}
                       {isExpired && (
-                        <p className="text-xs text-red-400 mt-1">
+                        <p className="text-xs text-red-400 mt-2">
                           ⚠️ URL 만료됨 (3일 경과)
                         </p>
                       )}
@@ -537,9 +542,9 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             )}
           </div>
           
-          <div className="mt-2 p-2 bg-green-600/20 border border-green-500/50 rounded-lg">
-            <p className="text-xs text-green-300 text-center">
-              ✅ Gemini Video: URL 만료 방지 (플레이스홀더 썸네일 + 다운로드 우선)
+          <div className="mt-2 p-2 bg-cyan-600/20 border border-cyan-500/50 rounded-lg">
+            <p className="text-xs text-cyan-300 text-center">
+              ✅ 영상 길이: 4초/6초/8초 선택 가능 | 크레딧 = Duration
             </p>
           </div>
         </div>
