@@ -1,6 +1,6 @@
 /**
  * Netlify Function: Check Veo Video Generation Status
- * ✅ 4초/6초/8초 지원 + 응답 구조 디버깅
+ * ✅ 완전한 RAI 필터 처리 (미성년자, 유명인 등)
  */
 
 exports.config = {
@@ -34,11 +34,6 @@ exports.handler = async (event, context) => {
       throw new Error('operationId is required');
     }
 
-    const validDurations = [4, 6, 8];
-    if (duration && !validDurations.includes(duration)) {
-      console.warn(`⚠️ Invalid duration: ${duration}, using fallback 6`);
-    }
-
     const apiKey = process.env.GEMINI_VIDEO_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('API key not configured');
@@ -46,8 +41,7 @@ exports.handler = async (event, context) => {
 
     console.log('🔍 Checking operation status:', {
       operationId: operationId.substring(0, 50) + '...',
-      duration: duration ? `${duration}초` : 'unknown',
-      apiKeySource: process.env.GEMINI_VIDEO_API_KEY ? 'GEMINI_VIDEO_API_KEY' : 'GEMINI_API_KEY (fallback)'
+      duration: duration ? `${duration}초` : 'unknown'
     });
 
     const response = await fetch(
@@ -62,18 +56,12 @@ exports.handler = async (event, context) => {
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ API failed:', {
-        status: response.status,
-        body: errorText
-      });
       throw new Error(`API failed: ${response.status}`);
     }
 
     const operation = await response.json();
 
     if (operation.error) {
-      console.error('❌ Operation error:', operation.error);
       throw new Error(operation.error.message || 'Generation failed');
     }
 
@@ -103,57 +91,74 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // ✅ Completed - 전체 응답 구조 로깅
+    // ✅ Operation completed
     console.log('✅ Operation completed');
     console.log('📦 Full operation response:', JSON.stringify(operation, null, 2));
     
-    // 다양한 경로에서 비디오 URL 찾기 시도
-    let videoUrl = null;
+    const videoResponse = operation.response?.generateVideoResponse;
     
-    // 경로 1: operation.response.generatedSamples[0]
-    const samples = operation.response?.generatedSamples;
-    if (samples && Array.isArray(samples) && samples.length > 0) {
-      videoUrl = samples[0].video?.uri || samples[0].uri || samples[0].url;
-      console.log('✅ Found video in generatedSamples:', videoUrl?.substring(0, 60));
+    // ⚠️ RAI 필터 체크 - 모든 케이스 처리
+    if (videoResponse?.raiMediaFilteredCount > 0) {
+      const reasons = videoResponse.raiMediaFilteredReasons || [];
+      console.warn('⚠️ RAI 필터 감지:', reasons);
+      
+      let errorMessage = '이미지가 Google의 안전 정책에 의해 차단되었습니다.';
+      
+      if (reasons.length > 0) {
+        const reason = reasons[0].toLowerCase();
+        
+        if (reason.includes('children') || reason.includes('minor')) {
+          errorMessage = '⚠️ 미성년자로 보이는 인물이 감지되어 영상 생성이 제한되었습니다.\n\n성인 인물의 이미지를 사용해주세요.';
+        } else if (reason.includes('celebrity') || reason.includes('likeness')) {
+          errorMessage = '⚠️ 유명인 또는 유명인과 유사한 인물이 감지되었습니다.\n\n일반인의 이미지를 사용해주세요.';
+        } else if (reason.includes('violence') || reason.includes('harmful')) {
+          errorMessage = '⚠️ 부적절한 콘텐츠가 감지되었습니다.\n\n다른 이미지를 사용해주세요.';
+        } else if (reason.includes('sexual')) {
+          errorMessage = '⚠️ 부적절한 콘텐츠가 감지되었습니다.\n\n다른 이미지를 사용해주세요.';
+        } else {
+          // 원본 메시지 그대로 전달
+          errorMessage = `⚠️ ${reasons[0]}`;
+        }
+      }
+      
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          status: 'filtered',
+          error: errorMessage,
+          raiFiltered: true,
+          raiReasons: reasons
+        })
+      };
     }
     
-    // 경로 2: operation.response.generateVideoResponse.generatedSamples
-    if (!videoUrl) {
-      const videoResponse = operation.response?.generateVideoResponse;
-      const altSamples = videoResponse?.generatedSamples;
-      if (altSamples && Array.isArray(altSamples) && altSamples.length > 0) {
-        videoUrl = altSamples[0].video?.uri || altSamples[0].uri || altSamples[0].url;
-        console.log('✅ Found video in generateVideoResponse:', videoUrl?.substring(0, 60));
-      }
-    }
+    // ✅ 정상 완료 - 비디오 URL 찾기
+    const samples = videoResponse?.generatedSamples;
     
-    // 경로 3: operation.response.video
-    if (!videoUrl) {
-      videoUrl = operation.response?.video?.uri || operation.response?.video;
-      if (videoUrl) {
-        console.log('✅ Found video in response.video:', videoUrl.substring(0, 60));
-      }
-    }
-    
-    // 경로 4: operation.response.result
-    if (!videoUrl) {
-      videoUrl = operation.response?.result?.uri || operation.response?.result?.url;
-      if (videoUrl) {
-        console.log('✅ Found video in response.result:', videoUrl.substring(0, 60));
-      }
+    if (!samples || !Array.isArray(samples) || samples.length === 0) {
+      console.error('❌ No samples - might be RAI filtered without explicit flag');
+      console.error('Full videoResponse:', JSON.stringify(videoResponse, null, 2));
+      
+      // generatedSamples가 없으면 RAI 필터일 가능성이 높음
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          status: 'filtered',
+          error: '⚠️ 이미지가 Google의 안전 정책에 의해 차단되었을 수 있습니다.\n\n• 성인 인물의 이미지를 사용해주세요\n• 일반인의 이미지를 사용해주세요\n• 부적절한 콘텐츠가 포함되지 않았는지 확인해주세요',
+          raiFiltered: true
+        })
+      };
     }
 
-    // 경로 5: 최상위 response가 문자열인 경우
-    if (!videoUrl && typeof operation.response === 'string') {
-      videoUrl = operation.response;
-      console.log('✅ response is string (video URL):', videoUrl.substring(0, 60));
-    }
+    const videoUrl = samples[0].video?.uri || samples[0].uri || samples[0].url;
 
     if (!videoUrl) {
-      console.error('❌ No video URL found in operation response');
-      console.error('Available keys in operation:', Object.keys(operation));
-      console.error('Available keys in operation.response:', Object.keys(operation.response || {}));
-      throw new Error('Video URL not found in response');
+      console.error('❌ No URL in sample:', samples[0]);
+      throw new Error('영상 URL을 찾을 수 없습니다.');
     }
 
     console.log('📦 Video ready:', {
@@ -195,8 +200,7 @@ exports.handler = async (event, context) => {
       body: JSON.stringify({
         success: false,
         status: 'error',
-        error: errorMessage,
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        error: errorMessage
       })
     };
   }
