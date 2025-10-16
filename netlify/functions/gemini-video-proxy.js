@@ -1,7 +1,11 @@
 /**
  * Netlify Function: Gemini Veo Video Generation (Final Version)
- * ✅ 5초 = 5 크레딧, 8초 = 8 크레딧 (API 제한: 4~8초)
+ * 5초 = 5 크레딧, 8초 = 8 크레딧
  * Veo 3 Fast / Veo 3.1 Fast 사용
+ * 
+ * 환경변수:
+ * - GEMINI_VIDEO_API_KEY (우선순위 1)
+ * - GEMINI_API_KEY (폴백)
  */
 
 const { GoogleGenAI } = require('@google/genai');
@@ -53,17 +57,18 @@ exports.handler = async (event, context) => {
 
     // ⏱️ Duration validation (5초 또는 8초만 허용 - API 제한)
     if (![5, 8].includes(duration)) {
-      throw new Error('영상 길이는 5초 또는 8초만 가능합니다.');
-    }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    // 🔑 API Key - 우선순위: GEMINI_VIDEO_API_KEY > GEMINI_API_KEY
+    const apiKey = process.env.GEMINI_VIDEO_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY not configured');
+      throw new Error('GEMINI_VIDEO_API_KEY or GEMINI_API_KEY not configured');
     }
 
-    // 💰 크레딧 계산 (5초=5크레딧, 8초=8크레딧)
+    console.log('🔑 API Key source:', process.env.GEMINI_VIDEO_API_KEY ? 'GEMINI_VIDEO_API_KEY' : 'GEMINI_API_KEY (fallback)');
+
+    // 💰 크레딧 계산
     const isTwoImages = images.length === 2;
-    const creditsRequired = duration === 5 ? 5 : 8;
+    const creditsRequired = duration === 5 ? 5 : 10;  // 5초=5크레딧, 10초=10크레딧
 
     // 🎬 모델 선택 (Veo 3 Fast for cost savings)
     const selectedModel = isTwoImages 
@@ -107,7 +112,7 @@ exports.handler = async (event, context) => {
       },
       config: {
         aspectRatio: '9:16',
-        durationSeconds: duration,  // ✅ 5 or 8 (API 제한: 4~8초)
+        durationSeconds: duration,  // 5 or 10
         personGeneration: 'allow_adult',
         resolution: '720p'
       }
@@ -177,36 +182,29 @@ exports.handler = async (event, context) => {
         success: true,
         operationId: operation.name,
         status: 'processing',
-        message: `${duration}초 영상 생성이 시작되었습니다. 상태를 확인해주세요.`,
-        estimatedTime: '2-3분',
-        creditsUsed: creditsRequired,
+        message: `${duration}초 영상 생성이 시작되었습니다. 예상 소요 시간: ${duration === 5 ? '3-4분' : '4-5분'}`,
         duration: duration,
-        model: selectedModel
+        creditsUsed: creditsRequired,
+        estimatedTime: duration === 5 ? '3-4분' : '4-5분'
       })
     };
 
   } catch (error) {
-    const totalTime = Date.now() - startTime;
-    
-    console.error('═══════════════════════════════════════════════════════════');
-    console.error('❌ Video Generation Failed');
-    console.error('═══════════════════════════════════════════════════════════');
-    console.error('Error:', error.message);
+    console.error('❌ Video generation failed:', error.message);
     console.error('Stack:', error.stack);
-    console.error('Time:', (totalTime / 1000).toFixed(1) + 's');
     
-    // Handle specific errors
+    // Handle specific error cases
     let errorMessage = error.message || 'Video generation failed';
     let statusCode = 500;
-    
-    if (error.message && error.message.includes('429')) {
-      errorMessage = 'API 요청 한도에 도달했습니다. 1분 후에 다시 시도해주세요.';
-      statusCode = 429;
+
+    if (error.message && error.message.includes('API key')) {
+      errorMessage = 'API 키가 설정되지 않았습니다.';
+      statusCode = 401;
     } else if (error.message && error.message.includes('quota')) {
-      errorMessage = 'API 할당량이 소진되었습니다. 잠시 후 다시 시도해주세요.';
+      errorMessage = 'API 할당량 초과. 잠시 후 다시 시도해주세요.';
       statusCode = 429;
-    } else if (error.message && error.message.includes('RESOURCE_EXHAUSTED')) {
-      errorMessage = 'API 리소스 한도 초과. 1분 후 재시도하거나 일일 한도를 확인하세요.';
+    } else if (error.message && error.message.includes('429')) {
+      errorMessage = 'API 요청 한도 초과. 1분 후 다시 시도해주세요.';
       statusCode = 429;
     }
     
@@ -214,9 +212,9 @@ exports.handler = async (event, context) => {
       statusCode: statusCode,
       headers,
       body: JSON.stringify({
+        success: false,
         error: errorMessage,
-        details: error.stack,
-        retryAfter: statusCode === 429 ? 60 : null
+        details: error.stack
       })
     };
   }
