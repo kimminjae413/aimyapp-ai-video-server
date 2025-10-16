@@ -1,12 +1,12 @@
 /**
  * Netlify Function: Check Veo Video Generation Status
  * Polls operation status and returns video URL when complete
+ * Supports 5s and 10s durations
  */
-
 const { GoogleGenAI } = require('@google/genai');
 
 exports.config = {
-  timeout: 60  // 1 minute
+  timeout: 60  // 1분
 };
 
 exports.handler = async (event, context) => {
@@ -17,6 +17,7 @@ exports.handler = async (event, context) => {
     'Content-Type': 'application/json'
   };
 
+  // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -30,7 +31,7 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    const { operationId } = JSON.parse(event.body);
+    const { operationId, duration } = JSON.parse(event.body);
 
     if (!operationId) {
       throw new Error('operationId is required');
@@ -41,7 +42,10 @@ exports.handler = async (event, context) => {
       throw new Error('GEMINI_API_KEY not configured');
     }
 
-    console.log('🔍 Checking operation status:', operationId);
+    console.log('🔍 Checking operation status:', {
+      operationId: operationId.substring(0, 50) + '...',
+      duration: duration ? `${duration}초` : 'unknown'
+    });
 
     const client = new GoogleGenAI({ apiKey });
 
@@ -57,13 +61,15 @@ exports.handler = async (event, context) => {
     // Still processing
     if (!operation.done) {
       console.log('⏳ Still processing...');
+      
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
+          success: true,
           status: 'processing',
           done: false,
-          message: '영상 생성 중...'
+          message: duration ? `${duration}초 영상 생성 중...` : '영상 생성 중...'
         })
       };
     }
@@ -80,31 +86,51 @@ exports.handler = async (event, context) => {
     const videoUrl = generatedVideos[0].video?.uri;
 
     if (!videoUrl) {
-      throw new Error('Video URL not found');
+      throw new Error('Video URL not found in response');
     }
 
-    console.log('📦 Video URL:', videoUrl.substring(0, 60) + '...');
+    console.log('📦 Video ready:', {
+      videoUrl: videoUrl.substring(0, 60) + '...',
+      duration: duration || 'unknown'
+    });
 
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
+        success: true,
         status: 'completed',
         done: true,
         videoUrl: videoUrl,
-        duration: 8
+        duration: duration || 8,  // fallback to 8s for backward compatibility
+        message: '영상 생성 완료!'
       })
     };
 
   } catch (error) {
     console.error('❌ Status check failed:', error.message);
+    console.error('Stack:', error.stack);
+    
+    // Handle specific error cases
+    let errorMessage = error.message || 'Status check failed';
+    let statusCode = 500;
+
+    if (error.message && error.message.includes('Operation not found')) {
+      errorMessage = 'Operation ID가 잘못되었거나 만료되었습니다.';
+      statusCode = 404;
+    } else if (error.message && error.message.includes('429')) {
+      errorMessage = 'API 요청 한도 초과. 잠시 후 다시 시도해주세요.';
+      statusCode = 429;
+    }
     
     return {
-      statusCode: 500,
+      statusCode: statusCode,
       headers,
       body: JSON.stringify({
+        success: false,
         status: 'error',
-        error: error.message
+        error: errorMessage,
+        details: error.stack
       })
     };
   }
