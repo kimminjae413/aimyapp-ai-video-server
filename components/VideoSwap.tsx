@@ -58,7 +58,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     salonVibe2: 'The person celebrates joyfully as if high-fiving with the hair designer'
   };
 
-  // 동적 크레딧 계산: 이미지 1개 = 1크레딧, 2개 = 3크레딧
+  // 동적 크레딧 계산: 이미지 1개 = 5크레딧, 2개 = 10크레딧
   const getRequiredCredits = () => {
     return uploadedImages.length === 2 ? 10 : 5;
   };
@@ -180,7 +180,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       
       console.log('✅ 이미지 업로드 완료:', {
         totalImages: uploadedImages.length + 1,
-        requiredCredits: uploadedImages.length + 1 === 2 ? 3 : 1
+        requiredCredits: uploadedImages.length + 1 === 2 ? 10 : 5
       });
     };
     
@@ -191,7 +191,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // 이미지 제거 핸들러 (NEW)
+  // 이미지 제거 핸들러
   const handleRemoveImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index));
     setGeneratedVideoUrl(null);
@@ -204,7 +204,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     console.log('🗑️ 이미지 제거:', { remainingImages: uploadedImages.length - 1 });
   };
 
-  // 영상 생성 핸들러 (Gemini Video API로 교체)
+  // 영상 생성 핸들러 - ✅ duration 파라미터 추가!
   const handleGenerateVideo = async () => {
     if (uploadedImages.length === 0) {
       setError('이미지를 최소 1개 업로드해주세요.');
@@ -235,11 +235,14 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     setVideoSaved(false);
     setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
+    // ✅ duration 계산
+    const videoDuration = uploadedImages.length === 2 ? 10 : 5;
+
     console.log('🎬 Gemini 영상 생성 시작:', {
       userId,
       imageCount: uploadedImages.length,
-      model: uploadedImages.length === 2 ? 'Veo 3.1' : 'Veo 2',
-      duration: uploadedImages.length === 2 ? '10초' : '5초',
+      model: uploadedImages.length === 2 ? 'Veo 3.1 Fast' : 'Veo 3 Fast',
+      duration: `${videoDuration}초`,
       prompt: finalPrompt,
       creditsRequired: requiredCredits,
       currentCredits: credits.remainingCredits,
@@ -250,16 +253,17 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     let creditDeducted = false;
 
     try {
-      // 1. Gemini Video API로 영상 생성
+      // 1. Gemini Video API로 영상 생성 - ✅ duration 파라미터 전달!
       setProgress(uploadedImages.length === 2 
-        ? '2개 이미지로 10초 전환 영상 생성 중... (Veo 3.1)'
-        : '1개 이미지로 5초 영상 생성 중... (Veo 2)'
+        ? '2개 이미지로 10초 전환 영상 생성 중... (Veo 3.1 Fast)'
+        : '1개 이미지로 5초 영상 생성 중... (Veo 3 Fast)'
       );
 
       const result = await geminiVideoService.generateVideo({
         images: uploadedImages.map(img => `data:${img.mimeType};base64,${img.base64}`),
         prompt: finalPrompt,
-        aspectRatio: '9:16' // 세로 영상
+        duration: videoDuration as 5 | 10,  // ✅ duration 추가!
+        aspectRatio: '9:16'
       });
       
       console.log('✅ Gemini 영상 생성 완료:', {
@@ -285,7 +289,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
           originalImageUrl: uploadedImages[0].url,
           resultUrl: result.videoUrl,
           prompt: finalPrompt,
-          videoDuration: uploadedImages.length === 2 ? 10 : 5,
+          videoDuration,
           creditsUsed: requiredCredits
         });
         
