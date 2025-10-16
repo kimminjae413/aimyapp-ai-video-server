@@ -1,9 +1,9 @@
 /**
- * Netlify Function: Gemini Veo Video Generation Proxy
- * 공식 문서 기반: https://ai.google.dev/gemini-api/docs/video
+ * Netlify Function: Gemini Veo Video Generation (REST API)
+ * SDK 대신 직접 REST API 호출
  */
 
-const { GoogleGenAI } = require('@google/genai');
+const fetch = require('node-fetch');
 
 exports.config = {
   timeout: 300
@@ -32,104 +32,90 @@ exports.handler = async (event, context) => {
   try {
     const { images, prompt } = JSON.parse(event.body);
 
-    if (!images || images.length === 0) {
+    if (!images || images.length === 0 || !prompt) {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ error: '이미지가 필요합니다.' })
+        body: JSON.stringify({ error: '이미지와 프롬프트가 필요합니다.' })
       };
     }
 
-    if (!prompt) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: '프롬프트가 필요합니다.' })
-      };
-    }
-
-    console.log('🎬 Veo 생성 시작:', {
+    console.log('🎬 Veo REST API 호출:', {
       imageCount: images.length,
       promptLength: prompt.length
     });
 
-    // GoogleGenAI 클라이언트 초기화
-    const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const apiKey = process.env.GEMINI_API_KEY;
+    const firstImageBase64 = images[0].split(',')[1];
 
-    // 이미지 처리
-    const firstImageData = images[0].split(',')[1];
+    // REST API 요청 구성
+    let requestBody = {
+      prompt: prompt,
+      image: {
+        bytesBase64Encoded: firstImageBase64,
+        mimeType: 'image/jpeg'
+      },
+      generationConfig: {
+        aspectRatio: '9:16',
+        durationSeconds: '8',
+        personGeneration: 'allow_adult'
+      }
+    };
 
-    let operation;
-
+    // 2개 이미지인 경우 lastFrame 추가
     if (images.length === 2) {
-      // 2개 이미지: lastFrame 사용
-      console.log('📸📸 Veo 3.1 with last_frame');
-      
-      const lastImageData = images[1].split(',')[1];
-
-      // JavaScript SDK API - 올바른 필드명!
-      operation = await client.models.generateVideos({
-        model: 'veo-3.1-generate-preview',
-        prompt: prompt,
-        image: {
-          mimeType: 'image/jpeg',
-          bytesBase64Encoded: firstImageData  // ← data가 아니라 bytesBase64Encoded
-        },
-        config: {
-          last_frame: {
-            mimeType: 'image/jpeg',
-            bytesBase64Encoded: lastImageData  // ← data가 아니라 bytesBase64Encoded
-          },
-          aspect_ratio: '9:16',
-          duration_seconds: '8',
-          person_generation: 'allow_adult'
-        }
-      });
-
-    } else {
-      // 1개 이미지
-      console.log('📸 Veo 3 single image');
-
-      operation = await client.models.generateVideos({
-        model: 'veo-3.1-generate-preview',
-        prompt: prompt,
-        image: {
-          mimeType: 'image/jpeg',
-          bytesBase64Encoded: firstImageData  // ← data가 아니라 bytesBase64Encoded
-        },
-        config: {
-          aspect_ratio: '9:16',
-          duration_seconds: '8',
-          person_generation: 'allow_adult'
-        }
-      });
+      const lastImageBase64 = images[1].split(',')[1];
+      requestBody.generationConfig.lastFrame = {
+        bytesBase64Encoded: lastImageBase64,
+        mimeType: 'image/jpeg'
+      };
+      console.log('📸📸 lastFrame 추가됨');
     }
 
+    // POST 요청
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-generate-preview:generateVideos?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error('❌ API 오류:', result);
+      throw new Error(JSON.stringify(result));
+    }
+
+    console.log('✅ 작업 시작:', result.name);
+
     // 폴링
-    console.log('⏳ 비디오 생성 대기...');
-    
+    let operation = result;
     let attempts = 0;
     const maxAttempts = 30;
 
     while (!operation.done && attempts < maxAttempts) {
-      console.log(`⏱️ ${attempts + 1}/${maxAttempts}`);
       await new Promise(resolve => setTimeout(resolve, 10000));
-      operation = await client.operations.get({ name: operation.name });
+      
+      const pollResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/${operation.name}?key=${apiKey}`
+      );
+      
+      operation = await pollResponse.json();
       attempts++;
+      console.log(`⏱️ ${attempts}/${maxAttempts}`);
     }
 
     if (!operation.done) {
-      throw new Error('타임아웃 (5분)');
+      throw new Error('타임아웃');
     }
 
-    const videos = operation.response?.generated_videos;
-    if (!videos || videos.length === 0) {
-      throw new Error('생성된 비디오 없음');
-    }
-
-    const videoUrl = videos[0].video?.uri;
+    const videoUrl = operation.response?.generatedVideos?.[0]?.video?.uri;
+    
     if (!videoUrl) {
-      throw new Error('비디오 URI 없음');
+      throw new Error('비디오 URL 없음');
     }
 
     console.log('✅ 완료:', videoUrl.substring(0, 50));
