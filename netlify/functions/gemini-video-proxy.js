@@ -71,30 +71,35 @@ exports.handler = async (event, context) => {
 
     // 모델 및 config 설정
     let model = 'veo-3-generate-preview';
-    let config = {
-      aspectRatio: '9:16',
-      durationSeconds: '8',
-      personGeneration: 'allow_adult',
-      resolution: '720p'
+    let requestParams = {
+      model: model,
+      prompt: prompt,
+      image: firstImage,
+      config: {
+        aspectRatio: '9:16',
+        durationSeconds: '8',
+        personGeneration: 'allow_adult',
+        resolution: '720p'
+      }
     };
-
-    let lastFrame = null;
 
     // 2개 이미지: Veo 3.1 + lastFrame
     if (images.length === 2) {
       model = 'veo-3.1-generate-preview';
+      requestParams.model = model;
+      
       const lastImageBase64 = images[1].includes(',')
         ? images[1].split(',')[1]
         : images[1];
       
-      lastFrame = {
+      // ⚠️ lastFrame은 config 밖에 최상위로!
+      requestParams.lastFrame = {
         inlineData: {
           data: lastImageBase64,
           mimeType: 'image/jpeg'
         }
       };
 
-      config.lastFrame = lastFrame;
       console.log('📸📸 Veo 3.1 + lastFrame 모드');
     } else {
       console.log('📸 Veo 3 단일 이미지 모드');
@@ -102,13 +107,14 @@ exports.handler = async (event, context) => {
 
     // 🎬 동영상 생성 시작
     console.log('▶️ generate_videos 호출...');
+    console.log('📋 요청 구조:', JSON.stringify({
+      model: requestParams.model,
+      hasImage: !!requestParams.image,
+      hasLastFrame: !!requestParams.lastFrame,
+      config: requestParams.config
+    }, null, 2));
     
-    const operation = await client.models.generateVideos({
-      model: model,
-      prompt: prompt,
-      image: firstImage,
-      config: config
-    });
+    const operation = await client.models.generateVideos(requestParams);
 
     console.log('✅ Operation 시작:', operation.name);
 
