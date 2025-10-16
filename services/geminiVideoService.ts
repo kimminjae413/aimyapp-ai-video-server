@@ -1,14 +1,15 @@
 /**
- * Gemini Video Generation Service
+ * Gemini Video Generation Service (Veo 2 Final)
  * 
- * Veo 3.1 Fast: 4초/6초/8초 (4/6/8 크레딧)
- * 사용자가 원하는 duration 선택 가능
+ * Veo 2: 5초/8초 (5초=5크레딧, 8초=8크레딧)
+ * 이미지 1개 → 5초 영상
+ * 이미지 2개 → 8초 전환 영상
  */
 
 interface VideoGenerationOptions {
   images: string[];  // base64 data URLs (max 2)
   prompt: string;
-  duration: 4 | 6 | 8;  // ✅ 4, 6, 8초 (Veo 3.1 Fast 지원)
+  duration: 5 | 8;  // ✅ 5초 또는 8초만! (Veo 2)
   aspectRatio?: '16:9' | '9:16';
 }
 
@@ -26,7 +27,7 @@ class GeminiVideoService {
   private readonly MAX_POLL_ATTEMPTS = 30; // 최대 5분
 
   /**
-   * Gemini Video API로 영상 생성
+   * Gemini Video API로 영상 생성 (Veo 2)
    * @param options 영상 생성 옵션
    * @returns 생성된 영상 정보
    */
@@ -46,17 +47,17 @@ class GeminiVideoService {
       throw new Error('프롬프트가 필요합니다.');
     }
 
-    // ✅ 4, 6, 8초만 허용 (Veo 3.1 Fast)
-    if (![4, 6, 8].includes(duration)) {
-      throw new Error('영상 길이는 4초, 6초, 8초만 가능합니다.');
+    // ✅ 5초, 8초만 허용 (Veo 2)
+    if (![5, 8].includes(duration)) {
+      throw new Error('영상 길이는 5초, 8초만 가능합니다.');
     }
 
     // ✅ 크레딧 계산: duration과 동일
-    const creditsRequired = duration;  // 4초=4, 6초=6, 8초=8
+    const creditsRequired = duration;  // 5초=5, 8초=8
 
-    console.log('🎬 Gemini Video 생성 시작:', {
+    console.log('🎬 Gemini Veo 2 생성 시작:', {
       imageCount: images.length,
-      model: 'Veo 3.1 Fast',
+      model: 'Veo 2',
       duration: `${duration}초`,
       promptLength: prompt.length,
       aspectRatio,
@@ -75,7 +76,7 @@ class GeminiVideoService {
       // Step 2: 완료될 때까지 폴링
       const videoUrl = await this.pollUntilComplete(operationId, duration);
       
-      console.log('✅ Gemini Video 생성 완료:', {
+      console.log('✅ Gemini Veo 2 생성 완료:', {
         videoUrl: videoUrl.substring(0, 80) + '...',
         duration,
         creditsUsed: creditsRequired
@@ -88,7 +89,7 @@ class GeminiVideoService {
       };
 
     } catch (error) {
-      console.error('❌ Gemini Video 생성 실패:', error);
+      console.error('❌ Gemini Veo 2 생성 실패:', error);
       throw this.handleError(error);
     }
   }
@@ -248,7 +249,7 @@ class GeminiVideoService {
     }
 
     if (error.message?.includes('out of bound')) {
-      return new Error('영상 길이는 4초, 6초, 8초만 가능합니다.');
+      return new Error('영상 길이는 5초, 8초만 가능합니다.');
     }
 
     // ✅ RAI 필터 에러는 그대로 전달
@@ -272,8 +273,8 @@ class GeminiVideoService {
   /**
    * 크레딧 계산
    */
-  calculateCredits(duration: 4 | 6 | 8): number {
-    return duration;  // 4초=4, 6초=6, 8초=8
+  calculateCredits(duration: 5 | 8): number {
+    return duration;  // 5초=5, 8초=8
   }
 
   /**
