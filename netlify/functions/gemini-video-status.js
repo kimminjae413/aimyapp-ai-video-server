@@ -1,16 +1,10 @@
 /**
  * Netlify Function: Check Veo Video Generation Status
- * Polls operation status and returns video URL when complete
- * ✅ Supports 4s, 6s, 8s durations (Veo 3.1 Fast)
- * ✅ Uses generatedSamples from REST API
- * 
- * 환경변수:
- * - GEMINI_VIDEO_API_KEY (우선순위 1)
- * - GEMINI_API_KEY (폴백)
+ * ✅ 4초/6초/8초 지원 + 응답 구조 디버깅
  */
 
 exports.config = {
-  timeout: 60  // 1분
+  timeout: 60
 };
 
 exports.handler = async (event, context) => {
@@ -21,7 +15,6 @@ exports.handler = async (event, context) => {
     'Content-Type': 'application/json'
   };
 
-  // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
@@ -41,16 +34,14 @@ exports.handler = async (event, context) => {
       throw new Error('operationId is required');
     }
 
-    // ✅ Duration validation: 4, 6, 8만 허용
     const validDurations = [4, 6, 8];
     if (duration && !validDurations.includes(duration)) {
-      console.warn(`⚠️ Invalid duration received: ${duration}, will use fallback`);
+      console.warn(`⚠️ Invalid duration: ${duration}, using fallback 6`);
     }
 
-    // 🔑 API Key - 우선순위: GEMINI_VIDEO_API_KEY > GEMINI_API_KEY
     const apiKey = process.env.GEMINI_VIDEO_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error('GEMINI_VIDEO_API_KEY or GEMINI_API_KEY not configured');
+      throw new Error('API key not configured');
     }
 
     console.log('🔍 Checking operation status:', {
@@ -59,7 +50,6 @@ exports.handler = async (event, context) => {
       apiKeySource: process.env.GEMINI_VIDEO_API_KEY ? 'GEMINI_VIDEO_API_KEY' : 'GEMINI_API_KEY (fallback)'
     });
 
-    // ✅ Use REST API instead of SDK
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/${operationId}`,
       {
@@ -72,12 +62,18 @@ exports.handler = async (event, context) => {
     );
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API failed:', {
+        status: response.status,
+        body: errorText
+      });
       throw new Error(`API failed: ${response.status}`);
     }
 
     const operation = await response.json();
 
     if (operation.error) {
+      console.error('❌ Operation error:', operation.error);
       throw new Error(operation.error.message || 'Generation failed');
     }
 
@@ -85,7 +81,6 @@ exports.handler = async (event, context) => {
     if (!operation.done) {
       console.log('⏳ Still processing...');
       
-      // ✅ Duration별 맞춤 메시지
       let progressMessage = '영상 생성 중...';
       if (duration === 4) {
         progressMessage = '4초 영상 생성 중... (~3분 소요)';
@@ -103,37 +98,67 @@ exports.handler = async (event, context) => {
           status: 'processing',
           done: false,
           message: progressMessage,
-          duration: duration || 6  // fallback to 6s
+          duration: duration || 6
         })
       };
     }
 
-    // ✅ Completed - extract video from generatedSamples
+    // ✅ Completed - 전체 응답 구조 로깅
     console.log('✅ Operation completed');
+    console.log('📦 Full operation response:', JSON.stringify(operation, null, 2));
     
-    const videoResponse = operation.response?.generateVideoResponse || operation.response;
-    const samples = videoResponse?.generatedSamples;
+    // 다양한 경로에서 비디오 URL 찾기 시도
+    let videoUrl = null;
     
-    if (!samples || !Array.isArray(samples) || samples.length === 0) {
-      console.error('❌ No samples:', { 
-        hasResponse: !!operation.response,
-        hasVideoResponse: !!videoResponse,
-        samples 
-      });
-      throw new Error('No generated videos');
+    // 경로 1: operation.response.generatedSamples[0]
+    const samples = operation.response?.generatedSamples;
+    if (samples && Array.isArray(samples) && samples.length > 0) {
+      videoUrl = samples[0].video?.uri || samples[0].uri || samples[0].url;
+      console.log('✅ Found video in generatedSamples:', videoUrl?.substring(0, 60));
+    }
+    
+    // 경로 2: operation.response.generateVideoResponse.generatedSamples
+    if (!videoUrl) {
+      const videoResponse = operation.response?.generateVideoResponse;
+      const altSamples = videoResponse?.generatedSamples;
+      if (altSamples && Array.isArray(altSamples) && altSamples.length > 0) {
+        videoUrl = altSamples[0].video?.uri || altSamples[0].uri || altSamples[0].url;
+        console.log('✅ Found video in generateVideoResponse:', videoUrl?.substring(0, 60));
+      }
+    }
+    
+    // 경로 3: operation.response.video
+    if (!videoUrl) {
+      videoUrl = operation.response?.video?.uri || operation.response?.video;
+      if (videoUrl) {
+        console.log('✅ Found video in response.video:', videoUrl.substring(0, 60));
+      }
+    }
+    
+    // 경로 4: operation.response.result
+    if (!videoUrl) {
+      videoUrl = operation.response?.result?.uri || operation.response?.result?.url;
+      if (videoUrl) {
+        console.log('✅ Found video in response.result:', videoUrl.substring(0, 60));
+      }
     }
 
-    const videoUrl = samples[0].video?.uri || samples[0].uri || samples[0].url;
+    // 경로 5: 최상위 response가 문자열인 경우
+    if (!videoUrl && typeof operation.response === 'string') {
+      videoUrl = operation.response;
+      console.log('✅ response is string (video URL):', videoUrl.substring(0, 60));
+    }
 
     if (!videoUrl) {
-      console.error('❌ No URL in sample:', samples[0]);
+      console.error('❌ No video URL found in operation response');
+      console.error('Available keys in operation:', Object.keys(operation));
+      console.error('Available keys in operation.response:', Object.keys(operation.response || {}));
       throw new Error('Video URL not found in response');
     }
 
     console.log('📦 Video ready:', {
       videoUrl: videoUrl.substring(0, 60) + '...',
-      duration: duration || 'unknown',
-      sampleCount: samples.length
+      duration: duration || 'unknown'
     });
 
     return {
@@ -144,7 +169,7 @@ exports.handler = async (event, context) => {
         status: 'completed',
         done: true,
         videoUrl: videoUrl,
-        duration: duration || 6,  // ✅ fallback to 6s (기본값)
+        duration: duration || 6,
         message: `${duration || 6}초 영상 생성 완료!`
       })
     };
@@ -153,7 +178,6 @@ exports.handler = async (event, context) => {
     console.error('❌ Status check failed:', error.message);
     console.error('Stack:', error.stack);
     
-    // Handle specific error cases
     let errorMessage = error.message || 'Status check failed';
     let statusCode = 500;
 
@@ -162,9 +186,6 @@ exports.handler = async (event, context) => {
       statusCode = 404;
     } else if (error.message && (error.message.includes('429') || error.message.includes('rate limit'))) {
       errorMessage = 'API 요청 한도 초과. 잠시 후 다시 시도해주세요.';
-      statusCode = 429;
-    } else if (error.message && error.message.includes('quota')) {
-      errorMessage = 'API 할당량 초과. 잠시 후 다시 시도해주세요.';
       statusCode = 429;
     }
     
