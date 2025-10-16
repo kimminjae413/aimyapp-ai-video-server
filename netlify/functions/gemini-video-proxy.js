@@ -5,7 +5,7 @@
  * 이미지 2개: Veo 3.1 (last_frame) → 8초 전환
  */
 
-const { genai } = require('@google/genai');
+const { GoogleGenAI } = require('@google/genai');
 
 // ⚠️ 중요: Netlify Functions 타임아웃 설정 (5분)
 exports.config = {
@@ -88,7 +88,7 @@ exports.handler = async (event, context) => {
     });
 
     // Google GenAI Client 초기화
-    const client = genai.Client({ apiKey: process.env.GEMINI_API_KEY });
+    const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
     // 모델 선택
     const modelName = 'veo-3.1-generate-preview';
