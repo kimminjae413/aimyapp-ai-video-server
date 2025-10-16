@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { VideoIcon } from './icons/VideoIcon';
 import { ImageUploader } from './ImageUploader';
 import { Loader } from './Loader';
-import { generateVideoWithKling, motionTemplates, getRequiredCredits } from '../services/klingService';
+import { geminiVideoService } from '../services/geminiVideoService';
 import { useCredits, restoreCredits, saveGenerationResult } from '../services/bullnabiService';
 import type { ImageFile, UserCredits } from '../types';
 
@@ -23,11 +23,10 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
   preservedVideoUrl, 
   onVideoGenerated 
 }) => {
-  // States
-  const [originalImage, setOriginalImage] = useState<ImageFile | null>(null);
+  // States - 이미지 배열로 변경 (최대 2개)
+  const [uploadedImages, setUploadedImages] = useState<ImageFile[]>([]);
   const [prompt, setPrompt] = useState<string>('');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
-  const [videoDuration, setVideoDuration] = useState<number>(5);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(preservedVideoUrl || null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,10 +37,33 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
 
-  // 동적 크레딧 계산
-  const requiredCredits = getRequiredCredits(videoDuration);
+  // 헤어 모션 템플릿 (16개 - 그대로 유지)
+  const hairMotionTemplates = {
+    hairModelPose1: 'The person slowly turns their head left and right to showcase the hairstyle from different angles, with smooth and natural movements',
+    hairModelPose2: 'The person gently runs their hand through their hair from front to back, lifting it slightly to show volume and texture',
+    hairModelPose3: 'The person dynamically shakes their head, making the hair flow and bounce naturally to demonstrate movement and vitality',
+    hairReview1: 'The person looks at themselves as if checking a mirror with a satisfied expression, gently touching their hair',
+    hairReview2: 'The person happily touches their new hairstyle while showing expressions of joy and admiration',
+    hairReview3: 'The person adjusts their bangs with their fingers while showing a shy smile',
+    naturalPose1: 'The person transitions from a shy expression to a bright smile naturally',
+    naturalPose2: 'The person covers their face with their hands and then breaks into laughter',
+    naturalPose3: 'The person tucks their hair behind their ear while smiling gently',
+    showDetail1: 'The person rotates 180 degrees to reveal the back of their hairstyle',
+    showDetail2: 'The person looks down and then up to show the layered hair movement',
+    showDetail3: 'Natural hair movement as if blown by wind, showcasing the flow and volume',
+    transformation1: 'The person reacts with surprise and admiration at their transformation',
+    transformation2: 'The person looks at themselves as if seeing their new look in a mirror with amazement',
+    salonVibe1: 'The person stands up after the hair treatment with a satisfied expression',
+    salonVibe2: 'The person celebrates joyfully as if high-fiving with the hair designer'
+  };
 
-  // 환경 감지 함수들
+  // 동적 크레딧 계산: 이미지 1개 = 1크레딧, 2개 = 3크레딧
+  const getRequiredCredits = () => {
+    return uploadedImages.length === 2 ? 3 : 1;
+  };
+  const requiredCredits = getRequiredCredits();
+
+  // 환경 감지 함수들 (완전히 유지)
   const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
   const isAndroid = () => /Android/i.test(navigator.userAgent);
   const isWebView = () => {
@@ -61,7 +83,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   }, [preservedVideoUrl]);
 
-  // Pull-to-refresh 방지
+  // Pull-to-refresh 방지 (완전히 유지)
   useEffect(() => {
     let touchStartY = 0;
     let touchEndY = 0;
@@ -92,7 +114,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     };
   }, []);
 
-  // 페이지 나가기 방지
+  // 페이지 나가기 방지 (완전히 유지)
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (generatedVideoUrl && !videoSaved) {
@@ -106,7 +128,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [generatedVideoUrl, videoSaved]);
 
-  // 브라우저 뒤로가기 방지
+  // 브라우저 뒤로가기 방지 (완전히 유지)
   useEffect(() => {
     if (generatedVideoUrl && !videoSaved) {
       window.history.pushState(null, '', window.location.href);
@@ -131,36 +153,66 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
+  // 이미지 업로드 핸들러 (배열에 추가하도록 수정)
   const handleImageUpload = (file: File) => {
+    if (uploadedImages.length >= 2) {
+      setError('최대 2개의 이미지만 업로드할 수 있습니다.');
+      return;
+    }
+
     const reader = new FileReader();
     reader.onloadend = () => {
-      const newImageFile = {
+      const newImageFile: ImageFile = {
         base64: (reader.result as string).split(',')[1],
         mimeType: file.type,
         url: URL.createObjectURL(file),
       };
-      setOriginalImage(newImageFile);
+      
+      setUploadedImages(prev => [...prev, newImageFile]);
       setGeneratedVideoUrl(null);
       setVideoSaved(false);
       setError(null);
+      
       if (onVideoGenerated) {
         onVideoGenerated(null);
       }
+      
+      console.log('✅ 이미지 업로드 완료:', {
+        totalImages: uploadedImages.length + 1,
+        requiredCredits: uploadedImages.length + 1 === 2 ? 3 : 1
+      });
     };
+    
     reader.onerror = () => {
       setError('이미지 파일을 읽는 데 실패했습니다.');
     };
+    
     reader.readAsDataURL(file);
   };
 
-  // 영상 생성 핸들러
+  // 이미지 제거 핸들러 (NEW)
+  const handleRemoveImage = (index: number) => {
+    setUploadedImages(prev => prev.filter((_, i) => i !== index));
+    setGeneratedVideoUrl(null);
+    setVideoSaved(false);
+    
+    if (onVideoGenerated) {
+      onVideoGenerated(null);
+    }
+    
+    console.log('🗑️ 이미지 제거:', { remainingImages: uploadedImages.length - 1 });
+  };
+
+  // 영상 생성 핸들러 (Gemini Video API로 교체)
   const handleGenerateVideo = async () => {
-    if (!originalImage) {
-      setError('이미지를 업로드해주세요.');
+    if (uploadedImages.length === 0) {
+      setError('이미지를 최소 1개 업로드해주세요.');
       return;
     }
     
-    const finalPrompt = selectedTemplate ? motionTemplates[selectedTemplate as keyof typeof motionTemplates] : prompt;
+    const finalPrompt = selectedTemplate 
+      ? hairMotionTemplates[selectedTemplate as keyof typeof hairMotionTemplates] 
+      : prompt;
     
     if (!finalPrompt) {
       setError('영상으로 만들 동작이나 설명을 입력해주세요.');
@@ -182,27 +234,39 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     setVideoSaved(false);
     setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
-    console.log('🎬 Kling 영상 생성 시작:', {
+    console.log('🎬 Gemini 영상 생성 시작:', {
       userId,
-      duration: videoDuration,
+      imageCount: uploadedImages.length,
+      model: uploadedImages.length === 2 ? 'Veo 3.1' : 'Veo 2',
+      duration: uploadedImages.length === 2 ? '10초' : '5초',
       prompt: finalPrompt,
       creditsRequired: requiredCredits,
-      originalImageSize: originalImage.base64.length
+      imagesSizes: uploadedImages.map(img => img.base64.length)
     });
 
     try {
-      // 1. 영상 생성
-      const videoUrl = await generateVideoWithKling(originalImage, finalPrompt, videoDuration);
-      
-      console.log('✅ Kling 영상 생성 완료:', {
-        videoUrl: videoUrl.substring(0, 80) + '...',
-        fullUrl: videoUrl,
-        length: videoUrl.length
+      // 1. Gemini Video API로 영상 생성
+      setProgress(uploadedImages.length === 2 
+        ? '2개 이미지로 10초 전환 영상 생성 중... (Veo 3.1)'
+        : '1개 이미지로 5초 영상 생성 중... (Veo 2)'
+      );
+
+      const result = await geminiVideoService.generateVideo({
+        images: uploadedImages.map(img => `data:${img.mimeType};base64,${img.base64}`),
+        prompt: finalPrompt,
+        aspectRatio: '9:16' // 세로 영상
       });
       
-      setGeneratedVideoUrl(videoUrl);
+      console.log('✅ Gemini 영상 생성 완료:', {
+        videoUrl: result.videoUrl.substring(0, 80) + '...',
+        duration: result.duration,
+        creditsUsed: result.creditsUsed,
+        fullUrl: result.videoUrl
+      });
+      
+      setGeneratedVideoUrl(result.videoUrl);
       if (onVideoGenerated) {
-        onVideoGenerated(videoUrl);
+        onVideoGenerated(result.videoUrl);
       }
       setProgress('영상 생성이 완료되었습니다!');
       
@@ -213,10 +277,10 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         const saveResult = await saveGenerationResult({
           userId,
           type: 'video',
-          originalImageUrl: originalImage.url,
-          resultUrl: videoUrl,
+          originalImageUrl: uploadedImages[0].url,
+          resultUrl: result.videoUrl,
           prompt: finalPrompt,
-          videoDuration,
+          videoDuration: uploadedImages.length === 2 ? 10 : 5,
           creditsUsed: requiredCredits
         });
         
@@ -286,7 +350,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
-  // iPhone에서 실제 파일이 저장되는 다운로드 핸들러 - 최종 완성 버전
+  // iPhone에서 실제 파일이 저장되는 다운로드 핸들러 - 최종 완성 버전 (완전히 유지)
   const handleDownload = async () => {
     if (!generatedVideoUrl || isDownloading) return;
     
@@ -446,7 +510,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
-  // iOS 가이드 모달
+  // iOS 가이드 모달 (완전히 유지)
   const IOSGuideModal = () => (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full animate-in fade-in zoom-in duration-300">
@@ -499,7 +563,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     </div>
   );
 
-  // 경고 모달
+  // 경고 모달 (완전히 유지)
   const ExitWarningModal = () => (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 max-w-sm w-full">
@@ -589,29 +653,72 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         <div className="lg:w-1/3 flex flex-col gap-6">
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
             <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">1. 헤어 시술 후 사진 업로드</h2>
+            
+            {/* 첫 번째 이미지 업로드 */}
             <ImageUploader 
               title="고객 사진" 
               onImageUpload={handleImageUpload} 
-              imageUrl={originalImage?.url} 
+              imageUrl={uploadedImages[0]?.url} 
             />
+            
+            {/* 업로드된 이미지 목록 */}
+            {uploadedImages.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {uploadedImages.map((img, index) => (
+                  <div key={index} className="relative bg-gray-700 rounded-lg p-2 flex items-center gap-3">
+                    <img 
+                      src={img.url} 
+                      alt={`업로드 ${index + 1}`}
+                      className="w-16 h-16 object-cover rounded"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-300">이미지 {index + 1}</p>
+                      <p className="text-xs text-gray-500">
+                        {index === 0 ? '시작 프레임' : '종료 프레임'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveImage(index)}
+                      className="p-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                    >
+                      <FiX className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                
+                {/* 두 번째 이미지 추가 버튼 */}
+                {uploadedImages.length === 1 && (
+                  <label className="block w-full p-4 bg-gray-700 hover:bg-gray-600 border-2 border-dashed border-gray-500 rounded-lg cursor-pointer transition-colors">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImageUpload(file);
+                      }}
+                      className="hidden"
+                    />
+                    <div className="flex items-center justify-center gap-2 text-cyan-400">
+                      <FiPlus className="w-5 h-5" />
+                      <span className="text-sm font-medium">2번째 이미지 추가 (10초 영상)</span>
+                    </div>
+                  </label>
+                )}
+              </div>
+            )}
+            
+            {/* 크레딧 안내 */}
+            <div className="mt-4 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg">
+              <p className="text-xs text-blue-200">
+                📸 <strong>이미지 1개</strong>: 5초 영상 생성 (1회 차감)<br/>
+                📸📸 <strong>이미지 2개</strong>: 10초 전환 영상 생성 (3회 차감)
+              </p>
+            </div>
           </div>
 
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
             <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">2. 영상 설정</h2>
             
-            {/* Duration Selection */}
-            <div className="mb-4">
-              <label className="block mb-2 text-sm font-medium text-gray-300">영상 길이</label>
-              <select
-                value={videoDuration}
-                onChange={(e) => setVideoDuration(Number(e.target.value))}
-                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500 transition"
-              >
-                <option value={5}>5초 (SNS 숏폼용) - 2회 차감</option>
-                <option value={10}>10초 (상세 리뷰용) - 3회 차감</option>
-              </select>
-            </div>
-
             {/* Motion Templates */}
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-300">헤어 영상 템플릿</label>
@@ -673,16 +780,16 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
             {credits && !hasEnoughCredits && (
               <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4">
                 <p className="text-sm text-red-400">
-                  크레딧이 부족합니다. {videoDuration}초 영상 변환에는 {requiredCredits}개의 크레딧이 필요합니다.
+                  크레딧이 부족합니다. 현재 설정({uploadedImages.length}개 이미지)에는 {requiredCredits}개의 크레딧이 필요합니다.
                 </p>
               </div>
             )}
             
             <button
               onClick={handleGenerateVideo}
-              disabled={isLoading || !originalImage || (!prompt && !selectedTemplate) || !hasEnoughCredits}
+              disabled={isLoading || uploadedImages.length === 0 || (!prompt && !selectedTemplate) || !hasEnoughCredits}
               className={`w-full mt-4 flex items-center justify-center px-6 py-3.5 text-base font-semibold text-white rounded-lg transition-all duration-300 ${
-                isLoading || !originalImage || (!prompt && !selectedTemplate) || !hasEnoughCredits
+                isLoading || uploadedImages.length === 0 || (!prompt && !selectedTemplate) || !hasEnoughCredits
                   ? 'bg-gray-600 cursor-not-allowed'
                   : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700'
               }`}
@@ -694,7 +801,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               ) : (
                 <>
                   <VideoIcon className="w-5 h-5 mr-2" />
-                  영상 생성하기 ({requiredCredits}회 차감)
+                  {uploadedImages.length === 2 ? '10초 영상 생성하기' : '5초 영상 생성하기'} ({requiredCredits}회 차감)
                 </>
               )}
             </button>
@@ -712,7 +819,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                 <p className="text-sm">{error}</p>
                 <button
                   onClick={handleGenerateVideo}
-                  disabled={!originalImage || (!prompt && !selectedTemplate) || isLoading}
+                  disabled={uploadedImages.length === 0 || (!prompt && !selectedTemplate) || isLoading}
                   className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg transition-colors text-sm"
                 >
                   다시 시도
