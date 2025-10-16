@@ -255,26 +255,7 @@ exports.handler = async (event, context) => {
     });
 
     // ───────────────────────────────────────────────────────────────────────────
-    // Build API Request Parameters
-    // ───────────────────────────────────────────────────────────────────────────
-    const requestParams = {
-      model: selectedModel,
-      prompt: prompt,
-      image: {
-        bytesBase64Encoded: firstImageBase64,
-        mimeType: 'image/jpeg'
-      },
-      config: {
-        aspectRatio: VIDEO_SETTINGS.ASPECT_RATIO,
-        durationSeconds: VIDEO_SETTINGS.DURATION_SECONDS,
-        personGeneration: VIDEO_SETTINGS.PERSON_GENERATION,
-        resolution: VIDEO_SETTINGS.RESOLUTION
-      }
-    };
-
-    // Add second image for Veo 3.1 interpolation
-    if (isTwoImages) {
-      const lastImageBase64 = images[1].includes(',')
+[1].includes(',')
         ? images[1].split(',')[1]
         : images[1];
 
