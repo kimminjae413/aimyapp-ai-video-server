@@ -47,7 +47,7 @@ exports.handler = async (event, context) => {
     });
 
     // Gemini API Key 가져오기
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_VIDEO_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY not configured');
     }
