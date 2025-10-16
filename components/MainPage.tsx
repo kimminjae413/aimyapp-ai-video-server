@@ -167,7 +167,7 @@ export function MainPage({ onFaceSwapClick, onVideoSwapClick, credits }: MainPag
         <div className="mt-6 p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl">
           <div className="text-center">
             <p className="text-sm text-cyan-300 font-medium mb-2">
-              💡 영상 변환 크레딧 안내 (Veo 2)
+              💡 영상 변환 크레딧 안내 (Hairgator)
             </p>
             <div className="flex justify-center gap-6 text-xs text-cyan-200">
               <span>⏱️ 5초 = 5회</span>
