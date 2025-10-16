@@ -53,7 +53,7 @@ export function MainPage({ onFaceSwapClick, onVideoSwapClick, credits }: MainPag
         {/* Welcome Section */}
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-pink-300 via-purple-300 to-blue-300 bg-clip-text text-transparent">
-            AI로 당신의 비전을 현실로
+            AI 얼굴변환 & 영상변환 
           </h2>
           <p className="text-gray-400 text-lg">
             얼굴 변환부터 영상 생성까지, 한 번에!
