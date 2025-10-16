@@ -80,9 +80,9 @@ exports.handler = async (event, context) => {
       config: requestBody.generationConfig
     }, null, 2));
 
-    // POST 요청
+    // POST 요청 - 올바른 REST API 엔드포인트
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-generate-preview:generateVideos?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-generate-preview:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
