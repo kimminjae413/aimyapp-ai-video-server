@@ -72,6 +72,14 @@ exports.handler = async (event, context) => {
       console.log('📸📸 lastFrame 추가됨');
     }
 
+    console.log('📤 요청 구조:', JSON.stringify({
+      prompt: requestBody.prompt.substring(0, 50),
+      hasImage: !!requestBody.image,
+      imageSize: requestBody.image.bytesBase64Encoded.length,
+      hasLastFrame: !!requestBody.generationConfig.lastFrame,
+      config: requestBody.generationConfig
+    }, null, 2));
+
     // POST 요청
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-generate-preview:generateVideos?key=${apiKey}`,
@@ -82,13 +90,17 @@ exports.handler = async (event, context) => {
       }
     );
 
-    const result = await response.json();
+    // 응답 텍스트 먼저 확인
+    const responseText = await response.text();
+    console.log('📩 응답 상태:', response.status);
+    console.log('📩 응답 본문:', responseText.substring(0, 500));
 
     if (!response.ok) {
-      console.error('❌ API 오류:', result);
-      throw new Error(JSON.stringify(result));
+      console.error('❌ API 오류:', responseText);
+      throw new Error(responseText || `HTTP ${response.status}`);
     }
 
+    const result = JSON.parse(responseText);
     console.log('✅ 작업 시작:', result.name);
 
     // 폴링
