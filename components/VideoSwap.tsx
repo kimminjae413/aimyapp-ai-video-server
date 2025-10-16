@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { VideoIcon } from './icons/VideoIcon';
 import { ImageUploader } from './ImageUploader';
 import { Loader } from './Loader';
+import { FiX, FiPlus } from 'react-icons/fi';
 import { geminiVideoService } from '../services/geminiVideoService';
 import { useCredits, restoreCredits, saveGenerationResult } from '../services/bullnabiService';
 import type { ImageFile, UserCredits } from '../types';
