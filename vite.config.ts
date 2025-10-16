@@ -1,5 +1,6 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     // 로컬 .env 파일 로드
@@ -10,7 +11,7 @@ export default defineConfig(({ mode }) => {
     // 🎯 VModel AI (1순위 얼굴교체)
     const VMODEL_API_TOKEN = process.env.VMODEL_API_TOKEN || env.VMODEL_API_TOKEN;
     
-    // 🔍 Google Gemini (폴백 + 의상변경)
+    // 🔍 Google Gemini (폴백 + 의상변경 + 비디오 생성)
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY || env.GEMINI_API_KEY;
     
     // 🔥 기존 AI 서비스들
@@ -36,8 +37,8 @@ export default defineConfig(({ mode }) => {
     // AI 서비스 상태
     console.log('🤖 AI Services:');
     console.log('- VMODEL_API_TOKEN found:', !!VMODEL_API_TOKEN);
-    console.log('- GEMINI_API_KEY found:', !!GEMINI_API_KEY);
-    console.log('- KLING_ACCESS_KEY found:', !!KLING_ACCESS_KEY);
+    console.log('- GEMINI_API_KEY found:', !!GEMINI_API_KEY, '(⚠️ 비디오 생성에도 필수!)');
+    console.log('- KLING_ACCESS_KEY found:', !!KLING_ACCESS_KEY, '(DEPRECATED)');
     console.log('- OPENAI_API_KEY found:', !!OPENAI_API_KEY);
     console.log('');
     
@@ -59,13 +60,27 @@ export default defineConfig(({ mode }) => {
     console.log('- Face Swap: VModel AI → Firebase OpenAI → Gemini');
     console.log('- Image Hosting: Cloudinary → Imgur → Temp URL');
     console.log('- Clothing Change: Gemini AI (always)');
+    console.log('- Video Generation: Gemini Veo 2/3.1 (NEW - replaces Kling)');
+    console.log('  • 1 image → Veo 2 (5s, 1 credit)');
+    console.log('  • 2 images → Veo 3.1 (10s, 3 credits)');
+    console.log('');
+    
+    // 중요 경고
+    if (!GEMINI_API_KEY) {
+        console.warn('⚠️⚠️⚠️ WARNING: GEMINI_API_KEY is not set!');
+        console.warn('Video generation will fail without this key.');
+        console.warn('Please set it in Netlify Dashboard → Environment variables');
+        console.warn('');
+    }
     
     return {
+      plugins: [react()],
+      
       define: {
         // 🎯 VModel AI
         'process.env.VMODEL_API_TOKEN': JSON.stringify(VMODEL_API_TOKEN),
         
-        // 🔍 Google Gemini (기존 호환성 유지)
+        // 🔍 Google Gemini (기존 호환성 유지 + 비디오 생성)
         'process.env.API_KEY': JSON.stringify(GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(GEMINI_API_KEY),
         
@@ -83,10 +98,47 @@ export default defineConfig(({ mode }) => {
         // 👤 사용자 관리
         'process.env.BULLNABI_TOKEN': JSON.stringify(BULLNABI_TOKEN)
       },
+      
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),
+          '@components': path.resolve(__dirname, './components'),
+          '@services': path.resolve(__dirname, './services'),
+          '@types': path.resolve(__dirname, './types')
         }
+      },
+      
+      // 개발 서버 설정
+      server: {
+        port: 5173,
+        host: true,
+        open: true
+      },
+      
+      // 빌드 설정
+      build: {
+        outDir: 'dist',
+        sourcemap: false,
+        minify: 'esbuild',
+        target: 'es2015',
+        
+        // 청크 크기 경고 제한 (500kb → 1000kb)
+        chunkSizeWarningLimit: 1000,
+        
+        rollupOptions: {
+          output: {
+            // 청크 분할 최적화
+            manualChunks: {
+              'react-vendor': ['react', 'react-dom'],
+              'google-ai': ['@google/generative-ai']
+            }
+          }
+        }
+      },
+      
+      // 최적화
+      optimizeDeps: {
+        include: ['react', 'react-dom', '@google/generative-ai', 'form-data', 'axios']
       }
     };
 });
