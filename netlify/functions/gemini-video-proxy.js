@@ -233,12 +233,28 @@ exports.handler = async (event, context) => {
     console.error('Stack:', error.stack);
     console.error('Time:', (totalTime / 1000).toFixed(1) + 's');
     
+    // Handle rate limit errors
+    let errorMessage = error.message || 'Video generation failed';
+    let statusCode = 500;
+    
+    if (error.message && error.message.includes('429')) {
+      errorMessage = 'API 요청 한도에 도달했습니다. 1분 후에 다시 시도해주세요.';
+      statusCode = 429;
+    } else if (error.message && error.message.includes('quota')) {
+      errorMessage = 'API 할당량이 소진되었습니다. 잠시 후 다시 시도해주세요.';
+      statusCode = 429;
+    } else if (error.message && error.message.includes('RESOURCE_EXHAUSTED')) {
+      errorMessage = 'API 리소스 한도 초과. 1분 후 재시도하거나 일일 한도를 확인하세요.';
+      statusCode = 429;
+    }
+    
     return {
-      statusCode: 500,
+      statusCode: statusCode,
       headers,
       body: JSON.stringify({
-        error: error.message || 'Video generation failed',
-        details: error.stack
+        error: errorMessage,
+        details: error.stack,
+        retryAfter: statusCode === 429 ? 60 : null  // 1분 후 재시도
       })
     };
   }
