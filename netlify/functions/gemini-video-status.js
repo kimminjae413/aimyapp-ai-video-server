@@ -122,23 +122,23 @@ exports.handler = async (event, context) => {
       throw new Error('No response in completed operation');
     }
 
-    // ✅ 응답 구조 확인: generateVideoResponse 사용
+    // ✅ 응답 구조 확인: generateVideoResponse.generatedSamples 사용
     const videoResponse = operation.response.generateVideoResponse || operation.response;
-    const generatedVideos = videoResponse.generatedVideos;
+    const generatedSamples = videoResponse.generatedSamples || videoResponse.generatedVideos;
     
-    if (!generatedVideos || !Array.isArray(generatedVideos) || generatedVideos.length === 0) {
+    if (!generatedSamples || !Array.isArray(generatedSamples) || generatedSamples.length === 0) {
       console.error('❌ No generated videos:', {
         hasResponse: !!operation.response,
         responseKeys: operation.response ? Object.keys(operation.response) : [],
         hasVideoResponse: !!videoResponse,
         videoResponseKeys: videoResponse ? Object.keys(videoResponse) : [],
-        generatedVideos: generatedVideos
+        generatedSamples: generatedSamples
       });
       throw new Error('No generated videos in response');
     }
 
-    const firstVideo = generatedVideos[0];
-    const videoUrl = firstVideo.video?.uri || firstVideo.uri;
+    const firstVideo = generatedSamples[0];
+    const videoUrl = firstVideo.video?.uri || firstVideo.uri || firstVideo.url;
 
     if (!videoUrl) {
       console.error('❌ No video URL in first video:', firstVideo);
