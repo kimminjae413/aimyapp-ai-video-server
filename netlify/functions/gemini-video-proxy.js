@@ -58,29 +58,27 @@ exports.handler = async (event, context) => {
 
     // 이미지 처리
     const firstImageData = images[0].split(',')[1];
-    const firstImageBuffer = Buffer.from(firstImageData, 'base64');
 
     let operation;
 
     if (images.length === 2) {
       // 2개 이미지: lastFrame 사용
-      console.log('📸📸 Veo 3.1 with lastFrame');
+      console.log('📸📸 Veo 3.1 with last_frame');
       
       const lastImageData = images[1].split(',')[1];
-      const lastImageBuffer = Buffer.from(lastImageData, 'base64');
 
-      // JavaScript SDK API (Python과 다름!)
+      // JavaScript SDK API - 올바른 필드명!
       operation = await client.models.generateVideos({
         model: 'veo-3.1-generate-preview',
         prompt: prompt,
         image: {
           mimeType: 'image/jpeg',
-          data: firstImageBuffer
+          bytesBase64Encoded: firstImageData  // ← data가 아니라 bytesBase64Encoded
         },
         config: {
-          last_frame: {  // ← Python의 lastFrame이 아니라 last_frame
+          last_frame: {
             mimeType: 'image/jpeg',
-            data: lastImageBuffer
+            bytesBase64Encoded: lastImageData  // ← data가 아니라 bytesBase64Encoded
           },
           aspect_ratio: '9:16',
           duration_seconds: '8',
@@ -97,7 +95,7 @@ exports.handler = async (event, context) => {
         prompt: prompt,
         image: {
           mimeType: 'image/jpeg',
-          data: firstImageBuffer
+          bytesBase64Encoded: firstImageData  // ← data가 아니라 bytesBase64Encoded
         },
         config: {
           aspect_ratio: '9:16',
