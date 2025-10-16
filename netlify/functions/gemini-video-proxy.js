@@ -96,7 +96,7 @@ exports.handler = async (event, context) => {
       },
       config: {
         aspectRatio: '9:16',
-        durationSeconds: '8',
+        durationSeconds: 8,  // ← Number, not string!
         personGeneration: 'allow_adult',
         resolution: '720p'
       }
