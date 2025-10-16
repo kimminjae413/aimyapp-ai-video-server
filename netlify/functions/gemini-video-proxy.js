@@ -141,6 +141,10 @@ exports.handler = async (event, context) => {
 
     const operation = await client.models.generateVideos(requestParams);
 
+    if (!operation || !operation.name) {
+      throw new Error('Invalid operation response - no operation.name');
+    }
+
     console.log('✅ Operation started:', operation.name);
 
     // Poll for completion
@@ -155,13 +159,25 @@ exports.handler = async (event, context) => {
       
       await new Promise(resolve => setTimeout(resolve, 10000));
       
-      completedOperation = await client.operations.get({
-        name: operation.name
-      });
+      try {
+        completedOperation = await client.operations.get({
+          name: operation.name
+        });
+        
+        if (!completedOperation) {
+          console.warn('⚠️  Empty operation response, retrying...');
+          continue;
+        }
 
-      if (completedOperation.done) {
-        console.log(`✅ Completed after ${attempts} attempts`);
-        break;
+        if (completedOperation.done) {
+          console.log(`✅ Completed after ${attempts} attempts`);
+          break;
+        }
+      } catch (pollError) {
+        console.warn(`⚠️  Polling error attempt ${attempts}:`, pollError.message);
+        if (attempts >= maxAttempts) {
+          throw pollError;
+        }
       }
     }
 
