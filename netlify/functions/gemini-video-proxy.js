@@ -54,9 +54,11 @@ exports.handler = async (event, context) => {
       throw new Error('GEMINI_API_KEY not configured');
     }
 
-    // Determine model
+    // Determine model (Fast version for cost savings)
     const isTwoImages = images.length === 2;
-    const selectedModel = isTwoImages ? 'veo-3.1-generate-preview' : 'veo-3-generate-preview';
+    const selectedModel = isTwoImages 
+      ? 'veo-3.1-fast-generate-preview'  // Veo 3.1 Fast
+      : 'veo-3-fast-generate-preview';   // Veo 3 Fast
     const creditsRequired = isTwoImages ? 3 : 1;
 
     console.log('📊 Request Parameters:', {
