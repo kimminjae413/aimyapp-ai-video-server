@@ -2,7 +2,6 @@
   "name": "hairgator-faceswap",
   "private": true,
   "version": "2.0.0",
-  "type": "module",
   "description": "AI Hair Transformation Service with Gemini Video Integration (Veo 2/3.1)",
   "engines": {
     "node": ">=20.0.0",
@@ -37,9 +36,6 @@
     "eslint-plugin-react-refresh": "^0.4.5",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0"
-  },
-  "optionalDependencies": {
-    "@google/genai": "^1.16.0"
   },
   "browserslist": {
     "production": [
