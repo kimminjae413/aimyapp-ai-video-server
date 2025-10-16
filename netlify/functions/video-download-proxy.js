@@ -75,10 +75,8 @@ exports.handler = async (event, context) => {
     const isTwoImages = images.length === 2;
     const creditsRequired = duration === 5 ? 5 : 8;  // 5초=5크레딧, 8초=8크레딧
 
-    // 🎬 모델 선택 (Veo 3 Fast for cost savings)
-    const selectedModel = isTwoImages 
-      ? 'veo-3.1-fast-generate-preview'  // 2개 이미지 = Veo 3.1 Fast
-      : 'veo-3-fast-generate-preview';   // 1개 이미지 = Veo 3 Fast
+    // 🎬 모델 선택 (Veo 3.1 Fast - 항상 사용)
+    const selectedModel = 'veo-3.1-fast-generate-preview';  // 1개/2개 이미지 모두 Veo 3.1 Fast
 
     console.log('📊 Request Parameters:', {
       imageCount: images.length,
