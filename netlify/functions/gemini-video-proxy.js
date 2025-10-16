@@ -117,8 +117,9 @@ exports.handler = async (event, context) => {
       temperature: 1.0,
       topP: 0.95,
       topK: 40,
-      maxOutputTokens: 8192,
-      aspectRatio: aspectRatio
+      maxOutputTokens: 8192
+      // ❌ aspectRatio와 duration은 generationConfig에서 제거
+      // Gemini API가 이 필드들을 지원하지 않음
     };
 
     let requestParts = [];
@@ -134,8 +135,6 @@ exports.handler = async (event, context) => {
         { text: 'Last frame:' },
         imageParts[1]
       ];
-
-      generationConfig.duration = '10s';
       
     } else {
       // 1개 이미지: 일반 생성 (Veo 2)
@@ -145,8 +144,6 @@ exports.handler = async (event, context) => {
         { text: prompt },
         imageParts[0]
       ];
-
-      generationConfig.duration = '5s';
     }
 
     // 영상 생성 요청
