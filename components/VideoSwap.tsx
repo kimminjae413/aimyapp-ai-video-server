@@ -242,8 +242,12 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       duration: uploadedImages.length === 2 ? '10초' : '5초',
       prompt: finalPrompt,
       creditsRequired: requiredCredits,
+      currentCredits: credits.remainingCredits,
       imagesSizes: uploadedImages.map(img => img.base64.length)
     });
+
+    // ⚠️ 중요: 크레딧 차감은 성공 후에만!
+    let creditDeducted = false;
 
     try {
       // 1. Gemini Video API로 영상 생성
@@ -294,13 +298,20 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         console.error('❌ 영상 결과 저장 중 오류:', saveError);
       }
       
-      // 3. 크레딧 차감
-      console.log('💳 크레딧 차감 시작...');
+      // 3. ✅ 성공 후에만 크레딧 차감
+      console.log('💳 크레딧 차감 시작...', {
+        before: credits.remainingCredits,
+        toDeduct: requiredCredits
+      });
+      
       setTimeout(async () => {
         try {
           const creditUsed = await useCredits(userId, 'video', requiredCredits);
           if (creditUsed) {
-            console.log('✅ 크레딧 차감 완료');
+            creditDeducted = true;
+            console.log('✅ 크레딧 차감 완료', {
+              after: credits.remainingCredits - requiredCredits
+            });
             onCreditsUsed();
           } else {
             console.warn('⚠️ 크레딧 차감 실패');
@@ -313,14 +324,19 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     } catch (err) {
       console.error('❌ 영상 생성 실패:', err);
       
-      // 에러 발생 시 크레딧 복구
-      if (userId) {
+      // ⚠️ 중요: 실패 시에는 크레딧 복구 불필요 (차감 안했으므로)
+      if (creditDeducted) {
+        // 만약 차감이 성공했는데 영상이 실패했다면 복구
+        console.log('🔄 크레딧 복구 시작... (차감됐지만 영상 실패)');
         try {
           await restoreCredits(userId, 'video', requiredCredits);
-          console.log('🔄 크레딧 복구 완료');
+          console.log('✅ 크레딧 복구 완료');
+          onCreditsUsed(); // UI 갱신
         } catch (restoreError) {
           console.error('❌ 크레딧 복구 실패:', restoreError);
         }
+      } else {
+        console.log('ℹ️ 크레딧 차감 전 실패 - 복구 불필요');
       }
       
       let errorMessage = '영상 생성 중 오류가 발생했습니다.';
