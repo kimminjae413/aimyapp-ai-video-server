@@ -127,36 +127,34 @@ const FaceSwapPage: React.FC<{
         setGeneratedImage(resultImage);
         onResultGenerated(resultImage);
         
-        // ✅ Step 2: 백그라운드에서 이미지 업로드 및 DB 저장
-        (async () => {
-          try {
-            console.log('📤 결과 이미지 Cloudinary/Imgur 업로드 중...');
-            
-            const uploadedResultUrl = await uploadImage(resultImage, 'faceswap_results');
-            
-            console.log('✅ 이미지 업로드 완료:', uploadedResultUrl.substring(0, 60) + '...');
-            
-            // DB에 업로드된 URL 저장
-            const saved = await saveGenerationResult({
-              userId,
-              type: 'image',
-              originalImageUrl: 'N/A', // 원본은 저장 안함
-              resultUrl: uploadedResultUrl, // ✅ Cloudinary/Imgur URL
-              facePrompt: '참조이미지 기반 VModel',
-              clothingPrompt,
-              creditsUsed: 1
-            });
-            
-            if (saved) {
-              console.log('✅ 생성 결과 DB 저장 성공');
-            } else {
-              console.warn('⚠️ DB 저장 실패 (비치명적)');
-            }
-          } catch (uploadError) {
-            console.error('❌ 이미지 업로드/저장 실패:', uploadError);
-            // 에러는 로그만 남기고 사용자 경험에는 영향 없음
+        // ✅ Step 2: 이미지 업로드 및 DB 저장 (동기적으로 처리)
+        try {
+          console.log('📤 결과 이미지 Cloudinary/Imgur 업로드 중...');
+          
+          const uploadedResultUrl = await uploadImage(resultImage, 'faceswap_results');
+          
+          console.log('✅ 이미지 업로드 완료:', uploadedResultUrl.substring(0, 60) + '...');
+          
+          // DB에 업로드된 URL 저장
+          const saved = await saveGenerationResult({
+            userId,
+            type: 'image',
+            originalImageUrl: 'N/A', // 원본은 저장 안함
+            resultUrl: uploadedResultUrl, // ✅ Cloudinary/Imgur URL
+            facePrompt: '참조이미지 기반 VModel',
+            clothingPrompt,
+            creditsUsed: 1
+          });
+          
+          if (saved) {
+            console.log('✅ 생성 결과 DB 저장 성공');
+          } else {
+            console.warn('⚠️ DB 저장 실패 (비치명적)');
           }
-        })();
+        } catch (uploadError) {
+          console.error('❌ 이미지 업로드/저장 실패:', uploadError);
+          // 에러 발생해도 UI에는 이미 표시되었으므로 사용자는 결과를 볼 수 있음
+        }
         
         // ✅ Step 3: 크레딧 차감 (비동기)
         setTimeout(async () => {
@@ -236,7 +234,6 @@ const FaceSwapPage: React.FC<{
               <div className="w-2 h-2 rounded-full animate-pulse bg-green-400"></div>
               <span className="text-sm text-gray-300">
                 <span className="font-semibold text-green-300">변환 완료!</span>
-                {' '}(저장 중...)
               </span>
             </div>
           </div>
