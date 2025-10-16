@@ -57,6 +57,8 @@ exports.handler = async (event, context) => {
 
     // ⏱️ Duration validation (5초 또는 8초만 허용 - API 제한)
     if (![5, 8].includes(duration)) {
+      throw new Error('영상 길이는 5초 또는 8초만 가능합니다.');
+    }
 
     // 🔑 API Key - 우선순위: GEMINI_VIDEO_API_KEY > GEMINI_API_KEY
     const apiKey = process.env.GEMINI_VIDEO_API_KEY || process.env.GEMINI_API_KEY;
@@ -68,7 +70,7 @@ exports.handler = async (event, context) => {
 
     // 💰 크레딧 계산
     const isTwoImages = images.length === 2;
-    const creditsRequired = duration === 5 ? 5 : 10;  // 5초=5크레딧, 10초=10크레딧
+    const creditsRequired = duration === 5 ? 5 : 8;  // 5초=5크레딧, 8초=8크레딧
 
     // 🎬 모델 선택 (Veo 3 Fast for cost savings)
     const selectedModel = isTwoImages 
@@ -112,7 +114,7 @@ exports.handler = async (event, context) => {
       },
       config: {
         aspectRatio: '9:16',
-        durationSeconds: duration,  // 5 or 10
+        durationSeconds: duration,  // 5 or 8
         personGeneration: 'allow_adult',
         resolution: '720p'
       }
