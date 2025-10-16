@@ -1,6 +1,6 @@
 /**
  * Netlify Function: Gemini Veo Video Generation (Final Version)
- * 5초 = 5 크레딧, 10초 = 10 크레딧
+ * ✅ 5초 = 5 크레딧, 8초 = 8 크레딧 (API 제한: 4~8초)
  * Veo 3 Fast / Veo 3.1 Fast 사용
  */
 
@@ -51,9 +51,9 @@ exports.handler = async (event, context) => {
       throw new Error('프롬프트가 필요합니다.');
     }
 
-    // ⏱️ Duration validation (5초 또는 10초만 허용)
-    if (![5, 10].includes(duration)) {
-      throw new Error('영상 길이는 5초 또는 10초만 가능합니다.');
+    // ⏱️ Duration validation (5초 또는 8초만 허용 - API 제한)
+    if (![5, 8].includes(duration)) {
+      throw new Error('영상 길이는 5초 또는 8초만 가능합니다.');
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
@@ -61,9 +61,9 @@ exports.handler = async (event, context) => {
       throw new Error('GEMINI_API_KEY not configured');
     }
 
-    // 💰 크레딧 계산
+    // 💰 크레딧 계산 (5초=5크레딧, 8초=8크레딧)
     const isTwoImages = images.length === 2;
-    const creditsRequired = duration === 5 ? 5 : 10;  // 5초=5크레딧, 10초=10크레딧
+    const creditsRequired = duration === 5 ? 5 : 8;
 
     // 🎬 모델 선택 (Veo 3 Fast for cost savings)
     const selectedModel = isTwoImages 
@@ -107,7 +107,7 @@ exports.handler = async (event, context) => {
       },
       config: {
         aspectRatio: '9:16',
-        durationSeconds: duration,  // 5 or 10
+        durationSeconds: duration,  // ✅ 5 or 8 (API 제한: 4~8초)
         personGeneration: 'allow_adult',
         resolution: '720p'
       }
