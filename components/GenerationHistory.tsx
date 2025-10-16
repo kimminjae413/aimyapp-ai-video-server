@@ -492,7 +492,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                         </p>
                       )}
                       
-                      {/* ✅ Duration 표시 - 4/6/8초 */}
+                      {/* ✅ Duration 표시 - Veo 2: 5초/8초 */}
                       {item.type === 'video' && item.videoDuration && (
                         <div className="flex items-center gap-2 mt-2">
                           <span className="text-xs px-2 py-0.5 bg-cyan-500/20 text-cyan-300 rounded">
@@ -524,7 +524,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer - ✅ Veo 2 정보로 수정 */}
         <div className="p-4 border-t border-gray-700 bg-gray-800/50">
           <p className="text-xs text-gray-500 text-center">
             생성된 작품은 3일 후 자동으로 삭제됩니다. 필요한 작품은 다운로드해서 보관하세요.
@@ -540,9 +540,10 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             )}
           </div>
           
+          {/* ✅ Veo 2 정보로 수정 */}
           <div className="mt-2 p-2 bg-cyan-600/20 border border-cyan-500/50 rounded-lg">
             <p className="text-xs text-cyan-300 text-center">
-              ✅ 영상 길이: 4초/6초/8초 선택 가능 | 크레딧 = Duration
+              ✅ Veo 2: 영상 길이 5초/8초 선택 가능 | 크레딧 = Duration
             </p>
           </div>
         </div>
