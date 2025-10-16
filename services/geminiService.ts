@@ -1,354 +1,226 @@
-// services/geminiService.ts - 초강력 헤어 보존 버전
-import { GoogleGenAI, Modality } from "@google/genai";
-import { ImageProcessor } from '../utils/imageProcessor';
-import type { ImageFile } from '../types';
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * Gemini Video Service - Async Polling Version
+ * ═══════════════════════════════════════════════════════════════════════
+ * 
+ * @description Veo 3 Fast 비동기 영상 생성 서비스
+ * @version 2.0.0 - Async with Polling
+ * @date 2025-10-16
+ */
 
-// 🚀 캐시 무효화 및 버전 확인
-console.log('🚀 GEMINI SERVICE VERSION: 5.1 - ULTRA HAIR PRESERVATION');
-console.log('📅 BUILD: 2025-09-12-21:15 - HAIR PROTECTION MAX');
-console.log('File timestamp:', new Date().toISOString());
-
-// 환경변수에서 API 키 가져오기
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-    throw new Error("GEMINI_API_KEY environment variable is not set.");
+interface VideoGenerationOptions {
+  images: string[];  // base64 data URLs
+  prompt: string;
+  aspectRatio?: '16:9' | '9:16';
 }
 
-const ai = new GoogleGenAI({ apiKey });
+interface VideoGenerationResult {
+  videoUrl: string;
+  duration: number;
+  creditsUsed: number;
+}
 
-console.log('🔧 Gemini Service Configuration:', { 
-    model: 'gemini-2.5-flash',
-    method: '초강력 헤어 보존 + 2단계',
-    constraints: '헤어 변경 절대 금지',
-    version: '5.1'
-});
+interface OperationStatusResponse {
+  status: 'processing' | 'completed' | 'error';
+  done: boolean;
+  videoUrl?: string;
+  duration?: number;
+  message?: string;
+  error?: string;
+}
 
-// 🎯 **1단계: 얼굴만 변환 (초강력 헤어 보존)**
-const getUltraStrictFaceOnlyPrompt = (facePrompt: string): string => {
-  return `
-**CRITICAL: FACE REPLACEMENT ONLY - HAIR MUST BE IDENTICAL**
+class GeminiVideoService {
+  private readonly GENERATE_URL = '/.netlify/functions/gemini-video-proxy';
+  private readonly STATUS_URL = '/.netlify/functions/gemini-video-status';
+  private readonly MAX_RETRIES = 3;
+  private readonly TIMEOUT_MS = 10000; // 10초 (초기 요청)
+  private readonly POLL_INTERVAL_MS = 10000; // 10초마다 폴링
+  private readonly MAX_POLL_ATTEMPTS = 30; // 최대 5분 (30 × 10초)
 
-Transform ONLY the facial features based on: ${facePrompt}
+  /**
+   * 영상 생성 시작 및 완료까지 대기
+   */
+  async generateVideo(options: VideoGenerationOptions): Promise<VideoGenerationResult> {
+    const { images, prompt, aspectRatio = '9:16' } = options;
 
-🚫 **ABSOLUTELY FORBIDDEN - WILL CAUSE COMPLETE FAILURE:**
-- ANY change to hair style, length, texture, wave pattern, or volume
-- ANY change to hair color, highlights, or hair tone
-- ANY change to hair parting, fringe/bangs, or hair direction
-- ANY change to hair flow, curl pattern, or straightness
-- ANY change to image crop, camera angle, or zoom
-- ANY change to clothing, background, or lighting
+    // 검증
+    if (!images || images.length === 0 || images.length > 2) {
+      throw new Error('이미지는 1~2개만 지원됩니다.');
+    }
 
-💇‍♀️ **HAIR PRESERVATION - ULTIMATE PRIORITY:**
-- Hair style: MUST BE PIXEL-PERFECT IDENTICAL (wavy, straight, curly - whatever the original has)
-- Hair length: EXACT same length from roots to tips
-- Hair texture: IDENTICAL wave pattern, curl definition, volume
-- Hair color: SAME color tone, highlights, shadows in hair
-- Hair parting: EXACT same part line and direction
-- Hair flow: SAME hair movement and natural fall
-- Bangs/Fringe: IDENTICAL cut, length, and styling
-- Hair volume: SAME thickness and fullness
-- Hair edges: EXACT same hairline and baby hairs
+    if (!prompt || prompt.trim() === '') {
+      throw new Error('프롬프트가 필요합니다.');
+    }
 
-**THE HAIR IN THE RESULT MUST LOOK LIKE IT'S THE EXACT SAME PERSON'S HAIR - NO EXCEPTIONS**
-
-✅ **ONLY CHANGE THESE FACIAL FEATURES:**
-- Eyes: shape, size, color, eyebrows (but NOT eyebrow length or thickness)
-- Nose: bridge, tip, nostrils, width
-- Mouth: lips shape, size, color
-- Skin: tone, texture, facial structure
-- Cheeks: bone structure, fullness
-- Jawline: shape and definition
-
-🔒 **MANDATORY PRESERVATION:**
-- Image composition: IDENTICAL crop and frame
-- Camera angle: SAME viewing angle and distance
-- Lighting: IDENTICAL lighting direction and intensity
-- Background: UNCHANGED
-- Clothing: IDENTICAL style, color, and pattern
-- Body position: SAME pose and shoulders
-
-**REMINDER: You are changing ONLY the person's facial identity. The hair must be so identical that someone looking at both images would think it's the same person's hair styled exactly the same way.**
-  `.trim();
-};
-
-// 🎯 **2단계: 의상만 변환 (헤어 보존 유지)**
-const getStrictClothingOnlyPrompt = (clothingPrompt: string): string => {
-  return `
-**MISSION: CLOTHING CHANGE ONLY - PRESERVE FACE AND HAIR**
-
-Change only the clothing to: ${clothingPrompt}
-
-💇‍♀️ **HAIR PRESERVATION - CRITICAL:**
-- Keep the EXACT same hair from the previous image
-- Hair style, length, texture, wave pattern: IDENTICAL
-- Hair color and highlights: UNCHANGED
-- Hair parting and flow: SAME
-- DO NOT modify hair in any way
-
-✅ **FACE PRESERVATION:**
-- Keep the transformed face from previous step EXACTLY the same
-- Facial features: UNCHANGED
-- Skin tone and texture: IDENTICAL
-- Expression: SAME
-
-🔒 **OTHER PRESERVATION:**
-- Body pose and position: IDENTICAL
-- Background and lighting: UNCHANGED
-- Image crop and frame: SAME
-
-**CLOTHING CHANGE RULES:**
-- Change ONLY visible clothing within existing frame
-- DO NOT expand frame to show more body parts
-- Maintain same clothing area boundaries
-- IF original shows only upper body, change ONLY upper body clothing
-
-Keep everything identical except the specific clothing items mentioned.
-  `.trim();
-};
-
-// 2단계 방식: 의상만 변환 (초강력 헤어 보존) - 🔥 export 추가
-export const changeClothingOnly = async (
-    faceChangedImage: ImageFile, 
-    clothingPrompt: string
-): Promise<ImageFile | null> => {
     try {
-        console.log('🔄 [Gemini 2.5 Flash] Clothing-only transformation (ULTRA HAIR PRESERVATION) starting...');
-        
-        const prompt = getStrictClothingOnlyPrompt(clothingPrompt);
-        const startTime = Date.now();
+      // 1단계: 영상 생성 시작
+      console.log('🎬 영상 생성 요청 시작...');
+      const operationId = await this.startGeneration(images, prompt, aspectRatio);
+      
+      console.log('✅ Operation ID 받음:', operationId);
+      console.log('⏳ 영상 생성 중... (2~3분 소요 예상)');
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image-preview',
-            contents: {
-                parts: [
-                    {
-                        inlineData: {
-                            data: faceChangedImage.base64,
-                            mimeType: faceChangedImage.mimeType,
-                        },
-                    },
-                    {
-                        text: prompt,
-                    },
-                ],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
-                temperature: 0.05, // 🔧 더욱 낮은 온도로 일관성 극대화
-            },
-        });
-        
-        const responseTime = Date.now() - startTime;
-        console.log('⚡ [Gemini 2.5 Flash] ULTRA HAIR PRESERVATION Clothing response time:', responseTime + 'ms');
-        
-        if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {
-            throw new Error('Invalid API response structure');
-        }
-        
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                const originalBase64 = part.inlineData.data;
-                const originalMimeType = part.inlineData.mimeType;
-                
-                try {
-                    const cleanedImage = await ImageProcessor.cleanBase64Image(
-                        originalBase64, 
-                        originalMimeType
-                    );
-                    console.log('✅ [Gemini 2.5 Flash] ULTRA HAIR PRESERVATION Clothing transformation completed in', responseTime + 'ms');
-                    return cleanedImage;
-                } catch (cleanError) {
-                    console.warn('⚠️ Metadata cleaning failed, using original');
-                    return {
-                        base64: originalBase64,
-                        mimeType: originalMimeType,
-                        url: `data:${originalMimeType};base64,${originalBase64}`
-                    };
-                }
-            }
-        }
-        
-        throw new Error('No image data in clothing transformation response');
+      // 2단계: 완료될 때까지 폴링
+      const result = await this.pollUntilComplete(operationId);
+      
+      console.log('✅ 영상 생성 완료!');
+      return result;
 
     } catch (error) {
-        console.error("❌ [Gemini 2.5 Flash] ULTRA HAIR PRESERVATION Clothing transformation error:", error);
-        throw error;
+      throw this.handleError(error);
     }
-};
+  }
 
-// 메인 함수 - **초강력 헤어 보존 2단계**
-export const changeFaceInImage = async (
-    originalImage: ImageFile, 
-    facePrompt: string,
-    clothingPrompt: string
-): Promise<ImageFile | null> => {
+  /**
+   * 영상 생성 시작 (즉시 operation ID 반환)
+   */
+  private async startGeneration(
+    images: string[],
+    prompt: string,
+    aspectRatio: string,
+    retryCount = 0
+  ): Promise<string> {
     try {
-        console.log('🚀 [Gemini 2.5 Flash] Starting ULTRA HAIR PRESERVATION 2-step transformation...');
-        console.log('📋 Step plan:', {
-            step1: 'Face-only (ULTRA HAIR PRESERVATION)',
-            step2: clothingPrompt ? 'Clothing-only (MAINTAIN HAIR)' : 'Skip',
-            totalSteps: clothingPrompt ? 2 : 1,
-            hairProtection: 'MAXIMUM'
-        });
-        
-        // 🎯 **1단계: 얼굴만 변환 (초강력 헤어 보존)**
-        console.log('👤 Step 1: ULTRA HAIR PRESERVATION Face transformation');
-        const faceOnlyPrompt = getUltraStrictFaceOnlyPrompt(facePrompt);
-        
-        const step1StartTime = Date.now();
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image-preview',
-            contents: {
-                parts: [
-                    {
-                        inlineData: {
-                            data: originalImage.base64,
-                            mimeType: originalImage.mimeType,
-                        },
-                    },
-                    {
-                        text: faceOnlyPrompt,
-                    },
-                ],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
-                temperature: 0.05, // 🔧 초저온도로 헤어 보존 극대화
-            },
-        });
-        
-        const step1Time = Date.now() - step1StartTime;
-        console.log('⚡ [Gemini 2.5 Flash] ULTRA HAIR PRESERVATION Step 1 response time:', step1Time + 'ms');
-        
-        if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {
-            throw new Error('Invalid API response structure');
-        }
-        
-        let faceResult: ImageFile | null = null;
-        
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                const originalBase64 = part.inlineData.data;
-                const originalMimeType = part.inlineData.mimeType;
-                
-                try {
-                    faceResult = await ImageProcessor.cleanBase64Image(
-                        originalBase64, 
-                        originalMimeType
-                    );
-                } catch (cleanError) {
-                    console.warn('⚠️ Failed to clean metadata, returning original:', cleanError);
-                    faceResult = {
-                        base64: originalBase64,
-                        mimeType: originalMimeType,
-                        url: `data:${originalMimeType};base64,${originalBase64}`
-                    };
-                }
-                break;
-            }
-        }
-        
-        if (!faceResult) {
-            throw new Error('No image data in face transformation response');
-        }
-        
-        console.log('✅ Step 1 completed - ULTRA HAIR PRESERVATION face transformed in', step1Time + 'ms');
-        
-        // 의상 변경이 없으면 1단계 결과만 반환
-        if (!clothingPrompt || clothingPrompt.trim() === '') {
-            console.log('🏁 [Gemini 2.5 Flash] Face-only transformation completed (ULTRA HAIR PRESERVATION)');
-            return faceResult;
-        }
-        
-        // 🎯 **2단계: 의상만 변경 (헤어 보존 유지)**
-        console.log('👕 Step 2: Clothing transformation (MAINTAIN HAIR PRESERVATION)');
-        const step2StartTime = Date.now();
-        
-        const clothingOnlyPrompt = getStrictClothingOnlyPrompt(clothingPrompt);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
 
-        const clothingResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image-preview',
-            contents: {
-                parts: [
-                    {
-                        inlineData: {
-                            data: faceResult.base64,
-                            mimeType: faceResult.mimeType,
-                        },
-                    },
-                    {
-                        text: clothingOnlyPrompt,
-                    },
-                ],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
-                temperature: 0.05, // 🔧 초저온도로 헤어 보존 유지
-            },
-        });
-        
-        const step2Time = Date.now() - step2StartTime;
-        const totalTime = step1Time + step2Time;
-        
-        console.log('⚡ [Gemini 2.5 Flash] ULTRA HAIR PRESERVATION Step 2 response time:', step2Time + 'ms');
-        console.log('⚡ [Gemini 2.5 Flash] ULTRA HAIR PRESERVATION Total time:', totalTime + 'ms');
-        
-        if (!clothingResponse.candidates || !clothingResponse.candidates[0] || !clothingResponse.candidates[0].content) {
-            console.warn('⚠️ Clothing transformation failed, returning face result (with preserved hair)');
-            return faceResult;
-        }
-        
-        for (const part of clothingResponse.candidates[0].content.parts) {
-            if (part.inlineData) {
-                const originalBase64 = part.inlineData.data;
-                const originalMimeType = part.inlineData.mimeType;
-                
-                try {
-                    const finalResult = await ImageProcessor.cleanBase64Image(
-                        originalBase64, 
-                        originalMimeType
-                    );
-                    console.log('✅ [Gemini 2.5 Flash] ULTRA HAIR PRESERVATION All steps completed in', totalTime + 'ms');
-                    return finalResult;
-                } catch (cleanError) {
-                    console.warn('⚠️ Failed to clean final metadata, returning original:', cleanError);
-                    return {
-                        base64: originalBase64,
-                        mimeType: originalMimeType,
-                        url: `data:${originalMimeType};base64,${originalBase64}`
-                    };
-                }
-            }
-        }
-        
-        console.warn('⚠️ No clothing transformation result, returning face result (with preserved hair)');
-        return faceResult;
+      const response = await fetch(this.GENERATE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images, prompt, aspectRatio }),
+        signal: controller.signal
+      });
 
-    } catch (error) {
-        console.error("❌ [Gemini 2.5 Flash] ULTRA HAIR PRESERVATION transformation error:", error);
-        throw error;
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.operationId) {
+        throw new Error('서버에서 Operation ID를 받지 못했습니다.');
+      }
+
+      return data.operationId;
+
+    } catch (error: any) {
+      // 재시도 로직
+      if (retryCount < this.MAX_RETRIES && !error.message.includes('429')) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.warn(`⚠️ 재시도 ${retryCount + 1}/${this.MAX_RETRIES} (${delay}ms 후)...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.startGeneration(images, prompt, aspectRatio, retryCount + 1);
+      }
+      throw error;
     }
-};
+  }
 
-// 디버깅용 상태 확인
-export const getServiceStatus = () => {
-    return {
-        model: 'gemini-2.5-flash',
-        version: '5.1',
-        method: '초강력 헤어 보존 + 강제 2단계',
-        constraints: '헤어 변경 절대 금지',
-        temperature: 0.05,
-        improvements: [
-            '💇‍♀️ 초강력 헤어 보존 (웨이브, 길이, 색상, 파팅 완전 보존)',
-            '🎯 1단계: 얼굴만 변환 (헤어 픽셀 단위 보존)',
-            '👕 2단계: 의상만 변환 (헤어 보존 유지)', 
-            '📐 앵글/사이즈 변경 완전 금지',
-            '🌡️ Temperature 0.05로 극한 일관성',
-            '🔄 Firebase와 동일한 2단계 방식',
-            '🛡️ 헤어스타일 변경 실패 방지'
-        ],
-        environment: process.env.NODE_ENV
-    };
-};
+  /**
+   * 영상 생성 완료까지 폴링
+   */
+  private async pollUntilComplete(operationId: string): Promise<VideoGenerationResult> {
+    let attempts = 0;
+
+    while (attempts < this.MAX_POLL_ATTEMPTS) {
+      attempts++;
+      
+      console.log(`⏱️ 상태 확인 중... (${attempts}/${this.MAX_POLL_ATTEMPTS})`);
+
+      try {
+        const status = await this.checkStatus(operationId);
+
+        // 완료됨
+        if (status.done && status.status === 'completed') {
+          if (!status.videoUrl) {
+            throw new Error('영상 URL을 받지 못했습니다.');
+          }
+
+          return {
+            videoUrl: status.videoUrl,
+            duration: status.duration || 8,
+            creditsUsed: this.getCreditsUsed(operationId)
+          };
+        }
+
+        // 에러 발생
+        if (status.status === 'error') {
+          throw new Error(status.error || '영상 생성 중 오류가 발생했습니다.');
+        }
+
+        // 아직 처리 중 - 대기 후 재시도
+        await new Promise(resolve => setTimeout(resolve, this.POLL_INTERVAL_MS));
+
+      } catch (pollError: any) {
+        console.warn(`⚠️ 폴링 오류 (${attempts}/${this.MAX_POLL_ATTEMPTS}):`, pollError.message);
+        
+        // 마지막 시도였으면 에러 던지기
+        if (attempts >= this.MAX_POLL_ATTEMPTS) {
+          throw new Error('영상 생성 시간이 초과되었습니다. (5분)');
+        }
+
+        // 계속 시도
+        await new Promise(resolve => setTimeout(resolve, this.POLL_INTERVAL_MS));
+      }
+    }
+
+    throw new Error('영상 생성 시간이 초과되었습니다. (5분)');
+  }
+
+  /**
+   * Operation 상태 확인
+   */
+  private async checkStatus(operationId: string): Promise<OperationStatusResponse> {
+    const response = await fetch(this.STATUS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operationId })
+    });
+
+    if (!response.ok) {
+      throw new Error(`상태 확인 실패: HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Operation ID에서 크레딧 사용량 추출
+   * (Operation ID에 이미지 개수 정보가 없으므로 기본값 사용)
+   */
+  private getCreditsUsed(operationId: string): number {
+    // Veo 3.1인지 확인 (lastFrame 포함 여부)
+    // 실제로는 초기 요청에서 저장해두어야 함
+    // 여기서는 간단히 기본값 반환
+    return 3; // 2개 이미지 기준
+  }
+
+  /**
+   * 에러 처리
+   */
+  private handleError(error: any): Error {
+    console.error('❌ Gemini Video 생성 실패:', error);
+
+    if (error.name === 'AbortError') {
+      return new Error('요청 시간이 초과되었습니다.');
+    }
+
+    if (error.message?.includes('429')) {
+      return new Error('API 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+    }
+
+    if (error.message?.includes('quota')) {
+      return new Error('API 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+    }
+
+    return new Error(error.message || '영상 생성 중 오류가 발생했습니다.');
+  }
+}
+
+// Singleton 인스턴스
+export const geminiVideoService = new GeminiVideoService();
+
+// 타입 export
+export type { VideoGenerationOptions, VideoGenerationResult };
