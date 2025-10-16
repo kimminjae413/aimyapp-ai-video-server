@@ -236,7 +236,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
     // ✅ duration 계산: 5초 또는 8초 (API 제한)
-    const videoDuration = uploadedImages.length === 2 ? 8 : 5;
+    const videoDuration = uploadedImages.length === 2 ? 8 : 6;
 
     console.log('🎬 Gemini 영상 생성 시작:', {
       userId,
