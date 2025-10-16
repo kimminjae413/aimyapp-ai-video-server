@@ -149,7 +149,23 @@ exports.handler = async (event, context) => {
 
     console.log('✅ Operation started:', operation.name);
 
-    // Poll for completion
+    // ⚠️ IMPORTANT: Return operation ID immediately to avoid timeout
+    // Client will poll for completion
+    return {
+      statusCode: 202,  // Accepted
+      headers,
+      body: JSON.stringify({
+        success: true,
+        operationId: operation.name,
+        status: 'processing',
+        message: '영상 생성이 시작되었습니다. 상태를 확인해주세요.',
+        estimatedTime: '2-3분',
+        creditsUsed: creditsRequired,
+        model: selectedModel
+      })
+    };
+
+    /* 이전 폴링 코드 제거 - 클라이언트에서 처리
     console.log('⏱️  Polling for completion...');
     let completedOperation = operation;
     let attempts = 0;
@@ -224,6 +240,7 @@ exports.handler = async (event, context) => {
         model: selectedModel
       })
     };
+    */
 
   } catch (error) {
     const totalTime = Date.now() - startTime;
