@@ -156,7 +156,10 @@ class GeminiVideoService {
         const response = await fetch(this.STATUS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ operationId })
+          body: JSON.stringify({ 
+            operationId,
+            duration: this.currentDuration  // duration 정보 전달
+          })
         });
 
         if (!response.ok) {
