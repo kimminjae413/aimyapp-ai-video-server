@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { XIcon } from './icons/XIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { downloadHelper } from '../utils/downloadHelper';
-import { getGenerationHistory, cleanupExpiredGenerations, cleanKlingUrl } from '../services/bullnabiService';
+import { getGenerationHistory, cleanupExpiredGenerations } from '../services/bullnabiService';
 import type { GenerationResult } from '../types';
 
 interface GenerationHistoryProps {
@@ -27,14 +27,12 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     if (!url) return false;
     if (url.startsWith('blob:')) return false;
     if (url.includes('...[truncated]')) return false;
-    
     return url.startsWith('http://') || url.startsWith('https://');
   };
 
   const isValidVideoUrl = (url: string): boolean => {
     if (!url) return false;
     if (url.startsWith('blob:')) return false;
-    
     return url.startsWith('http://') || url.startsWith('https://');
   };
 
@@ -43,9 +41,11 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     return url.includes('generativelanguage.googleapis.com');
   };
 
-  // 🎬 비디오 썸네일 컴포넌트 (Gemini URL 만료 대응)
-  const VideoThumbnail: React.FC<{ videoUrl: string; itemId: string; isGemini: boolean }> = ({ videoUrl, itemId, isGemini }) => {
-    // Gemini Video는 URL이 짧은 시간 후 만료되므로 플레이스홀더만 표시
+  // 🎬 비디오 썸네일 컴포넌트
+  const VideoThumbnail: React.FC<{ videoUrl: string; itemId: string }> = ({ videoUrl, itemId }) => {
+    const isGemini = isGeminiVideoUrl(videoUrl);
+    
+    // Gemini Video는 직접 재생 불가 → 플레이스홀더 표시
     if (isGemini) {
       return (
         <div className="relative w-full h-full bg-gradient-to-br from-purple-900/50 to-blue-900/50">
@@ -65,17 +65,15 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
       );
     }
     
-    // Kling이나 Cloudinary 등 일반 비디오는 프록시로 썸네일 표시
+    // 일반 비디오 (Cloudinary 등)
     const [thumbnailError, setThumbnailError] = useState(false);
     const [videoLoaded, setVideoLoaded] = useState(false);
-    const cleanedUrl = cleanKlingUrl(videoUrl);
-    const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(cleanedUrl)}`;
     
     return (
       <div className="relative w-full h-full">
         {!thumbnailError && (
           <video
-            src={proxyUrl}
+            src={videoUrl}
             className="w-full h-full object-cover"
             muted
             loop
@@ -160,14 +158,13 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     }
   };
 
+  // 🔥 Gemini Video 전용 프록시 다운로드
   const downloadVideoViaProxy = async (originalUrl: string, filename: string): Promise<{ success: boolean; message?: string }> => {
     try {
-      const cleanUrl = cleanKlingUrl(originalUrl);
-      const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(cleanUrl)}`;
+      const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(originalUrl)}`;
       
-      console.log('📥 비디오 다운로드 프록시 호출:', {
-        isGemini: isGeminiVideoUrl(cleanUrl),
-        urlPreview: cleanUrl.substring(0, 80) + '...'
+      console.log('📥 Gemini 비디오 다운로드 시작:', {
+        urlPreview: originalUrl.substring(0, 80) + '...'
       });
       
       const response = await fetch(proxyUrl, {
@@ -187,11 +184,12 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
 
       console.log('✅ 비디오 다운로드 완료:', {
         size: blob.size,
-        sizeMB: (blob.size / 1024 / 1024).toFixed(2)
+        sizeMB: (blob.size / 1024 / 1024).toFixed(2) + ' MB'
       });
 
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       
+      // iOS Share API 시도
       if (isIOS && 'share' in navigator) {
         const file = new File([blob], filename, { type: 'video/mp4' });
         
@@ -201,6 +199,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
         }
       }
       
+      // 일반 다운로드
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
@@ -256,8 +255,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
         const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
         const filename = `hairgator-video-${timestamp}-${itemId.slice(-6)}.mp4`;
         
-        // 🔑 Gemini 또는 Kling 비디오는 프록시 사용
-        if (isGeminiVideoUrl(item.resultUrl) || item.resultUrl.includes('klingai.com')) {
+        // 🔑 Gemini Video는 무조건 프록시 사용
+        if (isGeminiVideoUrl(item.resultUrl)) {
           const result = await downloadVideoViaProxy(item.resultUrl, filename);
           
           if (result.success) {
@@ -409,7 +408,6 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                         <VideoThumbnail 
                           videoUrl={item.resultUrl} 
                           itemId={itemId}
-                          isGemini={isGeminiVideoUrl(item.resultUrl)}
                         />
                       ) : (
                         <div className="w-full h-full bg-gray-700 flex flex-col items-center justify-center">
@@ -494,7 +492,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                         </p>
                       )}
                       
-                      {/* ✅ Duration 표시 - 4/6/8초 명확히 표시 */}
+                      {/* ✅ Duration 표시 - 4/6/8초 */}
                       {item.type === 'video' && item.videoDuration && (
                         <div className="flex items-center gap-2 mt-2">
                           <span className="text-xs px-2 py-0.5 bg-cyan-500/20 text-cyan-300 rounded">
