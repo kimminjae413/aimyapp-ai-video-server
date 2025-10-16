@@ -1,14 +1,14 @@
 /**
  * Gemini Video Generation Service
  * 
- * Veo 3 Fast: 1개 이미지 → 5초 or 10초 (5 or 10 크레딧)
- * Veo 3.1 Fast: 2개 이미지 → 5초 or 10초 (5 or 10 크레딧)
+ * Veo 3 Fast: 1개 이미지 → 5초 or 8초 (5 or 8 크레딧)
+ * Veo 3.1 Fast: 2개 이미지 → 5초 or 8초 (5 or 8 크레딧)
  */
 
 interface VideoGenerationOptions {
   images: string[];  // base64 data URLs (max 2)
   prompt: string;
-  duration: 5 | 10;  // 5초 or 10초
+  duration: 5 | 8;  // ✅ 5초 or 8초 (API 제한: 4~8초)
   aspectRatio?: '16:9' | '9:16';
 }
 
@@ -47,11 +47,13 @@ class GeminiVideoService {
       throw new Error('프롬프트가 필요합니다.');
     }
 
-    if (![5, 10].includes(duration)) {
-      throw new Error('영상 길이는 5초 또는 10초만 가능합니다.');
+    // ✅ 5초 또는 8초만 허용 (API 제한)
+    if (![5, 8].includes(duration)) {
+      throw new Error('영상 길이는 5초 또는 8초만 가능합니다.');
     }
 
-    const creditsRequired = duration === 5 ? 5 : 10;
+    // ✅ 크레딧 계산: 5초=5크레딧, 8초=8크레딧
+    const creditsRequired = duration === 5 ? 5 : 8;
     this.currentDuration = duration; // 저장
 
     console.log('🎬 Gemini Video 생성 시작:', {
@@ -245,8 +247,8 @@ class GeminiVideoService {
   /**
    * 크레딧 계산
    */
-  calculateCredits(duration: 5 | 10): number {
-    return duration === 5 ? 5 : 10;
+  calculateCredits(duration: 5 | 8): number {
+    return duration === 5 ? 5 : 8;
   }
 
   /**
