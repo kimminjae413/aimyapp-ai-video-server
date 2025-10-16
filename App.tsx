@@ -9,6 +9,7 @@ import { ControlPanel } from './components/ControlPanel';
 // VModel 우선 변환 서비스
 import { smartFaceTransformation } from './services/hybridImageService';
 import { getUserCredits, useCredits, saveGenerationResult } from './services/bullnabiService';
+import { uploadImage } from './services/imageHostingService'; // ✅ 추가
 import type { ImageFile, UserCredits } from './types';
 
 type PageType = 'main' | 'faceSwap' | 'videoSwap';
@@ -80,7 +81,7 @@ const FaceSwapPage: React.FC<{
     reader.readAsDataURL(file);
   };
 
-  // VModel 참조이미지 전용 생성 함수 (파라미터 순서 수정)
+  // 🔥 VModel 참조이미지 전용 생성 함수 (이미지 호스팅 추가)
   const handleGenerateClick = useCallback(async () => {
     if (!originalImage) {
       setError('원본 이미지를 업로드해주세요.');
@@ -107,7 +108,7 @@ const FaceSwapPage: React.FC<{
       console.log('- 참조 이미지 크기:', referenceImage.base64.length);
       console.log('- 의상 변경:', clothingPrompt || 'None');
       
-      // 🔧 수정: hybridImageService.ts 함수 시그니처에 맞는 올바른 파라미터 순서
+      // Step 1: 얼굴 교체 수행
       const { result: resultImage, method } = await smartFaceTransformation(
         originalImage,        // 원본 이미지
         '',                  // facePrompt (빈 문자열)
@@ -122,31 +123,42 @@ const FaceSwapPage: React.FC<{
       setTransformationMethod(method);
       
       if (resultImage) {
+        // UI에 즉시 표시
         setGeneratedImage(resultImage);
         onResultGenerated(resultImage);
         
-        console.log('🔍 생성 결과 저장 중...');
-        
-        // 결과 저장 (백그라운드)
-        try {
-          const saved = await saveGenerationResult({
-            userId,
-            type: 'image',
-            originalImageUrl: originalImage.url,
-            resultUrl: resultImage.url,
-            facePrompt: '참조이미지 기반 VModel',
-            clothingPrompt,
-            creditsUsed: 1
-          });
-          
-          if (saved) {
-            console.log('✅ 생성 결과 저장 성공');
+        // ✅ Step 2: 백그라운드에서 이미지 업로드 및 DB 저장
+        (async () => {
+          try {
+            console.log('📤 결과 이미지 Cloudinary/Imgur 업로드 중...');
+            
+            const uploadedResultUrl = await uploadImage(resultImage, 'faceswap_results');
+            
+            console.log('✅ 이미지 업로드 완료:', uploadedResultUrl.substring(0, 60) + '...');
+            
+            // DB에 업로드된 URL 저장
+            const saved = await saveGenerationResult({
+              userId,
+              type: 'image',
+              originalImageUrl: 'N/A', // 원본은 저장 안함
+              resultUrl: uploadedResultUrl, // ✅ Cloudinary/Imgur URL
+              facePrompt: '참조이미지 기반 VModel',
+              clothingPrompt,
+              creditsUsed: 1
+            });
+            
+            if (saved) {
+              console.log('✅ 생성 결과 DB 저장 성공');
+            } else {
+              console.warn('⚠️ DB 저장 실패 (비치명적)');
+            }
+          } catch (uploadError) {
+            console.error('❌ 이미지 업로드/저장 실패:', uploadError);
+            // 에러는 로그만 남기고 사용자 경험에는 영향 없음
           }
-        } catch (saveError) {
-          console.warn('⚠️ 저장 실패:', saveError);
-        }
+        })();
         
-        // 크레딧 차감 (비동기)
+        // ✅ Step 3: 크레딧 차감 (비동기)
         setTimeout(async () => {
           try {
             const creditUsed = await useCredits(userId, 'image', 1);
@@ -173,7 +185,7 @@ const FaceSwapPage: React.FC<{
         
         if (message.includes('VModel')) {
           errorMessage = 'VModel AI 처리 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
-        } else if (message.includes('Cloudinary')) {
+        } else if (message.includes('Cloudinary') || message.includes('Imgur')) {
           errorMessage = '이미지 업로드 중 오류가 발생했습니다. 다른 이미지로 시도해보세요.';
         } else if (message.includes('크레딧')) {
           errorMessage = message;
@@ -224,6 +236,7 @@ const FaceSwapPage: React.FC<{
               <div className="w-2 h-2 rounded-full animate-pulse bg-green-400"></div>
               <span className="text-sm text-gray-300">
                 <span className="font-semibold text-green-300">변환 완료!</span>
+                {' '}(저장 중...)
               </span>
             </div>
           </div>
