@@ -1,243 +1,222 @@
-// netlify/functions/video-download-proxy.js - 클링 URL 최적화 버전
+/**
+ * Netlify Function: Gemini Veo Video Generation (Final Version)
+ * 5초 = 5 크레딧, 10초 = 10 크레딧
+ * Veo 3 Fast / Veo 3.1 Fast 사용
+ * 
+ * 환경변수:
+ * - GEMINI_VIDEO_API_KEY (우선순위 1)
+ * - GEMINI_API_KEY (폴백)
+ */
+
+const { GoogleGenAI } = require('@google/genai');
+
+exports.config = {
+  timeout: 300  // 5분 (비동기 처리용)
+};
+
 exports.handler = async (event, context) => {
-  // CORS 헤더
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Range',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges'
-  };
+  const startTime = Date.now();
   
-  // OPTIONS 요청 처리 (CORS preflight)
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json'
+  };
+
+  // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
-    return { 
-      statusCode: 200, 
-      headers: corsHeaders,
-      body: '' 
-    };
+    return { statusCode: 200, headers, body: '' };
   }
 
-  // GET 요청만 허용
-  if (event.httpMethod !== 'GET') {
+  if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
-      headers: corsHeaders,
-      body: JSON.stringify({ error: 'Method not allowed. Use GET.' })
+      headers,
+      body: JSON.stringify({ error: 'Method not allowed' })
     };
   }
 
   try {
-    // URL 파라미터에서 원본 비디오 URL 가져오기
-    const videoUrl = event.queryStringParameters?.url;
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('🎬 Gemini Veo Video Generation Request Started');
+    console.log('═══════════════════════════════════════════════════════════');
     
-    if (!videoUrl) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({ 
-          error: 'Video URL parameter is required',
-          usage: 'GET /.netlify/functions/video-download-proxy?url=<encoded_video_url>'
-        })
+    // Parse request
+    const data = JSON.parse(event.body);
+    const { images, prompt, duration = 5 } = data;
+
+    // ✅ Validation
+    if (!images || !Array.isArray(images) || images.length === 0 || images.length > 2) {
+      throw new Error('이미지는 1~2개만 지원됩니다.');
+    }
+
+    if (!prompt || typeof prompt !== 'string' || prompt.trim() === '') {
+      throw new Error('프롬프트가 필요합니다.');
+    }
+
+    // ⏱️ Duration validation (5초 또는 10초만 허용)
+    if (![5, 10].includes(duration)) {
+      throw new Error('영상 길이는 5초 또는 10초만 가능합니다.');
+    }
+
+    // 🔑 API Key - 우선순위: GEMINI_VIDEO_API_KEY > GEMINI_API_KEY
+    const apiKey = process.env.GEMINI_VIDEO_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error('GEMINI_VIDEO_API_KEY or GEMINI_API_KEY not configured');
+    }
+
+    console.log('🔑 API Key source:', process.env.GEMINI_VIDEO_API_KEY ? 'GEMINI_VIDEO_API_KEY' : 'GEMINI_API_KEY (fallback)');
+
+    // 💰 크레딧 계산
+    const isTwoImages = images.length === 2;
+    const creditsRequired = duration === 5 ? 5 : 10;  // 5초=5크레딧, 10초=10크레딧
+
+    // 🎬 모델 선택 (Veo 3 Fast for cost savings)
+    const selectedModel = isTwoImages 
+      ? 'veo-3.1-fast-generate-preview'  // 2개 이미지 = Veo 3.1 Fast
+      : 'veo-3-fast-generate-preview';   // 1개 이미지 = Veo 3 Fast
+
+    console.log('📊 Request Parameters:', {
+      imageCount: images.length,
+      model: selectedModel,
+      duration: `${duration}초`,
+      promptLength: prompt.length,
+      creditsRequired: creditsRequired
+    });
+
+    // 🔧 Initialize SDK
+    console.log('🔧 Initializing Google GenAI SDK...');
+    const client = new GoogleGenAI({ apiKey });
+
+    // 📸 Process first image
+    console.log('📸 Processing images...');
+    const firstImageBase64 = images[0].includes(',') 
+      ? images[0].split(',')[1] 
+      : images[0];
+
+    if (!firstImageBase64 || firstImageBase64.length === 0) {
+      throw new Error('첫 번째 이미지 데이터가 비어있습니다.');
+    }
+
+    console.log('✅ First image extracted:', {
+      base64Length: firstImageBase64.length,
+      preview: firstImageBase64.substring(0, 50) + '...'
+    });
+
+    // 🎨 Build request parameters
+    const requestParams = {
+      model: selectedModel,
+      prompt: prompt,
+      image: {
+        imageBytes: firstImageBase64,  // base64 string
+        mimeType: 'image/jpeg'
+      },
+      config: {
+        aspectRatio: '9:16',
+        durationSeconds: duration,  // 5 or 10
+        personGeneration: 'allow_adult',
+        resolution: '720p'
+      }
+    };
+
+    // 📸 Add second image for Veo 3.1 (lastFrame)
+    if (isTwoImages) {
+      const lastImageBase64 = images[1].includes(',')
+        ? images[1].split(',')[1]
+        : images[1];
+
+      if (!lastImageBase64 || lastImageBase64.length === 0) {
+        throw new Error('두 번째 이미지 데이터가 비어있습니다.');
+      }
+
+      requestParams.lastFrame = {
+        imageBytes: lastImageBase64,
+        mimeType: 'image/jpeg'
       };
-    }
 
-    console.log('🎥 [Download Proxy] 요청 시작:', {
-      url: videoUrl.substring(0, 80) + '...',
-      userAgent: event.headers['user-agent'],
-      origin: event.headers.origin
-    });
-
-    // 🆕 클링 URL 검증 및 복구
-    let workingUrl = videoUrl;
-    
-    // URL이 잘려있는 경우 복구 시도
-    if (videoUrl.includes('...[truncated]')) {
-      console.log('🔧 [Download Proxy] 잘린 URL 감지, 복구 시도...');
-      workingUrl = videoUrl.replace('...[truncated]', '');
-      if (!workingUrl.endsWith('.mp4')) {
-        workingUrl += '.mp4';
-      }
-    }
-
-    // Range 헤더 지원 (스트리밍용)
-    const rangeHeader = event.headers.range;
-    const fetchHeaders = {
-      'User-Agent': 'Mozilla/5.0 (compatible; VideoDownloadProxy/1.0)',
-      'Accept': 'video/*',
-      'Cache-Control': 'no-cache'
-    };
-
-    // Range 요청이 있으면 전달
-    if (rangeHeader) {
-      fetchHeaders['Range'] = rangeHeader;
-      console.log('📊 [Download Proxy] Range 요청:', rangeHeader);
-    }
-
-    // 🆕 먼저 HEAD 요청으로 URL 검증
-    try {
-      const headResponse = await fetch(workingUrl, {
-        method: 'HEAD',
-        headers: {
-          'User-Agent': fetchHeaders['User-Agent']
-        }
+      console.log('✅ Last frame added:', {
+        base64Length: lastImageBase64.length,
+        preview: lastImageBase64.substring(0, 50) + '...'
       });
-
-      if (!headResponse.ok) {
-        console.warn('⚠️ [Download Proxy] HEAD 요청 실패:', headResponse.status);
-        
-        // 클링 URL의 경우 여러 패턴 시도
-        if (workingUrl.includes('kling')) {
-          const urlParts = workingUrl.split('/');
-          const possibleVideoId = urlParts.find(part => part.includes('-') && part.length > 30);
-          
-          if (possibleVideoId) {
-            const alternativeUrls = [
-              `https://v15-kling.klingai.com/bs2/upload-ylab-stunt-sgp/se/stream_lake_m2v_img2video_v21_std_v36_v2/${possibleVideoId}_raw_video.mp4`,
-              `https://v15-kling.klingai.com/bs2/upload/${possibleVideoId}.mp4`
-            ];
-            
-            for (const altUrl of alternativeUrls) {
-              console.log('🔄 [Download Proxy] 대체 URL 시도:', altUrl.substring(0, 80) + '...');
-              const altHeadResponse = await fetch(altUrl, { method: 'HEAD', headers: { 'User-Agent': fetchHeaders['User-Agent'] } });
-              
-              if (altHeadResponse.ok) {
-                console.log('✅ [Download Proxy] 대체 URL 성공');
-                workingUrl = altUrl;
-                break;
-              }
-            }
-          }
-        }
-      } else {
-        console.log('✅ [Download Proxy] URL 검증 성공');
-      }
-    } catch (headError) {
-      console.warn('⚠️ [Download Proxy] HEAD 요청 실패:', headError.message);
-      // HEAD 실패해도 GET 시도 계속
+      
+      console.log(`🎬 Mode: Veo 3.1 Fast Frame Interpolation (${duration}초)`);
+    } else {
+      console.log(`🎬 Mode: Veo 3 Fast Image-to-Video (${duration}초)`);
     }
 
-    // 원본 비디오 fetch
-    const response = await fetch(workingUrl, {
-      method: 'GET',
-      headers: fetchHeaders
+    // ▶️  Generate video
+    console.log('▶️  Calling generateVideos API...');
+    console.log('📋 Request structure:', {
+      model: requestParams.model,
+      hasPrompt: !!requestParams.prompt,
+      hasImage: !!requestParams.image?.imageBytes,
+      hasLastFrame: !!requestParams.lastFrame?.imageBytes,
+      config: requestParams.config
     });
 
-    if (!response.ok) {
-      console.error('❌ [Download Proxy] Video fetch failed:', response.status, response.statusText);
-      
-      // 404인 경우 상세 오류 정보 제공
-      if (response.status === 404) {
-        return {
-          statusCode: 404,
-          headers: corsHeaders,
-          body: JSON.stringify({ 
-            error: 'Video not found',
-            details: 'The video URL may have expired or been moved',
-            originalUrl: videoUrl,
-            attemptedUrl: workingUrl,
-            suggestion: 'Try generating the video again',
-            timestamp: new Date().toISOString()
-          })
-        };
-      }
-      
-      throw new Error(`Failed to fetch video: ${response.status} ${response.statusText}`);
+    const operation = await client.models.generateVideos(requestParams);
+
+    if (!operation || !operation.name) {
+      throw new Error('Invalid operation response - no operation.name');
     }
 
-    console.log('✅ [Download Proxy] Video fetch successful:', {
-      status: response.status,
-      contentType: response.headers.get('content-type'),
-      contentLength: response.headers.get('content-length')
-    });
+    console.log('✅ Operation started:', operation.name);
 
-    // 응답 헤더 구성
-    const responseHeaders = {
-      ...corsHeaders,
-      'Content-Type': response.headers.get('content-type') || 'video/mp4',
-      'Cache-Control': 'public, max-age=1800', // 30분 캐시 (클링 URL 특성상 짧게)
-      'Accept-Ranges': 'bytes'
-    };
-
-    // Content-Length 전달
-    const contentLength = response.headers.get('content-length');
-    if (contentLength) {
-      responseHeaders['Content-Length'] = contentLength;
-    }
-
-    // Range 응답 처리
-    if (response.status === 206) {
-      responseHeaders['Content-Range'] = response.headers.get('content-range') || '';
-    }
-
-    // iOS Safari를 위한 추가 헤더
-    const userAgent = event.headers['user-agent'] || '';
-    if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
-      responseHeaders['Content-Disposition'] = 'attachment; filename="hairgator-video.mp4"';
-      responseHeaders['X-Content-Type-Options'] = 'nosniff';
-    }
-
-    // 비디오 데이터 처리
-    const videoArrayBuffer = await response.arrayBuffer();
+    // 🎯 Return operation ID immediately (avoid timeout)
+    // Client will poll for completion using gemini-video-status endpoint
+    const responseTime = Date.now() - startTime;
     
-    console.log('📊 [Download Proxy] Response:', {
-      status: response.status,
-      size: videoArrayBuffer.byteLength,
-      sizeKB: Math.round(videoArrayBuffer.byteLength / 1024),
-      headers: Object.keys(responseHeaders)
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('✅ Video Generation Started Successfully');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('📊 Response:', {
+      operationId: operation.name.substring(0, 50) + '...',
+      duration: `${duration}초`,
+      creditsUsed: creditsRequired,
+      responseTime: `${responseTime}ms`
     });
 
     return {
-      statusCode: response.status,
-      headers: responseHeaders,
-      body: Buffer.from(videoArrayBuffer).toString('base64'),
-      isBase64Encoded: true
+      statusCode: 202,  // Accepted
+      headers,
+      body: JSON.stringify({
+        success: true,
+        operationId: operation.name,
+        status: 'processing',
+        message: `${duration}초 영상 생성이 시작되었습니다. 예상 소요 시간: ${duration === 5 ? '3-4분' : '5-6분'}`,
+        duration: duration,
+        creditsUsed: creditsRequired,
+        estimatedTime: duration === 5 ? '3-4분' : '5-6분'
+      })
     };
 
   } catch (error) {
-    console.error('❌ [Download Proxy] Error:', {
-      message: error.message,
-      stack: error.stack,
-      url: event.queryStringParameters?.url
-    });
+    console.error('❌ Video generation failed:', error.message);
+    console.error('Stack:', error.stack);
     
-    // 에러 타입별 상세 응답
+    // Handle specific error cases
+    let errorMessage = error.message || 'Video generation failed';
     let statusCode = 500;
-    let errorMessage = 'Internal server error';
-    let errorDetails = {};
-    
-    if (error.message.includes('Failed to fetch')) {
-      statusCode = 502;
-      errorMessage = 'Bad gateway: Unable to fetch video from source';
-      errorDetails = {
-        reason: 'Source server unreachable',
-        suggestion: 'The video may have been moved or deleted'
-      };
-    } else if (error.message.includes('timeout')) {
-      statusCode = 504;
-      errorMessage = 'Gateway timeout: Video source is too slow';
-      errorDetails = {
-        reason: 'Download timeout',
-        suggestion: 'Try again in a few moments'
-      };
-    } else if (error.message.includes('404')) {
-      statusCode = 404;
-      errorMessage = 'Video not found';
-      errorDetails = {
-        reason: 'Video URL expired or invalid',
-        suggestion: 'Generate the video again'
-      };
+
+    if (error.message && error.message.includes('API key')) {
+      errorMessage = 'API 키가 설정되지 않았습니다.';
+      statusCode = 401;
+    } else if (error.message && error.message.includes('quota')) {
+      errorMessage = 'API 할당량 초과. 잠시 후 다시 시도해주세요.';
+      statusCode = 429;
+    } else if (error.message && error.message.includes('429')) {
+      errorMessage = 'API 요청 한도 초과. 1분 후 다시 시도해주세요.';
+      statusCode = 429;
     }
     
     return {
-      statusCode,
-      headers: corsHeaders,
-      body: JSON.stringify({ 
+      statusCode: statusCode,
+      headers,
+      body: JSON.stringify({
+        success: false,
         error: errorMessage,
-        details: errorDetails,
-        originalUrl: event.queryStringParameters?.url,
-        timestamp: new Date().toISOString(),
-        requestId: context.awsRequestId,
-        developmentInfo: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: error.stack
       })
     };
   }
