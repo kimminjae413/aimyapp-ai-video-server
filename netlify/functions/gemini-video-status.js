@@ -1,6 +1,7 @@
 /**
- * Netlify Function: Check Veo Video Generation Status
+ * Netlify Function: Check Veo Video Generation Status (Veo 2)
  * ✅ 완전한 RAI 필터 처리 (미성년자, 유명인 등)
+ * ✅ Duration: 5초/8초 지원
  */
 
 exports.config = {
@@ -39,7 +40,7 @@ exports.handler = async (event, context) => {
       throw new Error('API key not configured');
     }
 
-    console.log('🔍 Checking operation status:', {
+    console.log('🔍 Checking operation status (Veo 2):', {
       operationId: operationId.substring(0, 50) + '...',
       duration: duration ? `${duration}초` : 'unknown'
     });
@@ -69,13 +70,12 @@ exports.handler = async (event, context) => {
     if (!operation.done) {
       console.log('⏳ Still processing...');
       
+      // ✅ Veo 2: 5초/8초에 맞춰 메시지 수정
       let progressMessage = '영상 생성 중...';
-      if (duration === 4) {
-        progressMessage = '4초 영상 생성 중... (~3분 소요)';
-      } else if (duration === 6) {
-        progressMessage = '6초 영상 생성 중... (~4분 소요)';
+      if (duration === 5) {
+        progressMessage = '5초 영상 생성 중... (~3-4분 소요)';
       } else if (duration === 8) {
-        progressMessage = '8초 영상 생성 중... (~5분 소요)';
+        progressMessage = '8초 영상 생성 중... (~4-5분 소요)';
       }
       
       return {
@@ -86,7 +86,7 @@ exports.handler = async (event, context) => {
           status: 'processing',
           done: false,
           message: progressMessage,
-          duration: duration || 6
+          duration: duration || 5  // ✅ 기본값 5초
         })
       };
     }
@@ -174,8 +174,8 @@ exports.handler = async (event, context) => {
         status: 'completed',
         done: true,
         videoUrl: videoUrl,
-        duration: duration || 6,
-        message: `${duration || 6}초 영상 생성 완료!`
+        duration: duration || 5,  // ✅ 기본값 5초
+        message: `${duration || 5}초 영상 생성 완료!`
       })
     };
 
