@@ -22,12 +22,29 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
   const [downloadStatuses, setDownloadStatuses] = useState<Map<string, string>>(new Map());
 
-  // 비디오 썸네일 컴포넌트 - 404 에러 처리 포함
+  // ✅ URL 유효성 검사 함수
+  const isValidImageUrl = (url: string): boolean => {
+    if (!url) return false;
+    if (url.startsWith('blob:')) return false;
+    if (url.includes('...[truncated]')) return false;
+    
+    // Cloudinary, Imgur, 또는 일반 HTTP URL
+    return url.startsWith('http://') || url.startsWith('https://');
+  };
+
+  const isValidVideoUrl = (url: string): boolean => {
+    if (!url) return false;
+    if (url.startsWith('blob:')) return false;
+    
+    // Gemini, Kling, Cloudinary 등 유효한 비디오 URL
+    return url.startsWith('http://') || url.startsWith('https://');
+  };
+
+  // 비디오 썸네일 컴포넌트
   const VideoThumbnail: React.FC<{ videoUrl: string; itemId: string }> = ({ videoUrl, itemId }) => {
     const [thumbnailError, setThumbnailError] = useState(false);
     const [videoLoaded, setVideoLoaded] = useState(false);
     
-    // bullnabiService의 cleanKlingUrl 함수 사용
     const cleanedUrl = cleanKlingUrl(videoUrl);
     
     return (
@@ -60,17 +77,12 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
               }
             }}
             onError={(e) => {
-              console.warn(`❌ [썸네일] 비디오 로드 실패: ${itemId}`, {
-                originalUrl: videoUrl.substring(0, 80) + '...',
-                cleanedUrl: cleanedUrl.substring(0, 80) + '...',
-                recovered: videoUrl.includes('...[truncated]')
-              });
+              console.warn(`❌ [썸네일] 비디오 로드 실패: ${itemId}`);
               setThumbnailError(true);
             }}
           />
         )}
         
-        {/* 플레이 버튼 오버레이 */}
         <div className="absolute inset-0 flex items-center justify-center">
           <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
             thumbnailError 
@@ -91,7 +103,6 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           </div>
         </div>
         
-        {/* 썸네일 로드 실패시 안내 */}
         {thumbnailError && (
           <div className="absolute bottom-1 left-1 right-1">
             <div className="bg-gray-800/80 text-white text-xs px-2 py-1 rounded text-center">
@@ -114,10 +125,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     setError(null);
     
     try {
-      // 만료된 데이터 정리 먼저 실행
       await cleanupExpiredGenerations(userId);
-      
-      // 최근 3일간의 내역 조회 (이미 URL 복구 적용됨)
       const results = await getGenerationHistory(userId, 50);
       setHistory(results);
     } catch (err) {
@@ -128,227 +136,70 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     }
   };
 
-  // 🔧 iPhone 다운로드 문제 해결된 프록시 비디오 다운로드 함수
   const downloadVideoViaProxy = async (originalUrl: string, filename: string): Promise<{ success: boolean; message?: string }> => {
     try {
-      console.log('📹 [내 작품] 프록시 비디오 다운로드 시작:', {
-        originalUrl: originalUrl.substring(0, 80) + '...',
-        filename
-      });
-
-      // bullnabiService의 cleanKlingUrl 사용 (복구 + 정리)
       const cleanUrl = cleanKlingUrl(originalUrl);
-      
-      // 프록시 URL 인코딩
       const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(cleanUrl)}`;
       
-      console.log('🔗 [내 작품] 프록시 호출:', {
-        proxyUrl: proxyUrl.substring(0, 100) + '...',
-        method: 'GET with proxy'
-      });
-
-      // 프록시를 통한 비디오 다운로드
       const response = await fetch(proxyUrl, {
         method: 'GET',
-        headers: {
-          'Accept': 'video/mp4,video/*,*/*'
-        }
-      });
-
-      console.log('📊 [내 작품] 프록시 응답:', {
-        status: response.status,
-        ok: response.ok,
-        contentType: response.headers.get('content-type'),
-        contentLength: response.headers.get('content-length')
+        headers: { 'Accept': 'video/mp4,video/*,*/*' }
       });
 
       if (!response.ok) {
         throw new Error(`프록시 응답 오류: ${response.status}`);
       }
 
-      // Blob 생성 (모든 플랫폼 공통)
       const blob = await response.blob();
       
       if (blob.size === 0) {
         throw new Error('빈 파일 응답');
       }
 
-      console.log('💾 [내 작품] Blob 생성 완료:', {
-        size: (blob.size / 1024 / 1024).toFixed(2) + 'MB',
-        type: blob.type
-      });
-
-      // 플랫폼별 다운로드 처리
-      const isWebView = /WebView|wv/i.test(navigator.userAgent);
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       
-      if (isWebView) {
-        // 웹뷰: URL을 클립보드에 복사
-        try {
-          await navigator.clipboard.writeText(cleanUrl);
-          console.log('📋 [내 작품] 웹뷰 - URL 클립보드 복사 성공');
-          return { 
-            success: true, 
-            message: 'URL이 클립보드에 복사되었습니다. Safari에서 붙여넣기하여 저장하세요.' 
-          };
-        } catch (clipError) {
-          console.error('클립보드 복사 실패:', clipError);
-          alert(`비디오 URL을 복사하세요:\n\n${cleanUrl}`);
-          return { 
-            success: true, 
-            message: 'URL을 수동으로 복사하세요' 
-          };
+      if (isIOS && 'share' in navigator) {
+        const file = new File([blob], filename, { type: 'video/mp4' });
+        
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file] });
+          return { success: true, message: '✅ Share API로 저장 완료!' };
         }
-        
-      } else if (isIOS) {
-        // 🔧 iPhone: 실제 파일 다운로드 처리 (수정된 핵심 부분)
-        console.log('📱 [iPhone] 실제 파일 다운로드 시작...');
-        
-        try {
-          // 1순위: 최신 Safari Share API 시도 (iOS 14+)
-          if ('share' in navigator && 'canShare' in navigator) {
-            const file = new File([blob], filename, { type: 'video/mp4' });
-            
-            if (navigator.canShare({ files: [file] })) {
-              console.log('🚀 [iPhone] Share API 사용 가능, 공유 시도...');
-              await navigator.share({ 
-                files: [file],
-                title: '헤어게이터 영상',
-                text: '헤어게이터에서 생성된 영상입니다.'
-              });
-              
-              return { 
-                success: true, 
-                message: '✅ Share API로 저장 완료!' 
-              };
-            }
-          }
-        } catch (shareError) {
-          console.warn('Share API 실패:', shareError);
-        }
-        
-        // 2순위: Blob URL + <a download> 방식 (iOS 13+)
-        try {
-          console.log('📱 [iPhone] Blob 다운로드 방식 시도...');
-          
-          const blobUrl = URL.createObjectURL(blob);
-          
-          // iOS Safari에서 실제 다운로드가 되도록 하는 방법
-          const link = document.createElement('a');
-          link.href = blobUrl;
-          link.download = filename;
-          
-          // iOS에서 다운로드가 작동하도록 하는 핵심 속성들
-          link.style.display = 'none';
-          link.target = '_blank';  // 새 탭에서 열기
-          link.rel = 'noopener';
-          
-          document.body.appendChild(link);
-          
-          // iOS Safari에서는 사용자 제스처 내에서 클릭해야 함
-          link.click();
-          
-          // 정리
-          document.body.removeChild(link);
-          
-          // URL 메모리 해제 (1초 후)
-          setTimeout(() => {
-            URL.revokeObjectURL(blobUrl);
-          }, 1000);
-          
-          console.log('✅ [iPhone] Blob 다운로드 시도 완료');
-          
-          // iOS 사용자에게 추가 안내
-          return { 
-            success: true, 
-            message: '📱 파일 앱 확인 또는 Safari 다운로드 폴더를 확인하세요!' 
-          };
-          
-        } catch (blobError) {
-          console.warn('Blob 다운로드 실패:', blobError);
-        }
-        
-        // 3순위: 최후 수단 - 새 창에서 비디오 열기 + 수동 저장 안내
-        try {
-          console.log('📱 [iPhone] 새 창 + 수동 저장 방식으로 폴백...');
-          
-          const newWindow = window.open(cleanUrl, '_blank', 'width=800,height=600');
-          
-          if (newWindow) {
-            // 3초 후 사용자 안내
-            setTimeout(() => {
-              alert('📱 비디오 저장 방법:\n\n1. 비디오를 길게 터치하세요\n2. "비디오 저장" 또는 "사진에 추가" 선택\n3. 사진 앱에서 확인 가능합니다!');
-            }, 2000);
-            
-            return { 
-              success: true, 
-              message: '💡 새 탭에서 비디오를 길게 터치하여 저장하세요' 
-            };
-          } else {
-            // 팝업 차단된 경우
-            const userConfirmed = confirm(`팝업이 차단되었습니다. 비디오 URL을 클립보드에 복사하시겠습니까?\n\n${cleanUrl.substring(0, 80)}...`);
-            
-            if (userConfirmed) {
-              await navigator.clipboard.writeText(cleanUrl);
-              return { 
-                success: true, 
-                message: '📋 URL이 클립보드에 복사되었습니다. Safari에서 열어 저장하세요.' 
-              };
-            } else {
-              throw new Error('팝업이 차단되어 다운로드할 수 없습니다.');
-            }
-          }
-          
-        } catch (windowError) {
-          console.error('새 창 열기 실패:', windowError);
-          throw new Error('모든 iPhone 다운로드 방법이 실패했습니다.');
-        }
-        
-      } else {
-        // Android/PC: 기존 Blob 다운로드 방식 (정상 작동)
-        const blobUrl = URL.createObjectURL(blob);
-        
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-        
-        console.log('✅ [Android/PC] Blob 다운로드 완료');
-        return { 
-          success: true, 
-          message: '🎉 비디오 다운로드 완료!' 
-        };
       }
-
-    } catch (error) {
-      console.error('❌ [내 작품] 프록시 비디오 다운로드 실패:', error);
       
-      // 최종 fallback: 복구된 URL 제공
-      const cleanUrl = cleanKlingUrl(originalUrl);
-      console.log('🔄 [내 작품] 최종 fallback - 복구된 URL:', cleanUrl);
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
       
       return { 
+        success: true, 
+        message: isIOS ? '📱 파일 앱 또는 다운로드 폴더 확인' : '🎉 비디오 다운로드 완료!' 
+      };
+
+    } catch (error) {
+      console.error('❌ 프록시 비디오 다운로드 실패:', error);
+      return { 
         success: false, 
-        message: `다운로드 실패. 수동 URL: ${cleanUrl.substring(0, 50)}...` 
+        message: '다운로드 실패' 
       };
     }
   };
 
   const handleDownload = async (item: GenerationResult) => {
-    // 완전히 고유한 itemId 생성 (인덱스 추가로 중복 완전 방지)
     const baseId = item._id?.toString() || `${item.type}-${item.userId}-${Date.parse(item.createdAt)}`;
     const itemIndex = history.findIndex(h => h === item);
     const itemId = `${baseId}-idx${itemIndex}`;
     
-    console.log('다운로드 시작:', { itemId, originalId: item._id, index: itemIndex });
-    
     if (downloadingIds.has(itemId)) {
-      console.log('이미 다운로드 중:', itemId);
-      return; // 이미 다운로드 중
+      return;
     }
 
     try {
@@ -356,77 +207,42 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
       setDownloadStatuses(prev => new Map(prev).set(itemId, '다운로드 중...'));
 
       if (item.type === 'image') {
-        console.log('🖼️ [내 작품] 이미지 다운로드 시작:', item.resultUrl);
-        
-        // 파일명 생성 - 안전한 문자열 처리
         const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
         const filename = `faceswap-${timestamp}-${itemId.slice(-6)}.jpg`;
         
-        // downloadHelper를 사용하여 이미지 다운로드
         const result = await downloadHelper.downloadImage(item.resultUrl, filename);
         
         if (result.success) {
           setDownloadStatuses(prev => new Map(prev).set(itemId, '✅ 저장 완료!'));
-          
-          // iOS에서 추가 안내가 필요한 경우
-          if (result.method === 'new-window' && downloadHelper.isIOS()) {
-            setTimeout(() => {
-              setDownloadStatuses(prev => new Map(prev).set(itemId, '💡 이미지를 길게 터치하여 저장하세요'));
-            }, 2000);
-          }
         } else {
-          setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ 다운로드 실패: ${result.message || 'Unknown error'}`));
+          setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ ${result.message || '다운로드 실패'}`));
         }
         
       } else if (item.type === 'video') {
-        console.log('🎥 [내 작품] 비디오 다운로드 시작:', item.resultUrl.substring(0, 80) + '...');
-        
-        // 파일명 생성 - 안전한 문자열 처리
         const timestamp = new Date(item.createdAt).toISOString().slice(0, 10);
         const filename = `hairgator-video-${timestamp}-${itemId.slice(-6)}.mp4`;
         
-        // 클링 URL인지 확인하고 프록시 사용
         if (item.resultUrl.includes('klingai.com')) {
-          console.log('🔍 [내 작품] 클링 비디오 감지 - 프록시 사용 (iPhone 다운로드 해결됨)');
           const result = await downloadVideoViaProxy(item.resultUrl, filename);
           
           if (result.success) {
             setDownloadStatuses(prev => new Map(prev).set(itemId, '✅ 저장 완료!'));
-            
-            // 추가 안내가 필요한 경우
-            if (result.message && result.message.includes('길게 터치')) {
-              setTimeout(() => {
-                setDownloadStatuses(prev => new Map(prev).set(itemId, '💡 비디오를 길게 터치하여 저장하세요'));
-              }, 2000);
-            } else if (result.message && result.message.includes('파일 앱')) {
-              setTimeout(() => {
-                setDownloadStatuses(prev => new Map(prev).set(itemId, '📁 파일 앱 또는 다운로드 폴더 확인'));
-              }, 2000);
-            }
           } else {
             setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ ${result.message || '다운로드 실패'}`));
           }
         } else {
-          // 클링이 아닌 다른 비디오는 기존 방식 사용
           const result = await downloadHelper.downloadVideo(item.resultUrl, filename);
           
           if (result.success) {
             setDownloadStatuses(prev => new Map(prev).set(itemId, '✅ 저장 완료!'));
-            
-            // iOS에서 추가 안내가 필요한 경우
-            if (result.method === 'new-window-video' && downloadHelper.isIOS()) {
-              setTimeout(() => {
-                setDownloadStatuses(prev => new Map(prev).set(itemId, '💡 비디오를 길게 터치하여 저장하세요'));
-              }, 2000);
-            }
           } else {
-            setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ 다운로드 실패: ${result.message || 'Unknown error'}`));
+            setDownloadStatuses(prev => new Map(prev).set(itemId, `❌ ${result.message || '다운로드 실패'}`));
           }
         }
       }
       
     } catch (error) {
-      console.error('❌ [내 작품] 다운로드 중 오류:', error);
+      console.error('❌ 다운로드 중 오류:', error);
       setDownloadStatuses(prev => new Map(prev).set(itemId, '❌ 다운로드 오류'));
     } finally {
       setDownloadingIds(prev => {
@@ -435,7 +251,6 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
         return newSet;
       });
       
-      // 5초 후 상태 메시지 클리어
       setTimeout(() => {
         setDownloadStatuses(prev => {
           const newMap = new Map(prev);
@@ -503,11 +318,15 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {history.map((item, index) => {
-                // 완전히 고유한 itemId 생성 (인덱스 추가로 중복 완전 방지)
                 const baseId = item._id?.toString() || `${item.type}-${item.userId}-${Date.parse(item.createdAt)}`;
                 const itemId = `${baseId}-idx${index}`;
                 const isDownloading = downloadingIds.has(itemId);
                 const downloadStatus = downloadStatuses.get(itemId);
+                
+                // ✅ URL 유효성 검사
+                const hasValidImageUrl = item.type === 'image' && isValidImageUrl(item.resultUrl);
+                const hasValidVideoUrl = item.type === 'video' && isValidVideoUrl(item.resultUrl);
+                const isExpired = !hasValidImageUrl && !hasValidVideoUrl;
                 
                 return (
                   <div
@@ -517,109 +336,62 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                     {/* Thumbnail */}
                     <div className="relative aspect-square bg-gray-800">
                       {item.type === 'image' ? (
-                        <img
-                          src={item.resultUrl}
-                          alt="Generated result"
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.src = item.originalImageUrl; // 결과 이미지 로드 실패 시 원본 표시
-                          }}
-                        />
-                      ) : item.resultUrl.startsWith('blob:') ? (
-                        // Blob URL은 만료되었으므로 대체 UI 표시
+                        hasValidImageUrl ? (
+                          // ✅ 유효한 이미지 URL (Cloudinary 등)
+                          <img
+                            src={item.resultUrl}
+                            alt="Generated result"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              console.warn('Image load failed:', item.resultUrl);
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              const parent = target.parentElement;
+                              if (parent) {
+                                parent.innerHTML = `
+                                  <div class="w-full h-full bg-gray-700 flex flex-col items-center justify-center">
+                                    <svg class="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <p class="text-xs text-gray-400 text-center px-2">이미지 로드 실패</p>
+                                  </div>
+                                `;
+                              }
+                            }}
+                          />
+                        ) : (
+                          // ❌ 만료된 이미지 (blob URL 등)
+                          <div className="w-full h-full bg-gray-700 flex flex-col items-center justify-center">
+                            <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <p className="text-xs text-gray-400 text-center px-2">이미지 URL 만료됨</p>
+                            <p className="text-xs text-gray-500 text-center px-2 mt-1">{formatDate(item.createdAt)}</p>
+                          </div>
+                        )
+                      ) : hasValidVideoUrl ? (
+                        // ✅ 유효한 비디오 URL
+                        <VideoThumbnail videoUrl={item.resultUrl} itemId={itemId} />
+                      ) : (
+                        // ❌ 만료된 비디오 (blob URL 등)
                         <div className="w-full h-full bg-gray-700 flex flex-col items-center justify-center">
                           <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                               d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                           </svg>
-                          <p className="text-xs text-gray-400 text-center px-2">
-                            영상 URL 만료됨
-                          </p>
-                          <p className="text-xs text-gray-500 text-center px-2 mt-1">
-                            {formatDate(item.createdAt)}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="relative w-full h-full">
-                          <video
-                            src={cleanKlingUrl(item.resultUrl)} // 복구된 클링 URL 사용
-                            className="w-full h-full object-cover"
-                            muted
-                            loop
-                            playsInline
-                            onTouchStart={(e) => {
-                              // iPhone/iPad용 터치 이벤트
-                              try {
-                                const video = e.target as HTMLVideoElement;
-                                if (video.paused) {
-                                  video.play();
-                                } else {
-                                  video.pause();
-                                }
-                              } catch (err) {
-                                console.warn('Video touch play failed:', err);
-                              }
-                            }}
-                            onClick={(e) => {
-                              // 클릭/터치 이벤트 (iOS 호환)
-                              try {
-                                const video = e.target as HTMLVideoElement;
-                                if (video.paused) {
-                                  video.play();
-                                } else {
-                                  video.pause();
-                                }
-                              } catch (err) {
-                                console.warn('Video click play failed:', err);
-                              }
-                            }}
-                            onMouseEnter={(e) => {
-                              // 데스크톱용 마우스 호버 (기존 유지)
-                              if (!(/iPad|iPhone|iPod/.test(navigator.userAgent))) {
-                                try {
-                                  (e.target as HTMLVideoElement).play();
-                                } catch (err) {
-                                  console.warn('Video preview play failed:', err);
-                                }
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              // 데스크톱용 마우스 나감 (기존 유지)  
-                              if (!(/iPad|iPhone|iPod/.test(navigator.userAgent))) {
-                                try {
-                                  (e.target as HTMLVideoElement).pause();
-                                } catch (err) {
-                                  console.warn('Video preview pause failed:', err);
-                                }
-                              }
-                            }}
-                            onError={(e) => {
-                              console.warn('Video thumbnail load failed:', {
-                                itemId: itemId,
-                                originalUrl: item.resultUrl,
-                                cleanedUrl: cleanKlingUrl(item.resultUrl),
-                                wasRecovered: item.resultUrl.includes('...[truncated]'),
-                                userAgent: navigator.userAgent.substring(0, 50) + '...'
-                              });
-                            }}
-                          />
-                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <div className="w-12 h-12 bg-black/50 rounded-full flex items-center justify-center">
-                              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M8 5v14l11-7z"/>
-                              </svg>
-                            </div>
-                          </div>
+                          <p className="text-xs text-gray-400 text-center px-2">영상 URL 만료됨</p>
+                          <p className="text-xs text-gray-500 text-center px-2 mt-1">{formatDate(item.createdAt)}</p>
                         </div>
                       )}
                       
-                      {/* Download button with status */}
+                      {/* Download button */}
                       <button
                         onClick={() => handleDownload(item)}
-                        disabled={isDownloading || item.resultUrl.startsWith('blob:')}
+                        disabled={isDownloading || isExpired}
                         className={`absolute top-2 right-2 p-2 backdrop-blur-sm rounded-full text-white transition-colors ${
-                          item.resultUrl.startsWith('blob:')
+                          isExpired
                             ? 'bg-gray-600/80 cursor-not-allowed'
                             : isDownloading
                               ? 'bg-blue-500/80 cursor-wait'
@@ -629,11 +401,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                                   ? 'bg-red-500/80'
                                   : 'bg-black/50 hover:bg-black/70'
                         }`}
-                        title={
-                          item.resultUrl.startsWith('blob:') 
-                            ? "URL 만료로 다운로드 불가" 
-                            : downloadStatus || "다운로드"
-                        }
+                        title={isExpired ? "URL 만료로 다운로드 불가" : downloadStatus || "다운로드"}
                       >
                         {isDownloading ? (
                           <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -643,7 +411,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
-                        ) : item.resultUrl.startsWith('blob:') ? (
+                        ) : isExpired ? (
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636" />
                           </svg>
@@ -659,9 +427,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                             ? 'bg-green-600/90 text-green-100'
                             : downloadStatus.includes('❌')
                               ? 'bg-red-600/90 text-red-100'
-                              : downloadStatus.includes('💡') || downloadStatus.includes('📁')
-                                ? 'bg-yellow-600/90 text-yellow-100'
-                                : 'bg-blue-600/90 text-blue-100'
+                              : 'bg-blue-600/90 text-blue-100'
                         }`}>
                           {downloadStatus}
                         </div>
@@ -692,15 +458,23 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                         </p>
                       )}
                       
+                      {/* ✅ Duration 표시 */}
                       {item.type === 'video' && item.videoDuration && (
                         <p className="text-xs text-gray-500">
-                          {item.videoDuration}초 영상 • {item.creditsUsed}회 차감
+                          ⏱️ {item.videoDuration}초 영상 • 💎 {item.creditsUsed}회 차감
                         </p>
                       )}
                       
                       {item.type === 'image' && (
                         <p className="text-xs text-gray-500">
-                          {item.creditsUsed}회 차감
+                          💎 {item.creditsUsed}회 차감
+                        </p>
+                      )}
+                      
+                      {/* URL 상태 표시 */}
+                      {isExpired && (
+                        <p className="text-xs text-red-400 mt-1">
+                          ⚠️ URL 만료됨 (3일 경과)
                         </p>
                       )}
                     </div>
@@ -717,7 +491,6 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             생성된 작품은 3일 후 자동으로 삭제됩니다. 필요한 작품은 다운로드해서 보관하세요.
           </p>
           
-          {/* 환경별 다운로드 가이드 */}
           <div className="mt-2 text-xs text-gray-400 text-center">
             {downloadHelper.isIOS() ? (
               <span>📱 iOS: 다운로드 → 파일 앱 확인 또는 길게 터치 저장</span>
@@ -728,10 +501,9 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
             )}
           </div>
           
-          {/* 개선 완료 안내 */}
           <div className="mt-2 p-2 bg-green-600/20 border border-green-500/50 rounded-lg">
             <p className="text-xs text-green-300 text-center">
-              ✅ iPhone 다운로드 완전 해결 + URL 복구 시스템 + Blob URL 만료 처리
+              ✅ Cloudinary 연동 + URL 만료 처리 + 5초/8초 duration 표시
             </p>
           </div>
         </div>
