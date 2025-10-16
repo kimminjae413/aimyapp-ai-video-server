@@ -1,7 +1,7 @@
 /**
  * Netlify Function: Check Veo Video Generation Status
  * Polls operation status and returns video URL when complete
- * Supports 5s and 10s durations
+ * ✅ Supports 4s, 6s, 8s durations (Veo 3.1 Fast)
  * ✅ Uses generatedSamples from REST API
  * 
  * 환경변수:
@@ -39,6 +39,12 @@ exports.handler = async (event, context) => {
 
     if (!operationId) {
       throw new Error('operationId is required');
+    }
+
+    // ✅ Duration validation: 4, 6, 8만 허용
+    const validDurations = [4, 6, 8];
+    if (duration && !validDurations.includes(duration)) {
+      console.warn(`⚠️ Invalid duration received: ${duration}, will use fallback`);
     }
 
     // 🔑 API Key - 우선순위: GEMINI_VIDEO_API_KEY > GEMINI_API_KEY
@@ -79,6 +85,16 @@ exports.handler = async (event, context) => {
     if (!operation.done) {
       console.log('⏳ Still processing...');
       
+      // ✅ Duration별 맞춤 메시지
+      let progressMessage = '영상 생성 중...';
+      if (duration === 4) {
+        progressMessage = '4초 영상 생성 중... (~3분 소요)';
+      } else if (duration === 6) {
+        progressMessage = '6초 영상 생성 중... (~4분 소요)';
+      } else if (duration === 8) {
+        progressMessage = '8초 영상 생성 중... (~5분 소요)';
+      }
+      
       return {
         statusCode: 200,
         headers,
@@ -86,7 +102,8 @@ exports.handler = async (event, context) => {
           success: true,
           status: 'processing',
           done: false,
-          message: duration ? `${duration}초 영상 생성 중...` : '영상 생성 중...'
+          message: progressMessage,
+          duration: duration || 6  // fallback to 6s
         })
       };
     }
@@ -115,7 +132,8 @@ exports.handler = async (event, context) => {
 
     console.log('📦 Video ready:', {
       videoUrl: videoUrl.substring(0, 60) + '...',
-      duration: duration || 'unknown'
+      duration: duration || 'unknown',
+      sampleCount: samples.length
     });
 
     return {
@@ -126,8 +144,8 @@ exports.handler = async (event, context) => {
         status: 'completed',
         done: true,
         videoUrl: videoUrl,
-        duration: duration || 8,  // fallback to 8s for backward compatibility
-        message: '영상 생성 완료!'
+        duration: duration || 6,  // ✅ fallback to 6s (기본값)
+        message: `${duration || 6}초 영상 생성 완료!`
       })
     };
 
@@ -145,6 +163,9 @@ exports.handler = async (event, context) => {
     } else if (error.message && (error.message.includes('429') || error.message.includes('rate limit'))) {
       errorMessage = 'API 요청 한도 초과. 잠시 후 다시 시도해주세요.';
       statusCode = 429;
+    } else if (error.message && error.message.includes('quota')) {
+      errorMessage = 'API 할당량 초과. 잠시 후 다시 시도해주세요.';
+      statusCode = 429;
     }
     
     return {
@@ -154,7 +175,7 @@ exports.handler = async (event, context) => {
         success: false,
         status: 'error',
         error: errorMessage,
-        details: error.stack
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       })
     };
   }
