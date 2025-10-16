@@ -80,21 +80,18 @@ exports.handler = async (event, context) => {
       throw new Error('첫 번째 이미지 데이터가 비어있습니다.');
     }
 
-    // Convert to Buffer
-    const firstImageBuffer = Buffer.from(firstImageBase64, 'base64');
-    
-    console.log('✅ First image converted:', {
+    console.log('✅ First image extracted:', {
       base64Length: firstImageBase64.length,
-      bufferLength: firstImageBuffer.length,
-      sizeMB: (firstImageBuffer.length / 1024 / 1024).toFixed(2) + 'MB'
+      preview: firstImageBase64.substring(0, 50) + '...'
     });
 
     // Build request parameters
+    // ⚠️ CRITICAL: imageBytes expects base64 STRING, not Buffer!
     const requestParams = {
       model: selectedModel,
       prompt: prompt,
       image: {
-        imageBytes: firstImageBuffer,
+        imageBytes: firstImageBase64,  // ← base64 string!
         mimeType: 'image/jpeg'
       },
       config: {
@@ -115,16 +112,14 @@ exports.handler = async (event, context) => {
         throw new Error('두 번째 이미지 데이터가 비어있습니다.');
       }
 
-      const lastImageBuffer = Buffer.from(lastImageBase64, 'base64');
-
       requestParams.lastFrame = {
-        imageBytes: lastImageBuffer,
+        imageBytes: lastImageBase64,  // ← base64 string!
         mimeType: 'image/jpeg'
       };
 
-      console.log('✅ Last frame converted:', {
-        bufferLength: lastImageBuffer.length,
-        sizeMB: (lastImageBuffer.length / 1024 / 1024).toFixed(2) + 'MB'
+      console.log('✅ Last frame added:', {
+        base64Length: lastImageBase64.length,
+        preview: lastImageBase64.substring(0, 50) + '...'
       });
       
       console.log('🎬 Mode: Veo 3.1 Frame Interpolation');
@@ -132,12 +127,7 @@ exports.handler = async (event, context) => {
       console.log('🎬 Mode: Veo 3 Image-to-Video');
     }
 
-    // Memory check
-    const memUsage = process.memoryUsage();
-    console.log('💾 Memory usage:', {
-      heapUsed: (memUsage.heapUsed / 1024 / 1024).toFixed(2) + 'MB',
-      heapTotal: (memUsage.heapTotal / 1024 / 1024).toFixed(2) + 'MB'
-    });
+
 
     // Generate video
     console.log('▶️  Calling generateVideos API...');
