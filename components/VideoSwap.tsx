@@ -37,7 +37,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
   const [showIOSGuide, setShowIOSGuide] = useState<boolean>(false);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
-  const [selectedDuration, setSelectedDuration] = useState<4 | 6 | 8>(6);  // ✅ 새로 추가: 기본값 6초
+  const [selectedDuration, setSelectedDuration] = useState<4 | 6 | 8>(6);
 
   // 헤어 모션 템플릿 (16개 - 그대로 유지)
   const hairMotionTemplates = {
@@ -59,20 +59,20 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     salonVibe2: 'The person celebrates joyfully as if high-fiving with the hair designer'
   };
 
-  // ✅ Duration 옵션 정의
+  // Duration 옵션 정의
   const durationOptions = [
     { value: 4 as const, label: '4초', credits: 4, desc: '짧고 빠른 영상', time: '~3분' },
     { value: 6 as const, label: '6초', credits: 6, desc: '적당한 길이 (추천)', time: '~4분' },
     { value: 8 as const, label: '8초', credits: 8, desc: '긴 영상', time: '~5분' }
   ];
 
-  // ✅ 크레딧 계산: 선택한 duration과 동일
+  // 크레딧 계산: 선택한 duration과 동일
   const getRequiredCredits = () => {
-    return selectedDuration;  // 4초=4, 6초=6, 8초=8
+    return selectedDuration;
   };
   const requiredCredits = getRequiredCredits();
 
-  // 환경 감지 함수들 (완전히 유지)
+  // 환경 감지 함수들
   const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
   const isAndroid = () => /Android/i.test(navigator.userAgent);
   const isWebView = () => {
@@ -92,7 +92,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   }, [preservedVideoUrl]);
 
-  // Pull-to-refresh 방지 (완전히 유지)
+  // Pull-to-refresh 방지
   useEffect(() => {
     let touchStartY = 0;
     let touchEndY = 0;
@@ -123,7 +123,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     };
   }, []);
 
-  // 페이지 나가기 방지 (완전히 유지)
+  // 페이지 나가기 방지
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (generatedVideoUrl && !videoSaved) {
@@ -137,7 +137,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [generatedVideoUrl, videoSaved]);
 
-  // 브라우저 뒤로가기 방지 (완전히 유지)
+  // 브라우저 뒤로가기 방지
   useEffect(() => {
     if (generatedVideoUrl && !videoSaved) {
       window.history.pushState(null, '', window.location.href);
@@ -213,7 +213,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     console.log('🗑️ 이미지 제거:', { remainingImages: uploadedImages.length - 1 });
   };
 
-  // ✅ 영상 생성 핸들러 - Duration 선택 기능!
+  // ✅ 영상 생성 핸들러 - 수정된 버전
   const handleGenerateVideo = async () => {
     if (uploadedImages.length === 0) {
       setError('이미지를 최소 1개 업로드해주세요.');
@@ -244,7 +244,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     setVideoSaved(false);
     setProgress('비디오 생성 작업을 시작하고 있습니다...');
 
-    // ✅ duration: 사용자가 선택한 값 사용 (4, 6, 8초)
     const videoDuration = selectedDuration;
 
     console.log('🎬 Gemini 영상 생성 시작:', {
@@ -258,11 +257,10 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       imagesSizes: uploadedImages.map(img => img.base64.length)
     });
 
-    // ⚠️ 중요: 크레딧 차감은 성공 후에만!
     let creditDeducted = false;
 
     try {
-      // 1. Gemini Video API로 영상 생성 - ✅ 사용자가 선택한 duration!
+      // 1. Gemini Video API로 영상 생성
       setProgress(uploadedImages.length === 2 
         ? `2개 이미지로 ${selectedDuration}초 전환 영상 생성 중... (Veo 3.1 Fast)`
         : `1개 이미지로 ${selectedDuration}초 영상 생성 중... (Veo 3.1 Fast)`
@@ -271,7 +269,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       const result = await geminiVideoService.generateVideo({
         images: uploadedImages.map(img => `data:${img.mimeType};base64,${img.base64}`),
         prompt: finalPrompt,
-        duration: selectedDuration,  // ✅ 사용자가 선택한 4, 6, 8초!
+        duration: selectedDuration,
         aspectRatio: '9:16'
       });
       
@@ -282,7 +280,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         fullUrl: result.videoUrl
       });
 
-      // 🔧 프록시 URL로 변환 (인증 문제 해결)
+      // 프록시 URL로 변환
       const proxyUrl = `/.netlify/functions/video-download-proxy?url=${encodeURIComponent(result.videoUrl)}`;
 
       setGeneratedVideoUrl(proxyUrl);
@@ -291,14 +289,14 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       }
       setProgress('영상 생성이 완료되었습니다!');
       
-      // 2. 생성 결과 저장 (즉시 실행)
+      // 2. 생성 결과 저장 - ✅ 수정된 부분
       console.log('💾 영상 결과 저장 시작...');
       
       try {
         const saveResult = await saveGenerationResult({
           userId,
           type: 'video',
-          originalImageUrl: uploadedImages[0].url,
+          originalImageUrl: null,  // ✅ blob URL 대신 null 사용
           resultUrl: result.videoUrl,
           prompt: finalPrompt,
           videoDuration,
@@ -311,10 +309,12 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
           console.warn('⚠️ 영상 결과 저장 실패 - 하지만 영상은 정상 생성됨');
         }
       } catch (saveError) {
+        // ✅ 저장 실패해도 영상 생성은 성공이므로 에러를 던지지 않음
         console.error('❌ 영상 결과 저장 중 오류:', saveError);
+        console.warn('⚠️ DB 저장 실패했지만 영상은 정상 생성되었습니다.');
       }
       
-      // 3. ✅ 성공 후에만 크레딧 차감
+      // 3. 성공 후에만 크레딧 차감
       console.log('💳 크레딧 차감 시작...', {
         before: credits.remainingCredits,
         toDeduct: requiredCredits
@@ -340,14 +340,12 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     } catch (err) {
       console.error('❌ 영상 생성 실패:', err);
       
-      // ⚠️ 중요: 실패 시에는 크레딧 복구 불필요 (차감 안했으므로)
       if (creditDeducted) {
-        // 만약 차감이 성공했는데 영상이 실패했다면 복구
-        console.log('🔄 크레딧 복구 시작... (차감됐지만 영상 실패)');
+        console.log('🔄 크레딧 복구 시작...');
         try {
           await restoreCredits(userId, 'video', requiredCredits);
           console.log('✅ 크레딧 복구 완료');
-          onCreditsUsed(); // UI 갱신
+          onCreditsUsed();
         } catch (restoreError) {
           console.error('❌ 크레딧 복구 실패:', restoreError);
         }
@@ -383,7 +381,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     }
   };
 
-  // iPhone에서 실제 파일이 저장되는 다운로드 핸들러 (완전히 유지)
+  // iPhone 다운로드 핸들러
   const handleDownload = async () => {
     if (!generatedVideoUrl || isDownloading) return;
     
@@ -631,11 +629,9 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col items-center p-4 sm:p-6 lg:p-8">
-      {/* 모달들 */}
       {showExitWarning && <ExitWarningModal />}
       {showIOSGuide && <IOSGuideModal />}
       
-      {/* Header */}
       <header className="text-center w-full mb-6">
         <button
           onClick={handleSafeBack}
@@ -646,7 +642,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
           </svg>
         </button>
         
-        {/* 크레딧 표시 */}
         {credits && (
           <div className="absolute right-4 top-4 bg-gray-800 px-4 py-2 rounded-lg">
             <span className="text-sm text-gray-400">남은 횟수: </span>
@@ -663,19 +658,16 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       </header>
 
       <main className="w-full max-w-7xl flex flex-col lg:flex-row gap-8">
-        {/* Left Panel - 설정 */}
         <div className="lg:w-1/3 flex flex-col gap-6">
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
             <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">1. 헤어 시술 후 사진 업로드</h2>
             
-            {/* 첫 번째 이미지 업로드 */}
             <ImageUploader 
               title="고객 사진" 
               onImageUpload={handleImageUpload} 
               imageUrl={uploadedImages[0]?.url} 
             />
             
-            {/* 업로드된 이미지 목록 */}
             {uploadedImages.length > 0 && (
               <div className="mt-4 space-y-2">
                 {uploadedImages.map((img, index) => (
@@ -700,7 +692,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                   </div>
                 ))}
                 
-                {/* 두 번째 이미지 추가 버튼 */}
                 {uploadedImages.length === 1 && (
                   <label className="block w-full p-4 bg-gray-700 hover:bg-gray-600 border-2 border-dashed border-gray-500 rounded-lg cursor-pointer transition-colors">
                     <input
@@ -721,7 +712,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               </div>
             )}
             
-            {/* ✅ Duration 선택 UI */}
             <div className="mt-4 p-4 bg-gray-700/50 border border-gray-600 rounded-lg">
               <label className="block mb-3 text-sm font-medium text-gray-300">
                 영상 길이 선택
@@ -751,7 +741,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                 ))}
               </div>
               
-              {/* 선택된 옵션 안내 */}
               <div className="mt-3 p-2 bg-blue-900/30 border border-blue-700/50 rounded">
                 <p className="text-xs text-blue-200 text-center">
                   ⏱️ <strong>선택한 길이</strong>: {selectedDuration}초 | 
@@ -764,7 +753,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
           <div className="w-full p-6 bg-gray-800/50 border border-gray-700 rounded-xl">
             <h2 className="text-xl text-center font-bold text-cyan-400 mb-4">2. 영상 설정</h2>
             
-            {/* Motion Templates */}
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-300">헤어 영상 템플릿</label>
               <select
@@ -804,7 +792,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               </select>
             </div>
 
-            {/* Custom Prompt */}
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-300">
                 {selectedTemplate ? '선택된 템플릿 사용 중' : '커스텀 프롬프트'}
@@ -821,7 +808,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               />
             </div>
             
-            {/* 크레딧 부족 경고 */}
             {credits && !hasEnoughCredits && (
               <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4">
                 <p className="text-sm text-red-400">
@@ -853,7 +839,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
           </div>
         </div>
 
-        {/* Right Panel - 비디오 결과 */}
         <div className="lg:w-2/3 flex flex-col relative min-h-[500px]">
           {isLoading && <Loader type="video" />}
           
@@ -879,7 +864,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               
               {generatedVideoUrl ? (
                 <>
-                  {/* 다운로드 성공 안내 */}
                   {!videoSaved && (
                     <div className="mb-4 bg-green-500/20 border-green-500/50 border rounded-lg p-4">
                       <div className="flex items-center gap-3">
@@ -896,7 +880,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                     </div>
                   )}
                   
-                  {/* 비디오 플레이어 */}
                   <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden">
                     <video 
                       controls 
@@ -914,7 +897,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                       브라우저가 비디오 재생을 지원하지 않습니다.
                     </video>
                     
-                    {/* iPhone 실제 파일 저장 다운로드 버튼 */}
                     <button
                       onClick={handleDownload}
                       disabled={isDownloading}
@@ -949,7 +931,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                       </div>
                     </button>
                     
-                    {/* 다운로드 상태 표시 */}
                     {downloadStatus && (
                       <div className={`absolute top-4 left-4 right-4 p-3 rounded-lg backdrop-blur-sm border transition-all duration-300 ${
                         downloadStatus.includes('✅') 
@@ -963,7 +944,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
                     )}
                   </div>
 
-                  {/* iPhone 실제 파일 저장 가이드 */}
                   <div className="mt-4 p-4 bg-gray-800/30 border border-gray-600 rounded-lg">
                     <div className="flex items-start gap-3">
                       <div className="text-2xl">
