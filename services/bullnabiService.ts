@@ -1,4 +1,4 @@
-// services/bullnabiService.ts - 토큰 자동 갱신 연동 최종 버전 + 클링 URL 문제 해결
+// services/bullnabiService.ts - 토큰 자동 갱신 연동 최종 버전 + thumbnailUrl 지원
 import type { UserCredits, GenerationResult } from '../types';
 
 const API_BASE_URL = '/.netlify/functions/bullnabi-proxy';
@@ -474,13 +474,14 @@ export const restoreCredits = async (
 };
 
 /**
- * 생성 결과 저장 (자동 갱신 연동) - 🔧 클링 URL 문제 해결
+ * 생성 결과 저장 (자동 갱신 연동) - thumbnailUrl 지원 추가
  */
 export const saveGenerationResult = async (params: {
   userId: string;
   type: 'image' | 'video';
-  originalImageUrl: string;
+  originalImageUrl: string | null;
   resultUrl: string;
+  thumbnailUrl?: string;
   prompt?: string;
   facePrompt?: string;
   clothingPrompt?: string;
@@ -491,13 +492,17 @@ export const saveGenerationResult = async (params: {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
-    // 🔧 클링 URL 문제 해결: 클링 URL은 쿼리스트링만 제거하고 전체 보존
-    const truncateUrl = (url: string, maxLength: number = 100): string => {
+    const truncateUrl = (url: string | null, maxLength: number = 100): string => {
       if (!url || url.length <= maxLength) return url || '';
       
-      // 클링 URL의 경우 쿼리스트링만 제거하고 전체 URL 보존
+      // Gemini URL은 전체 보존
+      if (url.includes('generativelanguage.googleapis.com')) {
+        return url;
+      }
+      
+      // 클링 URL의 경우 쿼리스트링만 제거하고 전체 보존
       if (url.includes('klingai.com')) {
-        const cleanUrl = url.split('?')[0]; // ?x-kcdn-pid=112372 같은 쿼리스트링 제거
+        const cleanUrl = url.split('?')[0];
         console.log('🧹 클링 URL 정리:', {
           원본: url.substring(0, 80) + '...',
           정리됨: cleanUrl.substring(0, 80) + '...',
@@ -515,11 +520,11 @@ export const saveGenerationResult = async (params: {
       return text.substring(0, maxLength) + '...';
     };
 
-    const documentData = {
+    const documentData: any = {
       userId: { "$oid": params.userId },
       type: params.type,
       originalImageUrl: truncateUrl(params.originalImageUrl, 150),
-      resultUrl: truncateUrl(params.resultUrl, 150), // 🔧 클링 URL은 쿼리스트링만 제거
+      resultUrl: truncateUrl(params.resultUrl, 150),
       prompt: truncateText(params.prompt || '', 200),
       facePrompt: truncateText(params.facePrompt || '', 200),
       clothingPrompt: truncateText(params.clothingPrompt || '', 200),
@@ -531,7 +536,15 @@ export const saveGenerationResult = async (params: {
       status: 'completed'
     };
 
-    console.log('생성 결과 저장 시작 (클링 URL 최적화)...');
+    // thumbnailUrl 추가 (Base64는 자르지 않음)
+    if (params.thumbnailUrl) {
+      documentData.thumbnailUrl = params.thumbnailUrl;
+      console.log('🖼️ 썸네일 포함하여 저장:', {
+        size: (params.thumbnailUrl.length / 1024).toFixed(2) + 'KB'
+      });
+    }
+
+    console.log('💾 생성 결과 저장 시작 (thumbnailUrl 지원)...');
 
     // 1순위: 동적 토큰 (자동 갱신 포함)
     let result = await callWithDynamicToken(params.userId, 'saveGenerationResult', documentData);
@@ -566,11 +579,11 @@ export const saveGenerationResult = async (params: {
 };
 
 /**
- * 🔧 기존 잘린 URL 복구 함수
+ * 기존 잘린 URL 복구 함수
  */
 const recoverTruncatedKlingUrl = (url: string): string => {
   if (!url || !url.includes('...[truncated]')) {
-    return url; // 잘리지 않은 URL은 그대로 반환
+    return url;
   }
   
   console.log('🔧 잘린 클링 URL 복구 시도:', {
@@ -578,10 +591,8 @@ const recoverTruncatedKlingUrl = (url: string): string => {
     잘림확인: true
   });
   
-  // ...[truncated] 제거 후 .mp4 확장자 확인/추가
   let recoveredUrl = url.replace('...[truncated]', '');
   
-  // .mp4 확장자가 없으면 추가
   if (!recoveredUrl.endsWith('.mp4')) {
     recoveredUrl += '.mp4';
   }
@@ -595,16 +606,13 @@ const recoverTruncatedKlingUrl = (url: string): string => {
 };
 
 /**
- * 🧹 클링 URL 완전 정리 함수 (복구 + 쿼리스트링 제거)
+ * 클링 URL 완전 정리 함수 (복구 + 쿼리스트링 제거)
  */
 export const cleanKlingUrl = (url: string): string => {
   if (!url || !url.includes('klingai.com')) return url;
   
   try {
-    // 1. 먼저 잘린 URL 복구
     const recoveredUrl = recoverTruncatedKlingUrl(url);
-    
-    // 2. 쿼리스트링 제거
     const cleanUrl = recoveredUrl.split('?')[0];
     
     console.log('🧹 클링 URL 최종 정리:', {
@@ -622,7 +630,7 @@ export const cleanKlingUrl = (url: string): string => {
 };
 
 /**
- * 생성 내역 조회 (자동 갱신 연동) - 🔧 URL 복구 로직 적용
+ * 생성 내역 조회 (자동 갱신 연동) - URL 복구 로직 적용
  */
 export const getGenerationHistory = async (userId: string, limit: number = 50): Promise<GenerationResult[]> => {
   try {
@@ -645,11 +653,9 @@ export const getGenerationHistory = async (userId: string, limit: number = 50): 
       }
     );
 
-    // 🔧 결과 데이터에서 클링 URL 복구 적용
     const historyData = result?.data || [];
     const recoveredHistory = historyData.map((item: GenerationResult) => {
       if (item.type === 'video' && item.resultUrl && item.resultUrl.includes('klingai.com')) {
-        // 클링 영상 URL 복구
         const recoveredUrl = cleanKlingUrl(item.resultUrl);
         console.log('🎬 생성 내역에서 클링 URL 복구:', {
           itemId: (item._id || 'unknown').toString().substring(0, 8) + '...',
@@ -751,7 +757,7 @@ export const manualTokenRefresh = async (): Promise<boolean> => {
  */
 export const getServiceStatus = () => {
   return {
-    version: '5.2-KLING-URL-RECOVERY',
+    version: '5.3-THUMBNAIL-SUPPORT',
     tokenCacheSize: Object.keys(tokenCache).length,
     cachedUsers: Object.keys(tokenCache),
     features: [
@@ -764,7 +770,8 @@ export const getServiceStatus = () => {
       '🆘 기본 크레딧 제공 (서비스 중단 방지)',
       '⚡ 이중 안전망 + 자동 갱신 구조',
       '🎬 클링 URL 완전 보존 (404 해결)',
-      '🔧 기존 잘린 URL 자동 복구'
+      '🔧 기존 잘린 URL 자동 복구',
+      '🖼️ 비디오 썸네일 저장 지원 (Base64)'
     ],
     newFeatures: [
       '📧 이메일 로그인 기반 토큰 자동 갱신',
@@ -772,7 +779,8 @@ export const getServiceStatus = () => {
       '⚙️ 런타임 환경변수 자동 업데이트',
       '🛡️ 예외 상황 기본 크레딧 제공',
       '🔧 클링 URL 쿼리스트링 제거 (...[truncated] 방지)',
-      '🎯 기존 DB의 잘린 URL 자동 복구 시스템'
+      '🎯 기존 DB의 잘린 URL 자동 복구 시스템',
+      '🖼️ thumbnailUrl 파라미터 추가 (영상 썸네일 저장)'
     ]
   };
 };
