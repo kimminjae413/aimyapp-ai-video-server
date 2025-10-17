@@ -589,7 +589,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
           {/* ✅ Veo 2 정보로 수정 */}
           <div className="mt-2 p-2 bg-cyan-600/20 border border-cyan-500/50 rounded-lg">
             <p className="text-xs text-cyan-300 text-center">
-              ✅ Veo 2: 영상 길이 5초/8초 선택 가능 | 크레딧 = Duration
+              ✅ Hairgator: 영상 길이 5초/8초 선택 가능 | 크레딧 = Duration
             </p>
           </div>
         </div>
