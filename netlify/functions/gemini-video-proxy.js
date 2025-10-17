@@ -1,6 +1,6 @@
 /**
- * Netlify Function: Gemini Veo Video Generation (Veo 2 Final)
- * Veo 2: 5초/8초 (Veo 3.1에서 마이그레이션)
+ * Netlify Function: Gemini Veo 2 Video Generation (FIXED)
+ * Veo 2: 5초/8초
  * 
  * 환경변수:
  * - GEMINI_VIDEO_API_KEY (우선순위 1)
@@ -41,9 +41,9 @@ exports.handler = async (event, context) => {
     console.log('═══════════════════════════════════════════════════════════');
     
     const data = JSON.parse(event.body);
-    const { images, prompt, duration = 5 } = data;  // ✅ 기본값 5초
+    const { images, prompt, duration = 5 } = data;
 
-    // ✅ Validation
+    // Validation
     if (!images || !Array.isArray(images) || images.length === 0 || images.length > 2) {
       throw new Error('이미지는 1~2개만 지원됩니다.');
     }
@@ -52,13 +52,13 @@ exports.handler = async (event, context) => {
       throw new Error('프롬프트가 필요합니다.');
     }
 
-    // ⏱️ Duration validation - Veo 2: 5초, 8초만 지원!
+    // Duration validation - Veo 2: 5초, 8초만 지원
     const validDurations = [5, 8];
     if (!validDurations.includes(duration)) {
       throw new Error(`영상 길이는 5초, 8초만 가능합니다. (받은 값: ${duration})`);
     }
 
-    // 🔑 API Key
+    // API Key
     const apiKey = process.env.GEMINI_VIDEO_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('GEMINI_VIDEO_API_KEY or GEMINI_API_KEY not configured');
@@ -66,11 +66,11 @@ exports.handler = async (event, context) => {
 
     console.log('🔑 API Key source:', process.env.GEMINI_VIDEO_API_KEY ? 'GEMINI_VIDEO_API_KEY' : 'GEMINI_API_KEY (fallback)');
 
-    // 💰 크레딧 계산: duration과 동일
+    // 크레딧 계산
     const isTwoImages = images.length === 2;
-    const creditsRequired = duration;  // 5초=5, 8초=8
+    const creditsRequired = duration;
 
-    const selectedModel = 'veo-2.0-generate-001';  // ✅ Veo 2로 변경!
+    const selectedModel = 'veo-2.0-generate-001';
 
     console.log('📊 Request Parameters:', {
       imageCount: images.length,
@@ -80,11 +80,11 @@ exports.handler = async (event, context) => {
       creditsRequired: creditsRequired
     });
 
-    // 🔧 Initialize SDK
+    // Initialize SDK
     console.log('🔧 Initializing Google GenAI SDK...');
     const client = new GoogleGenAI({ apiKey });
 
-    // 📸 Process first image
+    // Process first image
     console.log('📸 Processing images...');
     const firstImageBase64 = images[0].includes(',') 
       ? images[0].split(',')[1] 
@@ -99,7 +99,7 @@ exports.handler = async (event, context) => {
       preview: firstImageBase64.substring(0, 50) + '...'
     });
 
-    // 🎨 Build request parameters
+    // Build request parameters - ✅ resolution 제거됨!
     const requestParams = {
       model: selectedModel,
       prompt: prompt,
@@ -109,13 +109,12 @@ exports.handler = async (event, context) => {
       },
       config: {
         aspectRatio: '9:16',
-        durationSeconds: duration,  // ✅ 5 또는 8
-        resolution: '720p',
+        durationSeconds: duration,
         personGeneration: 'allow_adult'
       }
     };
 
-    // 📸 Add second image for interpolation
+    // Add second image for interpolation
     if (isTwoImages) {
       const lastImageBase64 = images[1].includes(',')
         ? images[1].split(',')[1]
@@ -140,7 +139,7 @@ exports.handler = async (event, context) => {
       console.log(`🎬 Mode: Veo 2 Image-to-Video (${duration}초)`);
     }
 
-    // ▶️ Generate video
+    // Generate video
     console.log('▶️ Calling generateVideos API...');
     console.log('📋 Request structure:', {
       model: requestParams.model,
@@ -171,7 +170,7 @@ exports.handler = async (event, context) => {
     });
 
     return {
-      statusCode: 202,  // Accepted
+      statusCode: 202,
       headers,
       body: JSON.stringify({
         success: true,
@@ -188,7 +187,6 @@ exports.handler = async (event, context) => {
     console.error('❌ Video generation failed:', error.message);
     console.error('Stack:', error.stack);
     
-    // Handle specific error cases
     let errorMessage = error.message || 'Video generation failed';
     let statusCode = 500;
 
@@ -204,8 +202,8 @@ exports.handler = async (event, context) => {
     } else if (error.message && error.message.includes('not found')) {
       errorMessage = 'Veo 2 모델을 찾을 수 없습니다. API 키 권한을 확인하세요.';
       statusCode = 404;
-    } else if (error.message && error.message.includes('out of bound')) {
-      errorMessage = 'Duration은 5초, 8초만 가능합니다.';
+    } else if (error.message && error.message.includes('resolution')) {
+      errorMessage = 'resolution 파라미터는 Veo 2에서 지원되지 않습니다.';
       statusCode = 400;
     }
     
