@@ -452,7 +452,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                       ) : hasValidVideoUrl ? (
                         <VideoThumbnail 
                           videoUrl={item.resultUrl}
-                          thumbnailUrl={item.thumbnailUrl}  {/* ✅ 썸네일 전달 */}
+                          thumbnailUrl={item.thumbnailUrl}
                           itemId={itemId}
                         />
                       ) : (
