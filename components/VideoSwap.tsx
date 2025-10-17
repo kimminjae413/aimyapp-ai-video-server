@@ -1,3 +1,4 @@
+// components/VideoSwap.tsx
 import React, { useState, useEffect } from 'react';
 import { VideoIcon } from './icons/VideoIcon';
 import { ImageUploader } from './ImageUploader';
@@ -82,6 +83,86 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       ua.includes('WebView') ||
       ua.includes('Version/') && !ua.includes('Mobile Safari')
     );
+  };
+
+  // 🎬 비디오 썸네일 자동 생성 함수
+  const generateVideoThumbnail = async (videoUrl: string): Promise<string | null> => {
+    try {
+      console.log('🖼️ 비디오 썸네일 생성 시작:', videoUrl.substring(0, 80) + '...');
+      
+      // 1. 비디오 다운로드
+      const response = await fetch(videoUrl);
+      if (!response.ok) {
+        throw new Error('비디오 로드 실패');
+      }
+      
+      const blob = await response.blob();
+      const videoObjectUrl = URL.createObjectURL(blob);
+      
+      // 2. 비디오 엘리먼트 생성
+      const video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.preload = 'metadata';
+      
+      // 3. 비디오 로드 완료 대기
+      await new Promise<void>((resolve, reject) => {
+        video.onloadedmetadata = () => {
+          console.log('✅ 비디오 메타데이터 로드 완료:', {
+            duration: video.duration,
+            width: video.videoWidth,
+            height: video.videoHeight
+          });
+          resolve();
+        };
+        video.onerror = (e) => {
+          console.error('❌ 비디오 로드 실패:', e);
+          reject(new Error('비디오 로드 실패'));
+        };
+        video.src = videoObjectUrl;
+      });
+      
+      // 4. 0.5초 시점으로 이동
+      video.currentTime = 0.5;
+      
+      // 5. 프레임 준비 대기
+      await new Promise<void>((resolve) => {
+        video.onseeked = () => {
+          console.log('✅ 비디오 시점 이동 완료: 0.5초');
+          resolve();
+        };
+      });
+      
+      // 6. Canvas에 그리기
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Canvas context 생성 실패');
+      }
+      
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // 7. Base64로 변환
+      const thumbnailBase64 = canvas.toDataURL('image/jpeg', 0.8);
+      
+      console.log('✅ 썸네일 생성 완료:', {
+        size: (thumbnailBase64.length / 1024).toFixed(2) + 'KB',
+        dimensions: `${canvas.width}x${canvas.height}`
+      });
+      
+      // 8. 정리
+      URL.revokeObjectURL(videoObjectUrl);
+      video.remove();
+      canvas.remove();
+      
+      return thumbnailBase64;
+      
+    } catch (error) {
+      console.error('❌ 썸네일 생성 실패:', error);
+      return null;
+    }
   };
 
   // preservedVideoUrl이 있으면 복원
@@ -212,7 +293,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     console.log('🗑️ 이미지 제거:', { remainingImages: uploadedImages.length - 1 });
   };
 
-  // ✅ 영상 생성 핸들러 - Veo 2용
+  // ✅ 영상 생성 핸들러 - Veo 2용 + 썸네일 자동 생성
   const handleGenerateVideo = async () => {
     if (uploadedImages.length === 0) {
       setError('이미지를 최소 1개 업로드해주세요.');
@@ -288,8 +369,25 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       }
       setProgress('영상 생성이 완료되었습니다!');
       
-      // 2. 생성 결과 저장
-      console.log('💾 영상 결과 저장 시작...');
+      // 2. 🎬 썸네일 자동 생성
+      console.log('🖼️ 썸네일 생성 중...');
+      setProgress('썸네일 생성 중...');
+      
+      let thumbnailUrl: string | null = null;
+      try {
+        thumbnailUrl = await generateVideoThumbnail(proxyUrl);
+        if (thumbnailUrl) {
+          console.log('✅ 썸네일 생성 성공!');
+        } else {
+          console.warn('⚠️ 썸네일 생성 실패 - 계속 진행');
+        }
+      } catch (thumbError) {
+        console.error('❌ 썸네일 생성 오류:', thumbError);
+        console.warn('⚠️ 썸네일 없이 계속 진행');
+      }
+      
+      // 3. 생성 결과 저장 (썸네일 포함!)
+      console.log('💾 영상 결과 저장 시작 (썸네일 포함)...');
       
       try {
         const saveResult = await saveGenerationResult({
@@ -297,13 +395,14 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
           type: 'video',
           originalImageUrl: null,
           resultUrl: result.videoUrl,
+          thumbnailUrl: thumbnailUrl || undefined,  // ✅ 썸네일 추가!
           prompt: finalPrompt,
           videoDuration,
           creditsUsed: requiredCredits
         });
         
         if (saveResult) {
-          console.log('✅ 영상 결과 저장 성공');
+          console.log('✅ 영상 결과 저장 성공 (썸네일 포함!)');
         } else {
           console.warn('⚠️ 영상 결과 저장 실패 - 하지만 영상은 정상 생성됨');
         }
@@ -312,7 +411,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         console.warn('⚠️ DB 저장 실패했지만 영상은 정상 생성되었습니다.');
       }
       
-      // 3. 성공 후에만 크레딧 차감
+      // 4. 성공 후에만 크레딧 차감
       console.log('💳 크레딧 차감 시작...', {
         before: credits.remainingCredits,
         toDeduct: requiredCredits
