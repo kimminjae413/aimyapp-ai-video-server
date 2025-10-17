@@ -41,11 +41,48 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     return url.includes('generativelanguage.googleapis.com');
   };
 
-  // 🎬 비디오 썸네일 컴포넌트
-  const VideoThumbnail: React.FC<{ videoUrl: string; itemId: string }> = ({ videoUrl, itemId }) => {
+  // 🎬 비디오 썸네일 컴포넌트 - 개선 버전!
+  const VideoThumbnail: React.FC<{ 
+    videoUrl: string; 
+    thumbnailUrl?: string;
+    itemId: string;
+  }> = ({ videoUrl, thumbnailUrl, itemId }) => {
     const isGemini = isGeminiVideoUrl(videoUrl);
     
-    // Gemini Video는 직접 재생 불가 → 플레이스홀더 표시
+    // ✅ 1순위: DB에 저장된 썸네일 사용
+    if (thumbnailUrl) {
+      return (
+        <div className="relative w-full h-full">
+          <img
+            src={thumbnailUrl}
+            alt="Video thumbnail"
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              console.warn(`❌ [썸네일] 이미지 로드 실패: ${itemId}`);
+              // 썸네일 로드 실패 시 플레이스홀더로 대체
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+            }}
+          />
+          
+          {/* 재생 아이콘 오버레이 */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-black/50 hover:bg-black/70 transition-all flex items-center justify-center backdrop-blur-sm">
+              <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </div>
+          </div>
+          
+          {/* 비디오 배지 */}
+          <div className="absolute top-2 left-2 px-2 py-1 bg-purple-600/80 backdrop-blur-sm rounded-full">
+            <span className="text-xs text-white font-medium">🎬 영상</span>
+          </div>
+        </div>
+      );
+    }
+    
+    // ✅ 2순위: Gemini Video는 플레이스홀더 표시
     if (isGemini) {
       return (
         <div className="relative w-full h-full bg-gradient-to-br from-purple-900/50 to-blue-900/50">
@@ -65,7 +102,7 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
       );
     }
     
-    // 일반 비디오 (Cloudinary 등)
+    // ✅ 3순위: 일반 비디오 (Cloudinary 등) - 직접 재생 가능
     const [thumbnailError, setThumbnailError] = useState(false);
     const [videoLoaded, setVideoLoaded] = useState(false);
     
@@ -149,6 +186,14 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
     try {
       await cleanupExpiredGenerations(userId);
       const results = await getGenerationHistory(userId, 50);
+      
+      // 콘솔에 썸네일 정보 출력
+      console.log('📊 작품 내역 로드:', {
+        total: results.length,
+        withThumbnails: results.filter(r => r.type === 'video' && r.thumbnailUrl).length,
+        videos: results.filter(r => r.type === 'video').length
+      });
+      
       setHistory(results);
     } catch (err) {
       setError('내역을 불러오는데 실패했습니다.');
@@ -406,7 +451,8 @@ export const GenerationHistory: React.FC<GenerationHistoryProps> = ({
                         )
                       ) : hasValidVideoUrl ? (
                         <VideoThumbnail 
-                          videoUrl={item.resultUrl} 
+                          videoUrl={item.resultUrl}
+                          thumbnailUrl={item.thumbnailUrl}  {/* ✅ 썸네일 전달 */}
                           itemId={itemId}
                         />
                       ) : (
