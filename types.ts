@@ -27,13 +27,14 @@ export interface AppContextType {
   refreshCredits: () => Promise<void>;
 }
 
-// 새로 추가: 생성 내역 관련 타입들
+// 생성 내역 관련 타입들
 export interface GenerationResult {
   _id?: string;
   userId: string;
   type: 'image' | 'video';
   originalImageUrl: string;
   resultUrl: string;
+  thumbnailUrl?: string;  // 비디오 썸네일 (Base64)
   prompt?: string;
   facePrompt?: string;
   clothingPrompt?: string;
