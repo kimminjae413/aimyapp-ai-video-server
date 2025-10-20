@@ -40,6 +40,19 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
   const [selectedDuration, setSelectedDuration] = useState<5 | 8>(5);  // ✅ Veo 2: 5초 또는 8초
 
+  // ✅ 2개 이미지 업로드 시 자동으로 전환 프롬프트 추천
+  useEffect(() => {
+    if (uploadedImages.length === 2 && !prompt && !selectedTemplate) {
+      // 8초로 자동 변경 + 전환 프롬프트 자동 입력
+      setSelectedDuration(8);
+      setPrompt('Smooth transformation from the first image to the second image, showing natural face and hairstyle transition with elegant movement');
+      console.log('✅ 2개 이미지 감지: 8초 + 전환 프롬프트 자동 설정');
+    } else if (uploadedImages.length === 1 && selectedDuration === 8) {
+      // 1개로 줄어들면 5초로 복귀
+      setSelectedDuration(5);
+    }
+  }, [uploadedImages.length, prompt, selectedTemplate, selectedDuration]);
+
   // 헤어 모션 템플릿 (16개 - 그대로 유지)
   const hairMotionTemplates = {
     hairModelPose1: 'The person slowly turns their head left and right to showcase the hairstyle from different angles, with smooth and natural movements',
@@ -90,7 +103,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
     try {
       console.log('🖼️ 비디오 썸네일 생성 시작:', videoUrl.substring(0, 80) + '...');
       
-      // 1. 비디오 다운로드
       const response = await fetch(videoUrl);
       if (!response.ok) {
         throw new Error('비디오 로드 실패');
@@ -99,12 +111,10 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       const blob = await response.blob();
       const videoObjectUrl = URL.createObjectURL(blob);
       
-      // 2. 비디오 엘리먼트 생성
       const video = document.createElement('video');
       video.crossOrigin = 'anonymous';
       video.preload = 'metadata';
       
-      // 3. 비디오 로드 완료 대기
       await new Promise<void>((resolve, reject) => {
         video.onloadedmetadata = () => {
           console.log('✅ 비디오 메타데이터 로드 완료:', {
@@ -121,10 +131,8 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         video.src = videoObjectUrl;
       });
       
-      // 4. 0.5초 시점으로 이동
       video.currentTime = 0.5;
       
-      // 5. 프레임 준비 대기
       await new Promise<void>((resolve) => {
         video.onseeked = () => {
           console.log('✅ 비디오 시점 이동 완료: 0.5초');
@@ -132,7 +140,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         };
       });
       
-      // 6. Canvas에 그리기
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -144,7 +151,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
       
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       
-      // 7. Base64로 변환
       const thumbnailBase64 = canvas.toDataURL('image/jpeg', 0.8);
       
       console.log('✅ 썸네일 생성 완료:', {
@@ -152,7 +158,6 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         dimensions: `${canvas.width}x${canvas.height}`
       });
       
-      // 8. 정리
       URL.revokeObjectURL(videoObjectUrl);
       video.remove();
       canvas.remove();
@@ -893,15 +898,48 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
 
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-300">
-                {selectedTemplate ? '선택된 템플릿 사용 중' : '커스텀 프롬프트'}
+                {selectedTemplate ? '선택된 템플릿 사용 중' : uploadedImages.length === 2 ? '✨ 전환 프롬프트 (자동입력됨)' : '커스텀 프롬프트'}
               </label>
+              
+              {/* ✅ 2개 이미지 업로드 시 권장 프롬프트 버튼 표시 */}
+              {uploadedImages.length === 2 && !selectedTemplate && (
+                <div className="mb-3 p-3 bg-cyan-900/30 border border-cyan-700/50 rounded-lg">
+                  <p className="text-xs text-cyan-200 mb-2">
+                    💡 <strong>2개 이미지 전환 영상 권장 프롬프트 (클릭하여 사용):</strong>
+                  </p>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => setPrompt('Smooth transformation from the first image to the second image, showing natural face and hairstyle transition with elegant movement')}
+                      className="w-full text-left p-2 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 transition"
+                    >
+                      🌟 영어: "Smooth transformation from first to second..." (권장)
+                    </button>
+                    <button
+                      onClick={() => setPrompt('첫 번째 사진에서 두 번째 사진으로 자연스럽게 변화하는 영상, 얼굴과 헤어스타일이 우아하게 전환')}
+                      className="w-full text-left p-2 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 transition"
+                    >
+                      🇰🇷 한국어: "첫 번째 사진에서 두 번째 사진으로..."
+                    </button>
+                    <button
+                      onClick={() => setPrompt('Natural morphing transition between the two faces, maintaining consistent background and lighting throughout the transformation')}
+                      className="w-full text-left p-2 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 transition"
+                    >
+                      🎭 모핑: "Natural morphing transition..."
+                    </button>
+                  </div>
+                </div>
+              )}
+              
               <textarea
                 value={prompt}
                 onChange={(e) => {
                   setPrompt(e.target.value);
                   setSelectedTemplate('');
                 }}
-                placeholder="영상으로 만들 동작을 설명하세요..."
+                placeholder={uploadedImages.length === 2 
+                  ? "2개 이미지 전환용 프롬프트가 자동으로 입력되었습니다. 수정 가능합니다." 
+                  : "영상으로 만들 동작을 설명하세요..."
+                }
                 className="w-full h-32 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 transition resize-none text-sm"
                 disabled={!!selectedTemplate}
               />
@@ -931,7 +969,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
               ) : (
                 <>
                   <VideoIcon className="w-5 h-5 mr-2" />
-                  {selectedDuration}초 영상 생성하기 ({requiredCredits}회 차감)
+                  {uploadedImages.length === 2 ? '🎬 전환 ' : ''}{selectedDuration}초 영상 생성하기 ({requiredCredits}회 차감)
                 </>
               )}
             </button>
