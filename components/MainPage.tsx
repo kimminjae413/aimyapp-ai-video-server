@@ -31,7 +31,7 @@ export function MainPage({ onFaceSwapClick, onVideoSwapClick, credits }: MainPag
             {credits && (
               <div className="bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-2 rounded-full shadow-lg">
                 <span className="text-sm font-bold">
-                  💎 {credits.remainingCredits}회
+                  💎 {credits.remainingCredits.toFixed(2)}회
                 </span>
               </div>
             )}

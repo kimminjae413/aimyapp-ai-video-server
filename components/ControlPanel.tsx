@@ -67,7 +67,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <div className="flex items-center gap-2 bg-gray-700/50 px-3 py-1 rounded-lg">
               <span className="text-xs text-gray-400">남은:</span>
               <span className={`text-sm font-bold ${hasEnoughCredits ? 'text-cyan-400' : 'text-red-400'}`}>
-                {credits.remainingCredits}
+                {credits.remainingCredits.toFixed(2)}
               </span>
             </div>
           )}

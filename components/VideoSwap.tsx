@@ -747,7 +747,7 @@ const VideoSwap: React.FC<VideoSwapProps> = ({
         {credits && (
           <div className="absolute right-4 top-4 bg-gray-800 px-4 py-2 rounded-lg">
             <span className="text-sm text-gray-400">남은 횟수: </span>
-            <span className="text-lg font-bold text-cyan-400">{credits.remainingCredits}</span>
+            <span className="text-lg font-bold text-cyan-400">{credits.remainingCredits.toFixed(2)}</span>
           </div>
         )}
         
